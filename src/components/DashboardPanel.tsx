@@ -79,6 +79,22 @@ function formatDateBadge(dateStr: string): string {
   return parseDateStr(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+/** "07:30" → "7:30 AM",  "13:00" → "1:00 PM" */
+function formatTime12h(t: string): string {
+  const [h24s, min] = t.split(":");
+  const h24  = parseInt(h24s);
+  const h12  = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+  const ampm = h24 < 12 ? "AM" : "PM";
+  return `${h12}:${min} ${ampm}`;
+}
+
+/** Short form for tight spaces: "7a", "1p" */
+function formatTimeShort(t: string): string {
+  const h24 = parseInt(t.split(":")[0]);
+  const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+  return `${h12}${h24 < 12 ? "a" : "p"}`;
+}
+
 function getWeekDates(): Date[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -90,6 +106,128 @@ function getWeekDates(): Date[] {
     d.setDate(monday.getDate() + i);
     return d;
   });
+}
+
+// ─── Custom time picker ───────────────────────────────────────────────────────
+//
+// Auto AM/PM rules: hours 7–11 → AM, hours 12 and 1–6 → PM
+
+function CustomTimePicker({
+  value,
+  onChange,
+}: {
+  value: string;          // stored as "HH:MM" (24h)
+  onChange: (v: string) => void;
+}) {
+  const [showGrid, setShowGrid] = useState(false);
+  const [hourDraft, setHourDraft] = useState<string | null>(null);
+
+  const [h24s, minS] = (value || "12:00").split(":");
+  const h24  = parseInt(h24s);
+  const min  = minS ?? "00";
+  const ampm: "AM" | "PM" = h24 < 12 ? "AM" : "PM";
+  const h12  = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+
+  /** Apply auto AM/PM and notify parent */
+  function selectHour(h: number) {
+    const ap: "AM" | "PM" = h >= 7 && h <= 11 ? "AM" : "PM";
+    const newH24 = ap === "AM" ? h : h === 12 ? 12 : h + 12;
+    onChange(`${String(newH24).padStart(2, "0")}:${min}`);
+    setHourDraft(null);
+    setShowGrid(false);
+  }
+
+  function toggleAmPm() {
+    const newH24 =
+      ampm === "AM" ? (h12 === 12 ? 0 : h12 + 12) : (h12 === 12 ? 12 : h12);
+    onChange(`${String(newH24).padStart(2, "0")}:${min}`);
+  }
+
+  const displayHour = hourDraft !== null ? hourDraft : String(h12);
+
+  return (
+    <div className="relative flex items-center gap-1 text-xs">
+      {/* Hour: typeable + dropdown grid */}
+      <div className="relative flex">
+        <input
+          type="text"
+          inputMode="numeric"
+          value={displayHour}
+          maxLength={2}
+          onFocus={e => { e.target.select(); setShowGrid(true); setHourDraft(""); }}
+          onBlur={() => {
+            const n = parseInt(hourDraft ?? "");
+            if (n >= 1 && n <= 12) selectHour(n);
+            else setHourDraft(null);
+            setTimeout(() => setShowGrid(false), 150);
+          }}
+          onChange={e => {
+            const raw = e.target.value.replace(/\D/g, "").slice(0, 2);
+            setHourDraft(raw);
+            const n = parseInt(raw);
+            if (n >= 1 && n <= 12) selectHour(n);
+          }}
+          className="w-7 rounded-l border border-r-0 border-zinc-700 bg-zinc-800 px-1 py-1 text-center text-zinc-200 focus:border-indigo-500/60 focus:outline-none"
+        />
+        <button
+          type="button"
+          onMouseDown={e => e.preventDefault()}
+          onClick={() => setShowGrid(s => !s)}
+          className="rounded-r border border-zinc-700 bg-zinc-800 px-1 py-1 text-[9px] text-zinc-600 hover:bg-zinc-700 hover:text-zinc-400"
+        >
+          ▾
+        </button>
+
+        {/* 1–12 grid */}
+        {showGrid && (
+          <div className="absolute left-0 top-full z-50 mt-1 grid w-32 grid-cols-4 gap-1 rounded border border-zinc-700 bg-zinc-900 p-2 shadow-xl">
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(h => (
+              <button
+                key={h}
+                type="button"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => selectHour(h)}
+                className={`rounded py-1.5 text-center text-xs font-medium transition hover:bg-indigo-500/30 hover:text-indigo-200 ${
+                  h === h12 ? "bg-indigo-600/80 text-white" : "text-zinc-300"
+                }`}
+              >
+                {h}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <span className="font-bold text-zinc-600">:</span>
+
+      {/* Minute */}
+      <input
+        type="text"
+        inputMode="numeric"
+        value={min}
+        maxLength={2}
+        onFocus={e => e.target.select()}
+        onChange={e => {
+          const raw = e.target.value.replace(/\D/g, "").slice(0, 2);
+          onChange(`${String(h24).padStart(2, "0")}:${raw.padStart(2, "0")}`);
+        }}
+        onBlur={e => {
+          const n = Math.min(59, Math.max(0, parseInt(e.target.value) || 0));
+          onChange(`${String(h24).padStart(2, "0")}:${String(n).padStart(2, "0")}`);
+        }}
+        className="w-8 rounded border border-zinc-700 bg-zinc-800 px-1 py-1 text-center text-zinc-200 focus:border-indigo-500/60 focus:outline-none"
+      />
+
+      {/* AM / PM toggle */}
+      <button
+        type="button"
+        onClick={toggleAmPm}
+        className="rounded border border-zinc-700 bg-zinc-800 px-1.5 py-1 text-[10px] font-bold tracking-wide text-zinc-300 transition hover:bg-zinc-700 hover:text-zinc-100"
+      >
+        {ampm}
+      </button>
+    </div>
+  );
 }
 
 // ─── Daily schedule ───────────────────────────────────────────────────────────
@@ -150,7 +288,7 @@ function DailySchedulePanel({ items }: { items: TodoItem[] }) {
                   key={item.id}
                   className="rounded bg-indigo-500/25 px-1.5 py-px text-[10px] leading-tight text-indigo-200"
                 >
-                  <span className="opacity-70">{item.time} · </span>
+                  <span className="opacity-70">{formatTime12h(item.time!)} · </span>
                   {item.text}
                 </div>
               ))}
@@ -205,7 +343,7 @@ function WeeklySchedulePanel({ items }: { items: TodoItem[] }) {
                   key={item.id}
                   className="truncate rounded bg-indigo-500/20 px-1 py-px text-[8px] leading-tight text-indigo-200"
                 >
-                  {item.time && <span className="opacity-60">{item.time} </span>}
+                  {item.time && <span className="opacity-60">{formatTimeShort(item.time)} </span>}
                   {item.text}
                 </div>
               ))}
@@ -408,7 +546,7 @@ function SortableItem({
                 }`}
               >
                 📅 {formatDateBadge(item.date)}
-                {item.time ? ` · ${item.time}` : ""}
+                {item.time ? ` · ${formatTime12h(item.time)}` : ""}
               </span>
             )}
             {item.links.map((link, i) =>
@@ -731,6 +869,7 @@ export default function DashboardPanel() {
                 checked={timeSensitive}
                 onChange={e => {
                   setTimeSensitive(e.target.checked);
+                  if (e.target.checked && !newTime) setNewTime("12:00");
                   if (!e.target.checked) { setNewDate(""); setNewTime(""); }
                 }}
                 className="h-3.5 w-3.5 accent-indigo-500"
@@ -758,12 +897,7 @@ export default function DashboardPanel() {
                     Time{" "}
                     <span className="text-zinc-600">(optional)</span>
                   </label>
-                  <input
-                    type="time"
-                    value={newTime}
-                    onChange={e => setNewTime(e.target.value)}
-                    className="w-full rounded border border-zinc-700 bg-zinc-800/80 px-2.5 py-1.5 text-xs text-zinc-200 focus:border-zinc-500 focus:outline-none"
-                  />
+                  <CustomTimePicker value={newTime} onChange={setNewTime} />
                 </div>
               </div>
             )}
