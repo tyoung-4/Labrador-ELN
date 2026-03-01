@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   DndContext,
   closestCenter,
@@ -178,16 +178,16 @@ function CustomTimePicker({
           ▾
         </button>
 
-        {/* 1–12 grid */}
+        {/* 1–12 vertical scroll list */}
         {showGrid && (
-          <div className="absolute left-0 top-full z-50 mt-1 grid w-32 grid-cols-4 gap-1 rounded border border-zinc-700 bg-zinc-900 p-2 shadow-xl">
+          <div className="absolute left-0 top-full z-50 mt-1 flex max-h-44 w-10 flex-col overflow-y-auto rounded border border-zinc-700 bg-zinc-900 py-1 shadow-xl">
             {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(h => (
               <button
                 key={h}
                 type="button"
                 onMouseDown={e => e.preventDefault()}
                 onClick={() => selectHour(h)}
-                className={`rounded py-1.5 text-center text-xs font-medium transition hover:bg-indigo-500/30 hover:text-indigo-200 ${
+                className={`shrink-0 py-1.5 text-center text-xs font-medium transition hover:bg-indigo-500/30 hover:text-indigo-200 ${
                   h === h12 ? "bg-indigo-600/80 text-white" : "text-zinc-300"
                 }`}
               >
@@ -226,6 +226,165 @@ function CustomTimePicker({
       >
         {ampm}
       </button>
+    </div>
+  );
+}
+
+// ─── Calendar date picker ─────────────────────────────────────────────────────
+
+function CalendarPicker({
+  value,
+  onChange,
+}: {
+  value: string;          // "YYYY-MM-DD" or ""
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [panelPos, setPanelPos] = useState({ top: 0, left: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const today = localDateStr();
+
+  // Which month to display
+  const [view, setView] = useState(() => {
+    const d = value ? parseDateStr(value) : new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+
+  const label =
+    !value || value === today
+      ? "Today"
+      : parseDateStr(value).toLocaleDateString("en-US", {
+          weekday: "short",
+          month:   "short",
+          day:     "numeric",
+        });
+
+  function openCalendar() {
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPanelPos({ top: r.bottom + 4, left: r.left });
+    }
+    setOpen(s => !s);
+  }
+
+  function prevMonth() {
+    setView(v => {
+      const d = new Date(v.year, v.month - 1, 1);
+      return { year: d.getFullYear(), month: d.getMonth() };
+    });
+  }
+  function nextMonth() {
+    setView(v => {
+      const d = new Date(v.year, v.month + 1, 1);
+      return { year: d.getFullYear(), month: d.getMonth() };
+    });
+  }
+
+  const firstDow    = new Date(view.year, view.month, 1).getDay(); // 0 = Sun
+  const daysInMonth = new Date(view.year, view.month + 1, 0).getDate();
+  const monthLabel  = new Date(view.year, view.month).toLocaleDateString("en-US", {
+    month: "long",
+    year:  "numeric",
+  });
+
+  return (
+    <div className="relative">
+      {/* Trigger */}
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={openCalendar}
+        className="flex w-full items-center gap-1.5 rounded border border-zinc-700 bg-zinc-800/80 px-2.5 py-1.5 text-left text-xs text-zinc-200 transition hover:border-zinc-600 focus:outline-none"
+      >
+        <span className="text-zinc-500">📅</span>
+        <span>{label}</span>
+      </button>
+
+      {open && (
+        <>
+          {/* Backdrop — closes calendar on outside click */}
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+
+          {/* Calendar panel — fixed to escape overflow:hidden on parent section */}
+          <div
+            className="fixed z-40 w-56 rounded border border-zinc-700 bg-zinc-900 p-3 shadow-xl"
+            style={{ top: panelPos.top, left: panelPos.left }}
+          >
+
+            {/* Month navigation */}
+            <div className="mb-2 flex items-center justify-between">
+              <button
+                type="button"
+                onMouseDown={e => e.preventDefault()}
+                onClick={prevMonth}
+                className="rounded px-2 py-0.5 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+              >
+                ‹
+              </button>
+              <span className="text-[11px] font-semibold text-zinc-300">{monthLabel}</span>
+              <button
+                type="button"
+                onMouseDown={e => e.preventDefault()}
+                onClick={nextMonth}
+                className="rounded px-2 py-0.5 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+              >
+                ›
+              </button>
+            </div>
+
+            {/* Day-of-week headers */}
+            <div className="mb-1 grid grid-cols-7">
+              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map(d => (
+                <div key={d} className="text-center text-[9px] font-semibold text-zinc-600">
+                  {d}
+                </div>
+              ))}
+            </div>
+
+            {/* Day buttons */}
+            <div className="grid grid-cols-7 gap-y-0.5">
+              {Array.from({ length: firstDow }, (_, i) => <div key={`e${i}`} />)}
+              {Array.from({ length: daysInMonth }, (_, i) => {
+                const day     = i + 1;
+                const dateStr = `${view.year}-${String(view.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+                const isToday    = dateStr === today;
+                const isSelected = dateStr === value;
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => { onChange(dateStr); setOpen(false); }}
+                    className={`rounded py-1 text-center text-[11px] transition ${
+                      isSelected
+                        ? "bg-indigo-600 font-semibold text-white"
+                        : isToday
+                        ? "border border-indigo-500/40 font-semibold text-indigo-300 hover:bg-indigo-500/20"
+                        : "text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                    }`}
+                  >
+                    {day}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Today shortcut */}
+            <button
+              type="button"
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => {
+                onChange(today);
+                setOpen(false);
+                setView({ year: new Date().getFullYear(), month: new Date().getMonth() });
+              }}
+              className="mt-2 w-full rounded border border-zinc-700/60 py-1 text-[10px] text-zinc-500 transition hover:border-indigo-500/40 hover:text-indigo-300"
+            >
+              Today
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -869,7 +1028,10 @@ export default function DashboardPanel() {
                 checked={timeSensitive}
                 onChange={e => {
                   setTimeSensitive(e.target.checked);
-                  if (e.target.checked && !newTime) setNewTime("12:00");
+                  if (e.target.checked) {
+                    if (!newDate) setNewDate(localDateStr());
+                    if (!newTime) setNewTime("12:00");
+                  }
                   if (!e.target.checked) { setNewDate(""); setNewTime(""); }
                 }}
                 className="h-3.5 w-3.5 accent-indigo-500"
@@ -881,16 +1043,8 @@ export default function DashboardPanel() {
             {timeSensitive && (
               <div className="space-y-2 rounded border border-zinc-700/50 bg-zinc-800/40 p-2">
                 <div>
-                  <label className="mb-1 block text-[10px] text-zinc-500">
-                    Date{" "}
-                    <span className="text-zinc-600">(optional — auto today)</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={newDate}
-                    onChange={e => setNewDate(e.target.value)}
-                    className="w-full rounded border border-zinc-700 bg-zinc-800/80 px-2.5 py-1.5 text-xs text-zinc-200 focus:border-zinc-500 focus:outline-none"
-                  />
+                  <label className="mb-1 block text-[10px] text-zinc-500">Date</label>
+                  <CalendarPicker value={newDate} onChange={setNewDate} />
                 </div>
                 <div>
                   <label className="mb-1 block text-[10px] text-zinc-500">
