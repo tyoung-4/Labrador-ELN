@@ -1,6 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Editor from "@/components/Editor";
 import EntryList from "@/components/EntryList";
 import AppTopNav from "@/components/AppTopNav";
@@ -45,7 +45,8 @@ function normalizeTechniqueBucket(technique: string): (typeof TECHNIQUE_TABS)[nu
 }
 
 export default function ProtocolsPage() {
-  const router = useRouter();
+  const router       = useRouter();
+  const searchParams = useSearchParams();
 
   // ── User (synced with global AppTopNav selection) ──────────────────────────
   const [currentUser, setCurrentUser] = useState<CurrentUser>(FINN_USER);
@@ -115,6 +116,17 @@ export default function ProtocolsPage() {
   }, [authHeaders]);
 
   useEffect(() => { load(); }, [load]);
+
+  // ── Auto-open from todo link (?open=<entryId>) ─────────────────────────────
+  // When navigated here from a todo protocol badge, open that protocol's editor
+  // immediately, then clean the param from the URL so refresh doesn't re-open.
+  useEffect(() => {
+    const openId = searchParams.get("open");
+    if (!openId) return;
+    handleSelect(openId);
+    router.replace("/protocols", { scroll: false });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // ── Save ───────────────────────────────────────────────────────────────────
   async function handleSave(payload: Partial<Entry>) {

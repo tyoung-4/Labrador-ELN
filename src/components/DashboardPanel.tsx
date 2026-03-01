@@ -577,7 +577,7 @@ function ProtocolPicker({
                     <button
                       disabled={linked}
                       onClick={() => {
-                        onAdd({ type: "protocol", label: p.title, href: "/protocols" });
+                        onAdd({ type: "protocol", label: p.title, href: `/protocols?open=${p.id}` });
                         onClose();
                       }}
                       className={`min-w-0 flex-1 truncate text-left text-sm transition ${
@@ -747,6 +747,9 @@ function SortableItem({
 export default function DashboardPanel() {
   const [userId, setUserId]             = useState(ELN_USERS[0].id);
   const [items,  setItems]              = useState<TodoItem[]>([]);
+  // Prevents the save effect from wiping localStorage on the render immediately
+  // after a load (before setItems has flushed the loaded data into state).
+  const isLoadingRef = useRef(true);
   const [scheduleView, setScheduleView] = useState<ScheduleView>("daily");
 
   // Form state
@@ -777,8 +780,12 @@ export default function DashboardPanel() {
     return () => window.removeEventListener("storage", handleStorage);
   }, []);
 
-  // Persist todo list per user (migrate old items that lack timeSensitive)
+  // Persist todo list per user (migrate old items that lack timeSensitive).
+  // isLoadingRef is set true here so the save effect below skips its run on
+  // the same render cycle — preventing items=[] from overwriting stored data
+  // before the setItems call has had a chance to re-render with loaded data.
   useEffect(() => {
+    isLoadingRef.current = true;
     try {
       const raw = localStorage.getItem(`eln-todo-${userId}`);
       const parsed: TodoItem[] = raw ? JSON.parse(raw) : [];
@@ -789,6 +796,10 @@ export default function DashboardPanel() {
   }, [userId]);
 
   useEffect(() => {
+    if (isLoadingRef.current) {
+      isLoadingRef.current = false; // consumed — allow all future saves
+      return;
+    }
     localStorage.setItem(`eln-todo-${userId}`, JSON.stringify(items));
   }, [items, userId]);
 
@@ -883,7 +894,7 @@ export default function DashboardPanel() {
                 text: entry.title,
                 done: false,
                 timeSensitive: false,
-                links: [{ type: "protocol", label: entry.title, href: "/protocols" }],
+                links: [{ type: "protocol", label: entry.title, href: `/protocols?open=${entry.id}` }],
               },
               ...prev,
             ]);
