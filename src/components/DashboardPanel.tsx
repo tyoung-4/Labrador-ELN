@@ -226,11 +226,13 @@ function ProtocolPicker({
   protocols,
   selectedLinks,
   onAdd,
+  onQuickAdd,
   onClose,
 }: {
   protocols: ProtocolEntry[];
   selectedLinks: LinkRef[];
   onAdd: (link: LinkRef) => void;
+  onQuickAdd: (entry: ProtocolEntry) => void;
   onClose: () => void;
 }) {
   const [q, setQ] = useState("");
@@ -245,7 +247,14 @@ function ProtocolPicker({
     >
       <div className="w-full max-w-lg rounded-xl border border-zinc-700 bg-zinc-950 shadow-2xl">
         <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
-          <p className="text-sm font-semibold text-emerald-300">Link to Protocol</p>
+          <div>
+            <p className="text-sm font-semibold text-emerald-300">Protocols</p>
+            <p className="text-[10px] text-zinc-500">
+              Click a protocol to link it, or{" "}
+              <span className="text-emerald-500">＋ Add to list</span>{" "}
+              to create a to-do directly.
+            </p>
+          </div>
           <button onClick={onClose} className="text-sm text-zinc-500 hover:text-zinc-300">✕</button>
         </div>
         <div className="p-4">
@@ -261,26 +270,40 @@ function ProtocolPicker({
           ) : (
             <div className="max-h-64 overflow-y-auto space-y-0.5">
               {filtered.map(p => {
-                const added = selectedLinks.some(l => l.label === p.title);
+                const linked = selectedLinks.some(l => l.label === p.title);
                 return (
-                  <button
+                  <div
                     key={p.id}
-                    disabled={added}
-                    onClick={() => {
-                      onAdd({ type: "protocol", label: p.title, href: "/protocols" });
-                      onClose();
-                    }}
-                    className={`flex w-full items-center justify-between rounded px-3 py-2 text-left text-sm transition ${
-                      added
-                        ? "cursor-default text-zinc-600"
-                        : "text-zinc-200 hover:bg-emerald-500/10 hover:text-emerald-200"
-                    }`}
+                    className="group flex items-center gap-2 rounded px-3 py-2 hover:bg-zinc-800/60"
                   >
-                    <span className="truncate">{p.title}</span>
-                    {added && (
-                      <span className="ml-2 shrink-0 text-[10px] text-emerald-600">✓ Added</span>
-                    )}
-                  </button>
+                    {/* Protocol name — click to link */}
+                    <button
+                      disabled={linked}
+                      onClick={() => {
+                        onAdd({ type: "protocol", label: p.title, href: "/protocols" });
+                        onClose();
+                      }}
+                      className={`min-w-0 flex-1 truncate text-left text-sm transition ${
+                        linked
+                          ? "cursor-default text-zinc-600"
+                          : "text-zinc-200 hover:text-emerald-200"
+                      }`}
+                    >
+                      {p.title}
+                      {linked && (
+                        <span className="ml-2 text-[10px] text-emerald-600">✓ Linked</span>
+                      )}
+                    </button>
+
+                    {/* Quick-add to todo list */}
+                    <button
+                      onClick={() => { onQuickAdd(p); onClose(); }}
+                      title="Add as new to-do item"
+                      className="shrink-0 rounded border border-emerald-600/40 bg-emerald-600/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 opacity-0 transition hover:bg-emerald-600/20 group-hover:opacity-100"
+                    >
+                      ＋ Add to list
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -556,6 +579,18 @@ export default function DashboardPanel() {
           protocols={protocolEntries}
           selectedLinks={newLinks}
           onAdd={link => setNewLinks(s => [...s, link])}
+          onQuickAdd={entry => {
+            setItems(prev => [
+              {
+                id: crypto.randomUUID(),
+                text: entry.title,
+                done: false,
+                timeSensitive: false,
+                links: [{ type: "protocol", label: entry.title, href: "/protocols" }],
+              },
+              ...prev,
+            ]);
+          }}
           onClose={() => setShowProtoPicker(false)}
         />
       )}
