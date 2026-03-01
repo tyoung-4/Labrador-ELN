@@ -35,8 +35,9 @@ type TodoItem = {
   text: string;
   done: boolean;
   timeSensitive: boolean;
-  date?: string;  // "YYYY-MM-DD"
-  time?: string;  // "HH:MM"
+  date?: string;   // "YYYY-MM-DD"
+  time?: string;   // "HH:MM"
+  notes?: string;  // free-form notes, shown on hover/click
   links: LinkRef[];
 };
 
@@ -86,6 +87,11 @@ function formatTime12h(t: string): string {
   const h12  = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
   const ampm = h24 < 12 ? "AM" : "PM";
   return `${h12}:${min} ${ampm}`;
+}
+
+/** First N words of a string (for auto-titling from protocol names) */
+function firstFourWords(s: string): string {
+  return s.split(/\s+/).slice(0, 4).join(" ");
 }
 
 /** Short form for tight spaces: "7a", "1p" */
@@ -645,10 +651,12 @@ function SortableItem({
   onToggle: (id: string) => void;
   onRemove: (id: string) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id });
 
-  const today = localDateStr();
+  const today      = localDateStr();
+  const hasDetails = !!(item.date || item.links.length > 0 || item.notes);
 
   return (
     <div
@@ -684,47 +692,73 @@ function SortableItem({
         {item.done && "✓"}
       </button>
 
-      {/* Text + badges */}
-      <div className="min-w-0 flex-1">
-        <p
-          className={`text-sm leading-snug ${
-            item.done ? "text-zinc-600 line-through" : "text-zinc-100"
-          }`}
-        >
-          {item.text}
-        </p>
+      {/* Title + expandable details (hover or click to reveal) */}
+      <div
+        className="min-w-0 flex-1"
+        onClick={() => hasDetails && setExpanded(s => !s)}
+        style={{ cursor: hasDetails ? "pointer" : "default" }}
+      >
+        {/* Title row — always visible */}
+        <div className="flex items-baseline gap-1.5">
+          <p className={`text-sm leading-snug ${item.done ? "text-zinc-600 line-through" : "text-zinc-100"}`}>
+            {item.text}
+          </p>
+          {/* Subtle hint dot when details exist but panel is collapsed */}
+          {hasDetails && (
+            <span className={`shrink-0 text-[10px] text-zinc-700 transition-opacity ${
+              expanded ? "opacity-0" : "opacity-100 group-hover:opacity-0"
+            }`}>
+              ···
+            </span>
+          )}
+        </div>
 
-        {(item.date || item.links.length > 0) && (
-          <div className="mt-1.5 flex flex-wrap items-center gap-1">
-            {item.date && (
-              <span
-                className={`rounded border px-1.5 py-0.5 text-[10px] ${
-                  item.date === today
-                    ? "border-indigo-500/50 bg-indigo-500/10 text-indigo-300"
-                    : "border-zinc-600 bg-zinc-900 text-zinc-400"
-                }`}
-              >
-                📅 {formatDateBadge(item.date)}
-                {item.time ? ` · ${formatTime12h(item.time)}` : ""}
-              </span>
-            )}
-            {item.links.map((link, i) =>
-              link.href ? (
-                <a
-                  key={i}
-                  href={link.href}
-                  className={`rounded border px-1.5 py-0.5 text-[10px] transition hover:opacity-80 ${LINK_STYLE[link.type]}`}
-                >
-                  {link.label}
-                </a>
-              ) : (
+        {/* Details panel — hidden until hover or clicked open */}
+        {hasDetails && (
+          <div
+            className={`overflow-hidden transition-all duration-200 ease-in-out ${
+              expanded
+                ? "max-h-48"
+                : "max-h-0 group-hover:max-h-48"
+            }`}
+          >
+            <div className="pt-1.5 flex flex-wrap items-center gap-1">
+              {item.date && (
                 <span
-                  key={i}
-                  className={`rounded border px-1.5 py-0.5 text-[10px] ${LINK_STYLE[link.type]}`}
+                  className={`rounded border px-1.5 py-0.5 text-[10px] ${
+                    item.date === today
+                      ? "border-indigo-500/50 bg-indigo-500/10 text-indigo-300"
+                      : "border-zinc-600 bg-zinc-900 text-zinc-400"
+                  }`}
                 >
-                  {link.label}
+                  📅 {formatDateBadge(item.date)}
+                  {item.time ? ` · ${formatTime12h(item.time)}` : ""}
                 </span>
-              )
+              )}
+              {item.links.map((link, i) =>
+                link.href ? (
+                  <a
+                    key={i}
+                    href={link.href}
+                    onClick={e => e.stopPropagation()}
+                    className={`rounded border px-1.5 py-0.5 text-[10px] transition hover:opacity-80 ${LINK_STYLE[link.type]}`}
+                  >
+                    {link.label}
+                  </a>
+                ) : (
+                  <span
+                    key={i}
+                    className={`rounded border px-1.5 py-0.5 text-[10px] ${LINK_STYLE[link.type]}`}
+                  >
+                    {link.label}
+                  </span>
+                )
+              )}
+            </div>
+            {item.notes && (
+              <p className="pt-1 text-[10px] leading-relaxed text-zinc-500 italic">
+                {item.notes}
+              </p>
             )}
           </div>
         )}
@@ -754,6 +788,7 @@ export default function DashboardPanel() {
 
   // Form state
   const [newText,         setNewText]         = useState("");
+  const [newNotes,        setNewNotes]        = useState("");
   const [timeSensitive,   setTimeSensitive]   = useState(false);
   const [newDate,         setNewDate]         = useState("");
   const [newTime,         setNewTime]         = useState("");
@@ -861,11 +896,13 @@ export default function DashboardPanel() {
         timeSensitive,
         date: finalDate,
         time: finalTime,
+        notes: newNotes.trim() || undefined,
         links: newLinks,
       },
       ...prev,
     ]);
     setNewText("");
+    setNewNotes("");
     setTimeSensitive(false);
     setNewDate("");
     setNewTime("");
@@ -886,12 +923,18 @@ export default function DashboardPanel() {
         <ProtocolPicker
           protocols={protocolEntries}
           selectedLinks={newLinks}
-          onAdd={link => setNewLinks(s => [...s, link])}
+          onAdd={link => {
+            setNewLinks(s => [...s, link]);
+            // Auto-fill title with first 4 words of the protocol name if text is blank
+            if (!newText.trim() && link.type === "protocol") {
+              setNewText(firstFourWords(link.label));
+            }
+          }}
           onQuickAdd={entry => {
             setItems(prev => [
               {
                 id: crypto.randomUUID(),
-                text: entry.title,
+                text: firstFourWords(entry.title),
                 done: false,
                 timeSensitive: false,
                 links: [{ type: "protocol", label: entry.title, href: `/protocols?open=${entry.id}` }],
@@ -946,7 +989,7 @@ export default function DashboardPanel() {
           {/* ── Schedule panel ── */}
           <div
             className={`overflow-y-auto border-r border-zinc-800 p-3 ${
-              scheduleView === "weekly" ? "flex-[2]" : "w-52 shrink-0"
+              scheduleView === "weekly" ? "flex-[2]" : "flex-1"
             }`}
           >
             <p className="mb-2 text-[9px] font-semibold uppercase tracking-widest text-zinc-600">
@@ -1017,7 +1060,7 @@ export default function DashboardPanel() {
               Add to list
             </p>
 
-            {/* Task text */}
+            {/* Task title */}
             <textarea
               value={newText}
               onChange={e => setNewText(e.target.value)}
@@ -1028,6 +1071,15 @@ export default function DashboardPanel() {
                 }
               }}
               placeholder="What needs to be done?"
+              rows={2}
+              className="w-full resize-none rounded border border-zinc-700 bg-zinc-800/80 px-2.5 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
+            />
+
+            {/* Notes (optional — shown on hover/click in the list) */}
+            <textarea
+              value={newNotes}
+              onChange={e => setNewNotes(e.target.value)}
+              placeholder="Notes (optional)…"
               rows={2}
               className="w-full resize-none rounded border border-zinc-700 bg-zinc-800/80 px-2.5 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
             />
