@@ -5,11 +5,11 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const NAV_ITEMS = [
-  { href: "/",              label: "Home",          exact: true  },
-  { href: "/protocols",     label: "Protocols",     exact: false },
-  { href: "/inventory",     label: "Inventory",     exact: false },
-  { href: "/schedule",      label: "Schedule",      exact: false },
-  { href: "/knowledge-hub", label: "Knowledge Hub", exact: false },
+  { href: "/",              label: "Home",          exact: true,  activeClass: "bg-sky-500 text-white"     },
+  { href: "/protocols",     label: "Protocols",     exact: false, activeClass: "bg-emerald-600 text-white" },
+  { href: "/inventory",     label: "Inventory",     exact: false, activeClass: "bg-blue-600 text-white"    },
+  { href: "/schedule",      label: "Schedule",      exact: false, activeClass: "bg-purple-600 text-white"  },
+  { href: "/knowledge-hub", label: "Knowledge Hub", exact: false, activeClass: "bg-rose-700 text-white"    },
 ];
 
 export const ELN_USERS = [
@@ -59,7 +59,7 @@ export default function AppTopNav() {
             key={item.href}
             href={item.href}
             className={`rounded px-3 py-1.5 text-sm transition ${
-              active ? "bg-emerald-600 text-white" : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+              active ? item.activeClass : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
             }`}
           >
             {item.label}
