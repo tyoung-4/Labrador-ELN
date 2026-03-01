@@ -21,7 +21,9 @@ type Props = {
   mode?: "full" | "simple";
   externalAction?: {
     id: number;
-    type: "insert-section" | "insert-step" | "insert-sub-step" | "convert-to-step" | "add-step-case";
+    type: "insert-section" | "insert-step" | "insert-sub-step" | "convert-to-step" | "add-step-case"
+        | "open-entry-field" | "open-timer";
+    preset?: { entryType?: string };
   } | null;
 };
 
@@ -492,6 +494,27 @@ export default function RichTextEditor({ initialContent = "", onChange, editable
 
     if (externalAction.type === "add-step-case") {
       editor.chain().focus().insertContent("<p><strong>Step-case:</strong> If [condition], then [action].</p>").run();
+      return;
+    }
+
+    if (externalAction.type === "open-entry-field") {
+      const presetType = externalAction.preset?.entryType;
+      if (presetType) {
+        const option = ENTRY_TYPE_OPTIONS.find(o => o.label === presetType);
+        setEntryType(presetType);
+        setEntryUnit(option?.defaultUnit ?? "");
+      } else {
+        setEntryType(ENTRY_TYPE_OPTIONS[0].label);
+        setEntryUnit(ENTRY_TYPE_OPTIONS[0].defaultUnit);
+      }
+      setCustomLabel("");
+      setShowEntryFieldModal(true);
+      return;
+    }
+
+    if (externalAction.type === "open-timer") {
+      setShowTimerModal(true);
+      return;
     }
   }, [editor, externalAction]);
 

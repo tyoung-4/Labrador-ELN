@@ -13,7 +13,26 @@ type Props = {
   onCancel?: () => void;
   saving?: boolean;
   protocolShell?: boolean;
+  /** Controlled title for protocolShell mode — managed by the parent modal header */
+  titleValue?: string;
 };
+
+// Component items shown in the right-sidebar dropdown.
+// entryType maps to ENTRY_TYPE_OPTIONS labels in RichTextEditor;
+// "Timer" is a special sentinel that opens the timer modal instead.
+const COMPONENT_ITEMS = [
+  { label: "Amount",          entryType: "Mass"          },
+  { label: "Sample",          entryType: "Volume"        },
+  { label: "Concentration",   entryType: "Concentration" },
+  { label: "Temperature",     entryType: "Temperature"   },
+  { label: "Duration",        entryType: "Time"          },
+  { label: "Document",        entryType: "Undefined"     },
+  { label: "Equipment",       entryType: "Undefined"     },
+  { label: "Reagent",         entryType: "Volume"        },
+  { label: "Note",            entryType: "Undefined"     },
+  { label: "Expected Result", entryType: "Undefined"     },
+  { label: "Timer",           entryType: "Timer"         },
+] as const;
 
 type EditorTab = "steps" | "description" | "guidelines" | "references" | "materials";
 
@@ -229,6 +248,7 @@ export default function Editor({
   onCancel,
   saving = false,
   protocolShell = false,
+  titleValue,
 }: Props) {
   const [title, setTitle]       = useState(initial.title ?? "");
   const [description, setDescription] = useState(initial.description ?? "");
@@ -246,8 +266,12 @@ export default function Editor({
 
   const [externalAction, setExternalAction] = useState<{
     id: number;
-    type: "insert-section" | "insert-step" | "insert-sub-step" | "convert-to-step" | "add-step-case";
+    type: "insert-section" | "insert-step" | "insert-sub-step" | "convert-to-step" | "add-step-case"
+        | "open-entry-field" | "open-timer";
+    preset?: { entryType?: string };
   } | null>(null);
+
+  const [showComponentsMenu, setShowComponentsMenu] = useState(false);
 
   // Reset all when protocol changes
   useEffect(() => {
@@ -263,9 +287,13 @@ export default function Editor({
     setActiveTab("steps");
   }, [initial.id, initial.title, initial.description, initial.technique, initial.body]);
 
+  // In protocolShell mode the title is managed by the parent via titleValue;
+  // in non-shell mode we track our own internal `title` state.
+  const effectiveTitle = (protocolShell && titleValue !== undefined) ? titleValue : title;
+
   const isDirty = useMemo(() => {
     return (
-      title !== (initial.title ?? "") ||
+      effectiveTitle !== (initial.title ?? "") ||
       description !== (initial.description ?? "") ||
       technique !== (initial.technique ?? "General") ||
       steps !== initialBody.steps ||
@@ -275,7 +303,7 @@ export default function Editor({
       JSON.stringify(tabMaterials) !== JSON.stringify(initialBody.materials)
     );
   }, [
-    title, description, technique,
+    effectiveTitle, description, technique,
     steps, tabDescription, tabGuidelines, tabReferences, tabMaterials,
     initial.title, initial.description, initial.technique,
     initialBody,
@@ -288,7 +316,7 @@ export default function Editor({
   function handleSave() {
     onSave({
       id: initial.id,
-      title: title || initial.title || "",
+      title: effectiveTitle || initial.title || "",
       description: description.slice(0, 100),
       technique,
       body: serializeBody({ steps, description: tabDescription, guidelines: tabGuidelines, references: tabReferences, materials: tabMaterials }),
@@ -307,15 +335,9 @@ export default function Editor({
     <div className="w-full">
       {protocolShell ? (
         <>
-          {/* ── Metadata row ── */}
+          {/* ── Metadata row (title lives in the modal header — see protocols/page.tsx) ── */}
           <div className="mb-2 rounded border border-zinc-800 bg-zinc-900 p-2">
-            <div className="grid gap-2 lg:grid-cols-[2fr_2fr_1.2fr_1fr]">
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Entry name"
-                className="w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm font-semibold text-zinc-100 placeholder:text-zinc-500"
-              />
+            <div className="grid gap-2 lg:grid-cols-[3fr_1.2fr_1fr]">
               <input
                 value={description}
                 onChange={(e) => setDescription(e.target.value.slice(0, 100))}
@@ -450,20 +472,41 @@ export default function Editor({
               {activeTab !== "steps" && (
                 <p className="mb-2 text-[10px] text-zinc-600">Switch to Steps tab to insert components.</p>
               )}
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                {["Amount","Sample","Concentration","Temperature","Duration","Document","Equipment","Reagent","Note","Expected Result"].map((item) => (
-                  <button
-                    key={item}
-                    disabled={activeTab !== "steps"}
-                    className={`rounded border px-2 py-2 text-left transition ${
-                      activeTab === "steps"
-                        ? "border-zinc-700 bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
-                        : "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-700"
-                    }`}
-                  >
-                    {item}
-                  </button>
-                ))}
+              <div className="relative">
+                <button
+                  disabled={activeTab !== "steps"}
+                  onClick={() => setShowComponentsMenu(s => !s)}
+                  className={`w-full rounded border px-3 py-2 text-left text-sm transition ${
+                    activeTab !== "steps"
+                      ? "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-700"
+                      : "border-zinc-700 bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
+                  }`}
+                >
+                  ＋ Components ▾
+                </button>
+                {showComponentsMenu && activeTab === "steps" && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowComponentsMenu(false)} />
+                    <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded border border-zinc-700 bg-zinc-950 shadow-xl">
+                      {COMPONENT_ITEMS.map(item => (
+                        <button
+                          key={item.label}
+                          onClick={() => {
+                            if (item.entryType === "Timer") {
+                              setExternalAction({ id: Date.now(), type: "open-timer" });
+                            } else {
+                              setExternalAction({ id: Date.now(), type: "open-entry-field", preset: { entryType: item.entryType } });
+                            }
+                            setShowComponentsMenu(false);
+                          }}
+                          className="flex w-full items-center px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             </aside>
           </div>

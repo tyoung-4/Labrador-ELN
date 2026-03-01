@@ -101,15 +101,15 @@ function formatTimeShort(t: string): string {
   return `${h12}${h24 < 12 ? "a" : "p"}`;
 }
 
-function getWeekDates(): Date[] {
+function getWeekDates(weekOffset: number = 0): Date[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const dow = today.getDay(); // 0 = Sun
-  const monday = new Date(today);
-  monday.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+  const sunday = new Date(today);
+  sunday.setDate(today.getDate() - dow + weekOffset * 7);
   return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
+    const d = new Date(sunday);
+    d.setDate(sunday.getDate() + i);
     return d;
   });
 }
@@ -468,12 +468,25 @@ function DailySchedulePanel({ items }: { items: TodoItem[] }) {
 
 // ─── Weekly schedule ──────────────────────────────────────────────────────────
 
-function WeeklySchedulePanel({ items }: { items: TodoItem[] }) {
-  const weekDates = getWeekDates();
+function WeeklySchedulePanel({
+  items,
+  weekOffset,
+  showWeekends,
+}: {
+  items: TodoItem[];
+  weekOffset: number;
+  showWeekends: boolean;
+}) {
+  const allDates  = getWeekDates(weekOffset);
+  const weekDates = showWeekends ? allDates : allDates.filter(d => d.getDay() !== 0 && d.getDay() !== 6);
   const today     = localDateStr();
+  const cols      = weekDates.length;
 
   return (
-    <div className="grid grid-cols-7 gap-0.5">
+    <div
+      className="grid gap-0.5"
+      style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+    >
       {weekDates.map(date => {
         const ds       = localDateStr(date);
         const dayItems = items.filter(i => i.date === ds && !i.done);
@@ -785,6 +798,8 @@ export default function DashboardPanel() {
   // after a load (before setItems has flushed the loaded data into state).
   const isLoadingRef = useRef(true);
   const [scheduleView, setScheduleView] = useState<ScheduleView>("daily");
+  const [weekOffset,   setWeekOffset]   = useState(0);
+  const [showWeekends, setShowWeekends] = useState(true);
 
   // Form state
   const [newText,         setNewText]         = useState("");
@@ -977,6 +992,46 @@ export default function DashboardPanel() {
             </button>
           </div>
 
+          {/* Week navigation + weekends toggle (weekly mode only) */}
+          {scheduleView === "weekly" && (
+            <>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setWeekOffset(o => o - 1)}
+                  className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                  aria-label="Previous week"
+                >
+                  ‹
+                </button>
+                {weekOffset !== 0 && (
+                  <button
+                    onClick={() => setWeekOffset(0)}
+                    className="rounded px-1 py-0.5 text-[9px] text-zinc-600 hover:text-zinc-400"
+                  >
+                    Today
+                  </button>
+                )}
+                <button
+                  onClick={() => setWeekOffset(o => o + 1)}
+                  className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                  aria-label="Next week"
+                >
+                  ›
+                </button>
+              </div>
+              <button
+                onClick={() => setShowWeekends(v => !v)}
+                className={`rounded border px-2 py-0.5 text-[9px] font-semibold transition ${
+                  showWeekends
+                    ? "border-zinc-700 bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+                    : "border-zinc-700 bg-zinc-800 text-zinc-600 hover:text-zinc-400"
+                }`}
+              >
+                {showWeekends ? "Hide weekends" : "Show weekends"}
+              </button>
+            </>
+          )}
+
           <p className="ml-auto text-xs text-zinc-500">
             Tasks for{" "}
             <span className="font-semibold text-zinc-300">{currentUser.name}</span>
@@ -999,12 +1054,16 @@ export default function DashboardPanel() {
                     month:   "short",
                     day:     "numeric",
                   })
-                : "This Week"}
+                : (() => {
+                    const dates = getWeekDates(weekOffset);
+                    const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                    return `${fmt(dates[0])} – ${fmt(dates[6])}`;
+                  })()}
             </p>
             {scheduleView === "daily" ? (
               <DailySchedulePanel items={items} />
             ) : (
-              <WeeklySchedulePanel items={items} />
+              <WeeklySchedulePanel items={items} weekOffset={weekOffset} showWeekends={showWeekends} />
             )}
           </div>
 

@@ -72,6 +72,7 @@ export default function ProtocolsPage() {
   const [selected, setSelected]   = useState<Entry | null>(null);
   const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
   const [editorOpen, setEditorOpen] = useState(false);
+  const [editorTitle, setEditorTitle] = useState("");
   const [loading, setLoading]     = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isDirty, setIsDirty]     = useState(false);
@@ -189,6 +190,7 @@ export default function ProtocolsPage() {
     setIsDirty(false);
     setEditorOpen(false);
     setSaveError(null);
+    setEditorTitle("");
   }
 
   async function handleSelect(id: string) {
@@ -199,6 +201,7 @@ export default function ProtocolsPage() {
         const data = (await res.json()) as Entry;
         setEditorMode("edit");
         setSelected(data);
+        setEditorTitle(data.title || "");
         setIsDirty(false);
         setEditorOpen(true);
       }
@@ -222,6 +225,7 @@ export default function ProtocolsPage() {
       setEntries((s) => [cloned, ...s]);
       setSelected(cloned);
       setEditorMode("edit");
+      setEditorTitle(cloned.title || "");
       setIsDirty(false);
       setEditorOpen(true);
     } finally {
@@ -288,6 +292,7 @@ export default function ProtocolsPage() {
           onClick={() => {
             setEditorMode("create");
             setSelected(null);
+            setEditorTitle("");
             setIsDirty(false);
             setSaveError(null);
             setEditorOpen(true);
@@ -373,26 +378,29 @@ export default function ProtocolsPage() {
           <div className="w-full max-w-5xl rounded-xl border border-zinc-700 bg-zinc-950 shadow-2xl shadow-black/80">
             {/* Modal header */}
             <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-3">
-              <div className="flex items-center gap-3">
-                <h2 className="text-sm font-semibold text-zinc-100">
-                  {editorMode === "edit" ? (selected?.title || "Edit Protocol") : "New Protocol"}
-                </h2>
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <input
+                  value={editorTitle}
+                  onChange={e => setEditorTitle(e.target.value)}
+                  placeholder={editorMode === "create" ? "New Protocol" : "Protocol name"}
+                  className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-zinc-100 outline-none placeholder:text-zinc-500 border-b border-transparent focus:border-zinc-600 transition"
+                />
                 {canRunProtocol && (
                   <button
                     onClick={handleRunProtocol}
                     disabled={loading}
-                    className="rounded bg-indigo-600 px-3 py-1 text-xs text-white hover:bg-indigo-500 disabled:opacity-50"
+                    className="shrink-0 rounded bg-indigo-600 px-3 py-1 text-xs text-white hover:bg-indigo-500 disabled:opacity-50"
                   >
                     ▶ Run Protocol
                   </button>
                 )}
                 {isDirty && (
-                  <span className="text-[10px] text-zinc-500">(unsaved — save before running)</span>
+                  <span className="shrink-0 text-[10px] text-zinc-500">(unsaved — save before running)</span>
                 )}
               </div>
               <button
                 onClick={closeEditor}
-                className="rounded px-2 py-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+                className="ml-3 shrink-0 rounded px-2 py-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
                 aria-label="Close editor"
               >
                 ✕
@@ -416,6 +424,7 @@ export default function ProtocolsPage() {
                 onDirtyChange={setIsDirty}
                 saving={loading}
                 protocolShell={true}
+                titleValue={editorTitle}
               />
             </div>
           </div>
