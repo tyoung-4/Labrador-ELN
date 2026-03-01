@@ -18,6 +18,7 @@ type Props = {
   initialContent?: string;
   onChange?: (content: string) => void;
   editable?: boolean;
+  mode?: "full" | "simple";
   externalAction?: {
     id: number;
     type: "insert-section" | "insert-step" | "insert-sub-step" | "convert-to-step" | "add-step-case";
@@ -321,7 +322,7 @@ const ComponentFieldNode = Node.create({
   },
 });
 
-export default function RichTextEditor({ initialContent = "", onChange, editable = true, externalAction = null }: Props) {
+export default function RichTextEditor({ initialContent = "", onChange, editable = true, mode = "full", externalAction = null }: Props) {
   const [tableRows, setTableRows] = useState(3);
   const [tableCols, setTableCols] = useState(3);
   const [showTableModal, setShowTableModal] = useState(false);
@@ -347,66 +348,83 @@ export default function RichTextEditor({ initialContent = "", onChange, editable
   );
 
   const extensions = useMemo(
-    () => [
-      StarterKit.configure({
-        heading: { levels: [1, 2, 3, 4, 5, 6] },
-        codeBlock: { languageClassPrefix: "language-" },
-        bulletList: {
-          HTMLAttributes: {
-            class: "list-disc pl-6 space-y-1",
+    () => {
+      if (mode === "simple") {
+        return [
+          StarterKit.configure({
+            heading: false,
+            codeBlock: false,
+            code: false,
+            horizontalRule: false,
+            blockquote: false,
+            bulletList: { HTMLAttributes: { class: "list-disc pl-6 space-y-1" } },
+            orderedList: { HTMLAttributes: { class: "list-decimal pl-6 space-y-1" } },
+            listItem: { HTMLAttributes: { class: "leading-relaxed" } },
+          }),
+          Underline,
+        ];
+      }
+      return [
+        StarterKit.configure({
+          heading: { levels: [1, 2, 3, 4, 5, 6] },
+          codeBlock: { languageClassPrefix: "language-" },
+          bulletList: {
+            HTMLAttributes: {
+              class: "list-disc pl-6 space-y-1",
+            },
           },
-        },
-        orderedList: {
-          HTMLAttributes: {
-            class: "list-decimal pl-6 space-y-1",
+          orderedList: {
+            HTMLAttributes: {
+              class: "list-decimal pl-6 space-y-1",
+            },
           },
-        },
-        listItem: {
-          HTMLAttributes: {
-            class: "leading-relaxed",
+          listItem: {
+            HTMLAttributes: {
+              class: "leading-relaxed",
+            },
           },
-        },
-      }),
-      Image.configure({ allowBase64: true }),
-      Table.configure({
-        resizable: false,
-        HTMLAttributes: {
-          class: "border-collapse border border-blue-900 w-full table-fixed",
-        },
-      }),
-      TableRow.extend({
-        renderHTML() {
-          return ["tr", { class: "border border-blue-900" }, 0];
-        },
-      }),
-      TableCell.extend({
-        renderHTML() {
-          return ["td", { class: "border border-blue-900 p-2" }, 0];
-        },
-      }),
-      TableHeader.extend({
-        renderHTML() {
-          return ["th", { class: "border border-blue-900 p-2 bg-blue-50" }, 0];
-        },
-      }),
-      TaskList.configure({
-        HTMLAttributes: {
-          class: "step-list",
-        },
-      }),
-      TaskItem.configure({
-        nested: true,
-        HTMLAttributes: {
-          class: "step-item",
-        },
-      }),
-      Underline,
-      Link.configure({ openOnClick: false }),
-      MeasurementFieldNode,
-      TimerFieldNode,
-      ComponentFieldNode,
-    ],
-    []
+        }),
+        Image.configure({ allowBase64: true }),
+        Table.configure({
+          resizable: false,
+          HTMLAttributes: {
+            class: "border-collapse border border-blue-900 w-full table-fixed",
+          },
+        }),
+        TableRow.extend({
+          renderHTML() {
+            return ["tr", { class: "border border-blue-900" }, 0];
+          },
+        }),
+        TableCell.extend({
+          renderHTML() {
+            return ["td", { class: "border border-blue-900 p-2" }, 0];
+          },
+        }),
+        TableHeader.extend({
+          renderHTML() {
+            return ["th", { class: "border border-blue-900 p-2 bg-blue-50" }, 0];
+          },
+        }),
+        TaskList.configure({
+          HTMLAttributes: {
+            class: "step-list",
+          },
+        }),
+        TaskItem.configure({
+          nested: true,
+          HTMLAttributes: {
+            class: "step-item",
+          },
+        }),
+        Underline,
+        Link.configure({ openOnClick: false }),
+        MeasurementFieldNode,
+        TimerFieldNode,
+        ComponentFieldNode,
+      ];
+    },
+    [mode]
   );
 
   const editor = useEditor({
@@ -570,7 +588,66 @@ export default function RichTextEditor({ initialContent = "", onChange, editable
 
   return (
     <div className="w-full overflow-hidden rounded border border-gray-300">
-      {editable && (
+      {editable && mode === "simple" && (
+        <div className="border-b border-gray-200 bg-gray-50 p-3">
+          <div className="flex flex-wrap gap-1">
+            <button
+              onClick={() => editor.chain().focus().toggleBold().run()}
+              disabled={!editor.can().chain().focus().toggleBold().run()}
+              className={`rounded px-2 py-1 text-sm transition ${
+                editor.isActive("bold")
+                  ? "bg-blue-600 text-white"
+                  : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+              }`}
+              title="Bold (Ctrl+B)"
+            >
+              <strong>B</strong>
+            </button>
+            <button
+              onClick={() => editor.chain().focus().toggleItalic().run()}
+              disabled={!editor.can().chain().focus().toggleItalic().run()}
+              className={`rounded px-2 py-1 text-sm transition ${
+                editor.isActive("italic")
+                  ? "bg-blue-600 text-white"
+                  : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+              }`}
+              title="Italic (Ctrl+I)"
+            >
+              <em>I</em>
+            </button>
+            <button
+              onClick={() => editor.chain().focus().toggleUnderline().run()}
+              className={`rounded px-2 py-1 text-sm transition ${
+                editor.isActive("underline")
+                  ? "bg-blue-600 text-white"
+                  : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+              }`}
+              title="Underline (Ctrl+U)"
+            >
+              <u>U</u>
+            </button>
+            <div className="w-px bg-gray-300" />
+            <button
+              onClick={() => editor.chain().focus().undo().run()}
+              disabled={!editor.can().chain().focus().undo().run()}
+              className="rounded border border-gray-300 bg-white px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              title="Undo"
+            >
+              Undo
+            </button>
+            <button
+              onClick={() => editor.chain().focus().redo().run()}
+              disabled={!editor.can().chain().focus().redo().run()}
+              className="rounded border border-gray-300 bg-white px-2 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              title="Redo"
+            >
+              Redo
+            </button>
+          </div>
+        </div>
+      )}
+
+      {editable && mode === "full" && (
         <div className="space-y-2 border-b border-gray-200 bg-gray-50 p-3">
           <div className="flex flex-wrap gap-1">
             <select

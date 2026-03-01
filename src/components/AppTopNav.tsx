@@ -4,9 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const items = [
-  { href: "/", label: "Home" },
-  { href: "/entries", label: "Protocols" },
-  { href: "/runs", label: "Runs" },
+  { href: "/", label: "Home", exact: true },
+  { href: "/protocols", label: "Protocols", exact: false },
+  { href: "/inventory", label: "Inventory", exact: false },
+  { href: "/schedule", label: "Schedule", exact: false },
+  { href: "/knowledge-hub", label: "Knowledge Hub", exact: false },
 ];
 
 export default function AppTopNav() {
@@ -15,7 +17,9 @@ export default function AppTopNav() {
   return (
     <nav className="mb-5 flex items-center gap-2 rounded border border-zinc-800 bg-zinc-900 p-2">
       {items.map((item) => {
-        const active = pathname === item.href;
+        const active = item.exact
+          ? pathname === item.href
+          : pathname === item.href || pathname.startsWith(item.href + "/");
         return (
           <Link
             key={item.href}
@@ -26,7 +30,6 @@ export default function AppTopNav() {
           </Link>
         );
       })}
-      <span className="ml-auto text-xs text-zinc-500">Inventory, Schedule, Knowledge Hub: planned</span>
     </nav>
   );
 }

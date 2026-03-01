@@ -85,6 +85,17 @@ export async function POST(request: Request) {
     const source = await prisma.entry.findUnique({ where: { id: sourceEntryId } });
     if (!source) return new NextResponse(null, { status: 404 });
 
+    // Extract just the "steps" HTML from body if stored as JSON-encoded protocol body
+    let runBodyContent = source.body;
+    try {
+      const parsed = JSON.parse(source.body) as Record<string, unknown>;
+      if (parsed && typeof parsed === "object" && "steps" in parsed && typeof parsed.steps === "string") {
+        runBodyContent = parsed.steps;
+      }
+    } catch {
+      // Legacy plain HTML body — use as-is
+    }
+
     const runCount = await prisma.protocolRun.count({ where: { sourceEntryId } });
     const created = await prisma.protocolRun.create({
       data: {
@@ -92,7 +103,7 @@ export async function POST(request: Request) {
         title: `${source.title} - Run ${runCount + 1}`,
         status: "IN_PROGRESS",
         locked: true,
-        runBody: source.body,
+        runBody: runBodyContent,
         notes: "",
         interactionState: JSON.stringify({
           stepCompletion: {},
