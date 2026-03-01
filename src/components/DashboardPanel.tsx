@@ -18,6 +18,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { USER_STORAGE_KEY, ELN_USERS } from "@/components/AppTopNav";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,12 +39,6 @@ type TodoItem = {
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const USERS = [
-  { id: "finn-user",  name: "Finn"  },
-  { id: "jake-user",  name: "Jake"  },
-  { id: "admin-user", name: "Admin" },
-];
 
 const LINK_STYLE: Record<LinkCategory, string> = {
   protocol: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
@@ -129,8 +124,11 @@ function SortableItem({
             )}
             {item.links.map((link, i) =>
               link.href ? (
-                <a key={i} href={link.href}
-                  className={`rounded border px-1.5 py-0.5 text-[10px] transition hover:opacity-80 ${LINK_STYLE[link.type]}`}>
+                <a
+                  key={i}
+                  href={link.href}
+                  className={`rounded border px-1.5 py-0.5 text-[10px] transition hover:opacity-80 ${LINK_STYLE[link.type]}`}
+                >
                   {link.label}
                 </a>
               ) : (
@@ -158,20 +156,35 @@ function SortableItem({
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export default function DashboardPanel() {
-  const [userId, setUserId] = useState(USERS[0].id);
+  // Sync with global user from AppTopNav (localStorage)
+  const [userId, setUserId] = useState(ELN_USERS[0].id);
   const [items, setItems]   = useState<TodoItem[]>([]);
 
-  // Sidebar form
-  const [newText,    setNewText]    = useState("");
-  const [newTime,    setNewTime]    = useState("");
-  const [newLinks,   setNewLinks]   = useState<LinkRef[]>([]);
-  const [linkSearch, setLinkSearch] = useState("");
-  const [linkResults,setLinkResults]= useState<LinkRef[]>([]);
-  const [showDrop,   setShowDrop]   = useState(false);
-  const [protocols,  setProtocols]  = useState<LinkRef[]>([]);
+  // Form state
+  const [newText,     setNewText]     = useState("");
+  const [newTime,     setNewTime]     = useState("");
+  const [newLinks,    setNewLinks]    = useState<LinkRef[]>([]);
+  const [linkSearch,  setLinkSearch]  = useState("");
+  const [linkResults, setLinkResults] = useState<LinkRef[]>([]);
+  const [showDrop,    setShowDrop]    = useState(false);
+  const [protocols,   setProtocols]   = useState<LinkRef[]>([]);
   const linkRef = useRef<HTMLInputElement>(null);
 
-  // Persist per user in localStorage
+  // Stay in sync with AppTopNav user selection
+  useEffect(() => {
+    const stored = localStorage.getItem(USER_STORAGE_KEY);
+    if (stored && ELN_USERS.find((u) => u.id === stored)) setUserId(stored);
+
+    function handleStorage(e: StorageEvent) {
+      if (e.key === USER_STORAGE_KEY && e.newValue && ELN_USERS.find((u) => u.id === e.newValue)) {
+        setUserId(e.newValue!);
+      }
+    }
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+
+  // Persist todo list per user
   useEffect(() => {
     try {
       const raw = localStorage.getItem(`eln-todo-${userId}`);
@@ -183,7 +196,7 @@ export default function DashboardPanel() {
     localStorage.setItem(`eln-todo-${userId}`, JSON.stringify(items));
   }, [items, userId]);
 
-  // Fetch protocols once for link suggestions
+  // Fetch protocols for link suggestions
   useEffect(() => {
     fetch("/api/entries")
       .then((r) => r.json())
@@ -238,23 +251,52 @@ export default function DashboardPanel() {
   const incomplete = items.filter((x) => !x.done);
   const done       = items.filter((x) =>  x.done);
 
+  const currentUser = ELN_USERS.find((u) => u.id === userId) ?? ELN_USERS[0];
+
   return (
     <section className="overflow-hidden rounded-xl border border-indigo-500/30 bg-zinc-900">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-3">
         <p className="text-sm font-semibold text-indigo-300">Dashboard</p>
-        <select
-          value={userId}
-          onChange={(e) => setUserId(e.target.value)}
-          className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:outline-none"
-        >
-          {USERS.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-        </select>
+        <p className="text-xs text-zinc-500">
+          Tasks for <span className="font-semibold text-zinc-300">{currentUser.name}</span>
+        </p>
       </div>
 
-      <div className="flex">
-        {/* ── Sidebar ── */}
-        <aside className="flex w-56 shrink-0 flex-col gap-3 border-r border-zinc-800 p-4">
+      {/* Body: [todo list LEFT] | [Add to List form RIGHT] */}
+      <div className="flex min-h-[14rem]">
+
+        {/* ── Todo list — LEFT ── */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {items.length === 0 ? (
+            <div className="flex h-full min-h-[12rem] items-center justify-center">
+              <p className="text-sm text-zinc-700">No items — add one on the right.</p>
+            </div>
+          ) : (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-2">
+                  {incomplete.map((item) => (
+                    <SortableItem key={item.id} item={item} onToggle={toggle} onRemove={remove} />
+                  ))}
+                </div>
+                {done.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-700">
+                      Completed ({done.length})
+                    </p>
+                    {done.map((item) => (
+                      <SortableItem key={item.id} item={item} onToggle={toggle} onRemove={remove} />
+                    ))}
+                  </div>
+                )}
+              </SortableContext>
+            </DndContext>
+          )}
+        </div>
+
+        {/* ── Add to List form — RIGHT ── */}
+        <aside className="flex w-56 shrink-0 flex-col gap-3 border-l border-zinc-800 p-4">
           <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Add to list</p>
 
           {/* Task text */}
@@ -298,7 +340,7 @@ export default function DashboardPanel() {
                     onMouseDown={() => addLink(r)}
                     className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs hover:bg-zinc-800"
                   >
-                    <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-medium border ${LINK_STYLE[r.type]}`}>
+                    <span className={`shrink-0 rounded border px-1 py-0.5 text-[9px] font-medium ${LINK_STYLE[r.type]}`}>
                       {r.type}
                     </span>
                     <span className="truncate text-zinc-300">{r.label}</span>
@@ -328,35 +370,6 @@ export default function DashboardPanel() {
             + Add
           </button>
         </aside>
-
-        {/* ── Todo list ── */}
-        <div className="min-h-[14rem] flex-1 overflow-y-auto p-4">
-          {items.length === 0 ? (
-            <div className="flex h-full min-h-[12rem] items-center justify-center">
-              <p className="text-sm text-zinc-700">No items — add one on the left.</p>
-            </div>
-          ) : (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
-                <div className="space-y-2">
-                  {incomplete.map((item) => (
-                    <SortableItem key={item.id} item={item} onToggle={toggle} onRemove={remove} />
-                  ))}
-                </div>
-                {done.length > 0 && (
-                  <div className="mt-4 space-y-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-700">
-                      Completed ({done.length})
-                    </p>
-                    {done.map((item) => (
-                      <SortableItem key={item.id} item={item} onToggle={toggle} onRemove={remove} />
-                    ))}
-                  </div>
-                )}
-              </SortableContext>
-            </DndContext>
-          )}
-        </div>
       </div>
     </section>
   );
