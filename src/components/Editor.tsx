@@ -1,7 +1,15 @@
 "use client";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import RichTextEditor from "./RichTextEditor";
-import { TECHNIQUE_OPTIONS, type Entry } from "@/models/entry";
+import { TECHNIQUE_OPTIONS, type Entry, type AttachmentRecord } from "@/models/entry";
+import {
+  ENTRY_TYPE_CONFIGS,
+  ENTRY_TYPE_KEYS,
+  parseTypedData,
+  emptyTypedData,
+  type CustomField,
+  type TypedData,
+} from "@/lib/entryTypes";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,8 +26,6 @@ type Props = {
 };
 
 // Component items shown in the right-sidebar dropdown.
-// entryType maps to ENTRY_TYPE_OPTIONS labels in RichTextEditor;
-// "Timer" is a special sentinel that opens the timer modal instead.
 const COMPONENT_ITEMS = [
   { label: "Amount",          entryType: "Mass"          },
   { label: "Sample",          entryType: "Volume"        },
@@ -76,7 +82,6 @@ function parseBody(raw: string | undefined): ProtocolBodyJSON {
       };
     }
   } catch {}
-  // Legacy: raw HTML → treat as Steps content
   return { ...EMPTY_BODY, steps: raw };
 }
 
@@ -101,7 +106,7 @@ const INVENTORY_SUGGESTIONS = [
   { linkLabel: "Cell Lines", linkHref: "/inventory/cell-lines", linkType: "stock"   },
 ];
 
-// ─── Linked Items Panel (for References & Materials tabs) ─────────────────────
+// ─── Linked Items Panel (References & Materials tabs) ─────────────────────────
 
 function LinkedItemsPanel({
   items,
@@ -142,7 +147,6 @@ function LinkedItemsPanel({
 
   return (
     <div className="space-y-3 p-4">
-      {/* Add row */}
       <div className="flex flex-wrap gap-2">
         <input
           value={text}
@@ -152,7 +156,6 @@ function LinkedItemsPanel({
           className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
         />
 
-        {/* Inventory link picker */}
         <div className="relative">
           {selectedLink ? (
             <span className={`inline-flex items-center gap-1 rounded border px-2 py-1.5 text-xs ${LINK_STYLE[selectedLink.linkType]}`}>
@@ -204,7 +207,6 @@ function LinkedItemsPanel({
         </button>
       </div>
 
-      {/* Items list */}
       {items.length > 0 ? (
         <div className="space-y-1.5">
           {items.map((item) => (
@@ -238,6 +240,318 @@ function LinkedItemsPanel({
   );
 }
 
+// ─── Typed Fields Panel ───────────────────────────────────────────────────────
+
+function TypedFieldsPanel({
+  entryType,
+  typedFields,
+  onChange,
+}: {
+  entryType: string;
+  typedFields: Record<string, string>;
+  onChange: (fields: Record<string, string>) => void;
+}) {
+  const config = ENTRY_TYPE_CONFIGS[entryType];
+  if (!config || config.fields.length === 0) return null;
+
+  return (
+    <div className="rounded border border-zinc-700/50 bg-zinc-800/30 p-3">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+        {config.icon} {config.label} Fields
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {config.fields.map((field) => {
+          const value = typedFields[field.key] ?? "";
+          const shared = "w-full rounded border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none";
+          if (field.type === "select" && field.options) {
+            return (
+              <div key={field.key} className={field.type === "select" ? "" : ""}>
+                <label className="mb-0.5 block text-xs text-zinc-400">{field.label}</label>
+                <select
+                  value={value}
+                  onChange={(e) => onChange({ ...typedFields, [field.key]: e.target.value })}
+                  className={shared}
+                >
+                  <option value="">— select —</option>
+                  {field.options.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+            );
+          }
+          if (field.type === "textarea") {
+            return (
+              <div key={field.key} className="sm:col-span-2">
+                <label className="mb-0.5 block text-xs text-zinc-400">{field.label}</label>
+                <textarea
+                  value={value}
+                  onChange={(e) => onChange({ ...typedFields, [field.key]: e.target.value })}
+                  placeholder={field.placeholder}
+                  rows={3}
+                  className={`${shared} resize-none`}
+                />
+              </div>
+            );
+          }
+          return (
+            <div key={field.key}>
+              <label className="mb-0.5 block text-xs text-zinc-400">{field.label}</label>
+              <input
+                value={value}
+                onChange={(e) => onChange({ ...typedFields, [field.key]: e.target.value })}
+                placeholder={field.placeholder}
+                className={shared}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Custom Fields Panel ──────────────────────────────────────────────────────
+
+function CustomFieldsPanel({
+  fields,
+  onChange,
+}: {
+  fields: CustomField[];
+  onChange: (fields: CustomField[]) => void;
+}) {
+  const [newKey, setNewKey] = useState("");
+  const [newVal, setNewVal] = useState("");
+
+  function addField() {
+    if (!newKey.trim()) return;
+    onChange([...fields, { id: crypto.randomUUID(), key: newKey.trim(), value: newVal.trim() }]);
+    setNewKey("");
+    setNewVal("");
+  }
+
+  function updateField(id: string, key: string, value: string) {
+    onChange(fields.map((f) => (f.id === id ? { ...f, key, value } : f)));
+  }
+
+  function removeField(id: string) {
+    onChange(fields.filter((f) => f.id !== id));
+  }
+
+  return (
+    <div className="rounded border border-zinc-700/50 bg-zinc-800/30 p-3">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+        Custom Fields
+      </p>
+
+      {fields.length > 0 && (
+        <div className="mb-2 space-y-1.5">
+          {fields.map((f) => (
+            <div key={f.id} className="group flex items-center gap-2">
+              <input
+                value={f.key}
+                onChange={(e) => updateField(f.id, e.target.value, f.value)}
+                placeholder="Key"
+                className="w-32 shrink-0 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
+              />
+              <span className="text-xs text-zinc-600">:</span>
+              <input
+                value={f.value}
+                onChange={(e) => updateField(f.id, f.key, e.target.value)}
+                placeholder="Value"
+                className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
+              />
+              <button
+                onClick={() => removeField(f.id)}
+                className="shrink-0 text-xs text-zinc-700 opacity-0 transition hover:text-red-400 group-hover:opacity-100"
+                aria-label="Remove"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <input
+          value={newKey}
+          onChange={(e) => setNewKey(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addField(); } }}
+          placeholder="Key"
+          className="w-32 shrink-0 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
+        />
+        <span className="text-xs text-zinc-600">:</span>
+        <input
+          value={newVal}
+          onChange={(e) => setNewVal(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addField(); } }}
+          placeholder="Value"
+          className="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
+        />
+        <button
+          onClick={addField}
+          disabled={!newKey.trim()}
+          className="shrink-0 rounded bg-zinc-700 px-2.5 py-1 text-xs text-zinc-200 transition hover:bg-zinc-600 disabled:opacity-30"
+        >
+          + Add
+        </button>
+      </div>
+      {fields.length === 0 && (
+        <p className="mt-2 text-[11px] text-zinc-600">
+          Add your own key-value pairs — extra metadata that doesn&apos;t fit the standard fields above.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Attachments Panel ────────────────────────────────────────────────────────
+
+function AttachmentsPanel({
+  entryId,
+  initialAttachments,
+}: {
+  entryId: string;
+  initialAttachments: AttachmentRecord[];
+}) {
+  const [attachments, setAttachments] = useState<AttachmentRecord[]>(initialAttachments);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/entries/${entryId}/attachments`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error ?? `Upload failed (${res.status})`);
+      }
+      const created = (await res.json()) as AttachmentRecord;
+      setAttachments((prev) => [...prev, created]);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleDelete(id: string) {
+    const ok = window.confirm("Remove this attachment?");
+    if (!ok) return;
+    try {
+      const res = await fetch(`/api/entries/${entryId}/attachments/${id}`, { method: "DELETE" });
+      if (res.ok || res.status === 404) {
+        setAttachments((prev) => prev.filter((a) => a.id !== id));
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  function formatBytes(n: number): string {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  return (
+    <div className="rounded border border-zinc-700/50 bg-zinc-800/30 p-3">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+        Attachments
+      </p>
+
+      {attachments.length > 0 && (
+        <div className="mb-2 space-y-1.5">
+          {attachments.map((att) => (
+            <div key={att.id} className="group flex items-center gap-2 rounded border border-zinc-700/60 bg-zinc-800/40 px-3 py-1.5">
+              <a
+                href={att.path}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="min-w-0 flex-1 truncate text-sm text-indigo-300 hover:text-indigo-200"
+              >
+                {att.filename}
+              </a>
+              <span className="shrink-0 text-[10px] text-zinc-500">{formatBytes(att.size)}</span>
+              <button
+                onClick={() => handleDelete(att.id)}
+                className="shrink-0 text-xs text-zinc-700 opacity-0 transition hover:text-red-400 group-hover:opacity-100"
+                aria-label="Remove attachment"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {uploadError && (
+        <p className="mb-2 text-xs text-red-400">{uploadError}</p>
+      )}
+
+      <div className="flex items-center gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          onChange={handleFileChange}
+          disabled={uploading}
+          className="hidden"
+          id={`attach-${entryId}`}
+        />
+        <label
+          htmlFor={`attach-${entryId}`}
+          className={`cursor-pointer rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-200 transition hover:bg-zinc-700 ${uploading ? "cursor-not-allowed opacity-50" : ""}`}
+        >
+          {uploading ? "Uploading…" : "📎 Attach file"}
+        </label>
+        {attachments.length === 0 && !uploading && (
+          <span className="text-[11px] text-zinc-600">No attachments yet.</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Entry Type Select ────────────────────────────────────────────────────────
+
+function EntryTypeSelect({
+  value,
+  onChange,
+  className = "",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  className?: string;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={`rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-zinc-100 ${className}`}
+    >
+      {ENTRY_TYPE_KEYS.map((key) => {
+        const cfg = ENTRY_TYPE_CONFIGS[key];
+        return (
+          <option key={key} value={key}>
+            {cfg.icon} {cfg.label}
+          </option>
+        );
+      })}
+    </select>
+  );
+}
+
 // ─── Editor ───────────────────────────────────────────────────────────────────
 
 export default function Editor({
@@ -250,9 +564,15 @@ export default function Editor({
   protocolShell = false,
   titleValue,
 }: Props) {
-  const [title, setTitle]       = useState(initial.title ?? "");
+  const [title, setTitle]           = useState(initial.title ?? "");
   const [description, setDescription] = useState(initial.description ?? "");
-  const [technique, setTechnique] = useState(initial.technique ?? "General");
+  const [technique, setTechnique]   = useState(initial.technique ?? "General");
+
+  // Entry type + typed data
+  const [entryType, setEntryType]   = useState(initial.entryType ?? "GENERAL");
+  const initialTypedData            = useMemo(() => parseTypedData(initial.typedData ?? {}), [initial.typedData]);
+  const [typedFields, setTypedFields] = useState<Record<string, string>>(initialTypedData.typed);
+  const [customFields, setCustomFields] = useState<CustomField[]>(initialTypedData.custom);
 
   // Per-tab content
   const initialBody = useMemo(() => parseBody(initial.body), [initial.body]);
@@ -273,11 +593,15 @@ export default function Editor({
 
   const [showComponentsMenu, setShowComponentsMenu] = useState(false);
 
-  // Reset all when protocol changes
+  // Reset all when entry changes
   useEffect(() => {
     setTitle(initial.title ?? "");
     setDescription(initial.description ?? "");
     setTechnique(initial.technique ?? "General");
+    setEntryType(initial.entryType ?? "GENERAL");
+    const td = parseTypedData(initial.typedData ?? {});
+    setTypedFields(td.typed);
+    setCustomFields(td.custom);
     const parsed = parseBody(initial.body);
     setSteps(parsed.steps);
     setTabDescription(parsed.description);
@@ -285,17 +609,21 @@ export default function Editor({
     setTabReferences(parsed.references);
     setTabMaterials(parsed.materials);
     setActiveTab("steps");
-  }, [initial.id, initial.title, initial.description, initial.technique, initial.body]);
+  }, [initial.id, initial.title, initial.description, initial.technique, initial.body, initial.entryType, initial.typedData]);
 
   // In protocolShell mode the title is managed by the parent via titleValue;
-  // in non-shell mode we track our own internal `title` state.
   const effectiveTitle = (protocolShell && titleValue !== undefined) ? titleValue : title;
 
   const isDirty = useMemo(() => {
+    const typedDataChanged =
+      JSON.stringify(typedFields) !== JSON.stringify(initialTypedData.typed) ||
+      JSON.stringify(customFields) !== JSON.stringify(initialTypedData.custom);
     return (
       effectiveTitle !== (initial.title ?? "") ||
       description !== (initial.description ?? "") ||
       technique !== (initial.technique ?? "General") ||
+      entryType !== (initial.entryType ?? "GENERAL") ||
+      typedDataChanged ||
       steps !== initialBody.steps ||
       tabDescription !== initialBody.description ||
       tabGuidelines !== initialBody.guidelines ||
@@ -303,15 +631,19 @@ export default function Editor({
       JSON.stringify(tabMaterials) !== JSON.stringify(initialBody.materials)
     );
   }, [
-    effectiveTitle, description, technique,
+    effectiveTitle, description, technique, entryType, typedFields, customFields,
     steps, tabDescription, tabGuidelines, tabReferences, tabMaterials,
-    initial.title, initial.description, initial.technique,
-    initialBody,
+    initial.title, initial.description, initial.technique, initial.entryType,
+    initialTypedData, initialBody,
   ]);
 
   useEffect(() => {
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
+
+  function buildTypedData(): TypedData {
+    return { typed: typedFields, custom: customFields };
+  }
 
   function handleSave() {
     onSave({
@@ -319,8 +651,39 @@ export default function Editor({
       title: effectiveTitle || initial.title || "",
       description: description.slice(0, 100),
       technique,
+      entryType,
+      typedData: buildTypedData(),
       body: serializeBody({ steps, description: tabDescription, guidelines: tabGuidelines, references: tabReferences, materials: tabMaterials }),
     });
+  }
+
+  // ─── Bottom panels (typed fields + custom fields + attachments) ──────────────
+
+  function BottomPanels() {
+    const hasTypedFields = (ENTRY_TYPE_CONFIGS[entryType]?.fields.length ?? 0) > 0;
+    return (
+      <div className="mt-3 space-y-2">
+        {hasTypedFields && (
+          <TypedFieldsPanel
+            entryType={entryType}
+            typedFields={typedFields}
+            onChange={setTypedFields}
+          />
+        )}
+        <CustomFieldsPanel fields={customFields} onChange={setCustomFields} />
+        {initial.id && (
+          <AttachmentsPanel
+            entryId={initial.id}
+            initialAttachments={initial.attachments ?? []}
+          />
+        )}
+        {!initial.id && (
+          <p className="text-[11px] text-zinc-600 px-1">
+            💡 Save this entry first to enable file attachments.
+          </p>
+        )}
+      </div>
+    );
   }
 
   const TABS: { id: EditorTab; label: string }[] = [
@@ -335,9 +698,9 @@ export default function Editor({
     <div className="w-full">
       {protocolShell ? (
         <>
-          {/* ── Metadata row (title lives in the modal header — see protocols/page.tsx) ── */}
+          {/* ── Metadata row ── */}
           <div className="mb-2 rounded border border-zinc-800 bg-zinc-900 p-2">
-            <div className="grid gap-2 lg:grid-cols-[3fr_1.2fr_1fr]">
+            <div className="grid gap-2 lg:grid-cols-[2fr_1fr_1.2fr_1fr]">
               <input
                 value={description}
                 onChange={(e) => setDescription(e.target.value.slice(0, 100))}
@@ -345,6 +708,7 @@ export default function Editor({
                 maxLength={100}
                 className="w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-zinc-200 placeholder:text-zinc-500"
               />
+              <EntryTypeSelect value={entryType} onChange={setEntryType} className="w-full" />
               <select
                 value={technique}
                 onChange={(e) => setTechnique(e.target.value)}
@@ -396,7 +760,6 @@ export default function Editor({
 
             {/* Center — Tabs + editor content */}
             <div>
-              {/* Tab bar */}
               <div className="mb-1 flex flex-wrap gap-1 border-b border-zinc-700 pb-1">
                 {TABS.map((tab) => (
                   <button
@@ -413,7 +776,6 @@ export default function Editor({
                 ))}
               </div>
 
-              {/* Steps tab */}
               {activeTab === "steps" && (
                 <RichTextEditor
                   key={(initial.id ?? "new-entry") + "-steps"}
@@ -424,8 +786,6 @@ export default function Editor({
                   externalAction={externalAction}
                 />
               )}
-
-              {/* Description tab */}
               {activeTab === "description" && (
                 <RichTextEditor
                   key={(initial.id ?? "new-entry") + "-desc"}
@@ -435,8 +795,6 @@ export default function Editor({
                   mode="simple"
                 />
               )}
-
-              {/* Guidelines & Warnings tab */}
               {activeTab === "guidelines" && (
                 <RichTextEditor
                   key={(initial.id ?? "new-entry") + "-guidelines"}
@@ -446,8 +804,6 @@ export default function Editor({
                   mode="simple"
                 />
               )}
-
-              {/* References tab */}
               {activeTab === "references" && (
                 <LinkedItemsPanel
                   items={tabReferences}
@@ -455,8 +811,6 @@ export default function Editor({
                   placeholder="Add reference (paper, database, protocol)…"
                 />
               )}
-
-              {/* Materials tab */}
               {activeTab === "materials" && (
                 <LinkedItemsPanel
                   items={tabMaterials}
@@ -510,6 +864,9 @@ export default function Editor({
               </div>
             </aside>
           </div>
+
+          {/* ── Bottom panels: typed fields, custom fields, attachments ── */}
+          <BottomPanels />
         </>
       ) : (
         <>
@@ -529,17 +886,23 @@ export default function Editor({
               rows={2}
               className="w-full resize-none rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-500"
             />
-            <div className="mt-3">
-              <label className="mb-1 block text-xs font-medium text-zinc-400">Technique</label>
-              <select
-                value={technique}
-                onChange={(e) => setTechnique(e.target.value)}
-                className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100"
-              >
-                {TECHNIQUE_OPTIONS.map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-zinc-400">Entry Type</label>
+                <EntryTypeSelect value={entryType} onChange={setEntryType} className="w-full" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-zinc-400">Technique</label>
+                <select
+                  value={technique}
+                  onChange={(e) => setTechnique(e.target.value)}
+                  className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100"
+                >
+                  {TECHNIQUE_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div className="mt-3 rounded border bg-zinc-800 px-3 py-2">
               <p className="text-xs font-medium text-zinc-400">Author</p>
@@ -557,10 +920,13 @@ export default function Editor({
               editable={true}
             />
           </div>
+
+          {/* Bottom panels: typed fields, custom fields, attachments */}
+          <BottomPanels />
         </>
       )}
 
-      <div className="flex gap-2">
+      <div className="mt-4 flex gap-2">
         <button
           onClick={handleSave}
           disabled={saving}

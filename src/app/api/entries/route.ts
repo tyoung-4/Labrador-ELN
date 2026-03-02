@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { TECHNIQUE_OPTIONS } from "@/models/entry";
 import { Q5_TEMPLATE_ENTRY, Q5_TEMPLATE_ENTRY_ID } from "@/lib/defaultTemplates";
+import { ENTRY_TYPE_CONFIGS } from "@/lib/entryTypes";
+import type { EntryType } from "@prisma/client";
 
 type Actor = {
   id: string;
@@ -18,6 +20,16 @@ function normalizeTechnique(value: unknown): string {
   const raw = String(value ?? "").trim();
   if (!raw) return "General";
   return TECHNIQUE_OPTIONS.includes(raw as (typeof TECHNIQUE_OPTIONS)[number]) ? raw : "Other";
+}
+
+function normalizeEntryType(value: unknown): EntryType {
+  const raw = String(value ?? "").trim().toUpperCase();
+  return (raw in ENTRY_TYPE_CONFIGS ? raw : "GENERAL") as EntryType;
+}
+
+function normalizeTypedData(value: unknown): object {
+  if (value && typeof value === "object") return value;
+  return {};
 }
 
 function getActorFromRequest(request?: Request): Actor {
@@ -123,6 +135,8 @@ export async function POST(request: Request) {
         title: payload.title ?? "Untitled",
         description: normalizeDescription(payload.description),
         technique: normalizeTechnique(payload.technique),
+        entryType: normalizeEntryType(payload.entryType),
+        typedData: normalizeTypedData(payload.typedData),
         body: payload.body ?? "",
         authorId: actor.id,
       },
@@ -130,6 +144,7 @@ export async function POST(request: Request) {
         author: {
           select: { id: true, name: true, role: true },
         },
+        attachments: true,
       },
     });
     return NextResponse.json(created, { status: 201 });

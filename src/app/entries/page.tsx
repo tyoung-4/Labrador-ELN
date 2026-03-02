@@ -137,6 +137,8 @@ export default function EntriesPage() {
           body: payload.body,
           technique: payload.technique,
           authorId: payload.authorId,
+          entryType: payload.entryType,
+          typedData: payload.typedData,
         }),
       });
 

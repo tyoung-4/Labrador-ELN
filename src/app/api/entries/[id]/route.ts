@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { TECHNIQUE_OPTIONS } from "@/models/entry";
 import { Q5_TEMPLATE_ENTRY_ID } from "@/lib/defaultTemplates";
+import { ENTRY_TYPE_CONFIGS } from "@/lib/entryTypes";
+import type { EntryType } from "@prisma/client";
 
 type Actor = {
   id: string;
@@ -19,6 +21,16 @@ function normalizeTechnique(value: unknown): string {
   const raw = String(value ?? "").trim();
   if (!raw) return "General";
   return TECHNIQUE_OPTIONS.includes(raw as (typeof TECHNIQUE_OPTIONS)[number]) ? raw : "Other";
+}
+
+function normalizeEntryType(value: unknown): EntryType {
+  const raw = String(value ?? "").trim().toUpperCase();
+  return (raw in ENTRY_TYPE_CONFIGS ? raw : "GENERAL") as EntryType;
+}
+
+function normalizeTypedData(value: unknown): object {
+  if (value && typeof value === "object") return value;
+  return {};
 }
 
 function getActorFromRequest(request?: Request): Actor {
@@ -69,6 +81,16 @@ async function getEntryId(context: RouteContext): Promise<string> {
   return resolved.id;
 }
 
+// Standard include for single-entry queries (includes attachments)
+const ENTRY_INCLUDE = {
+  author: {
+    select: { id: true, name: true, role: true },
+  },
+  attachments: {
+    orderBy: { createdAt: "asc" as const },
+  },
+};
+
 export async function GET(request: Request, context: RouteContext) {
   const id = await getEntryId(context);
   try {
@@ -77,11 +99,7 @@ export async function GET(request: Request, context: RouteContext) {
 
     const found = await prisma.entry.findUnique({
       where: { id },
-      include: {
-        author: {
-          select: { id: true, name: true, role: true },
-        },
-      },
+      include: ENTRY_INCLUDE,
     });
 
     if (!found) return new NextResponse(null, { status: 404 });
@@ -110,20 +128,22 @@ export async function PUT(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Not allowed to edit this entry" }, { status: 403 });
     }
 
+    const data: Record<string, unknown> = {
+      title: payload.title,
+      description: normalizeDescription(payload.description),
+      technique: normalizeTechnique(payload.technique),
+      body: payload.body,
+      version: { increment: 1 },
+    };
+
+    // Only update entryType / typedData if they were explicitly sent
+    if ("entryType" in payload) data.entryType = normalizeEntryType(payload.entryType);
+    if ("typedData" in payload) data.typedData = normalizeTypedData(payload.typedData);
+
     const updated = await prisma.entry.update({
       where: { id },
-      data: {
-        title: payload.title,
-        description: normalizeDescription(payload.description),
-        technique: normalizeTechnique(payload.technique),
-        body: payload.body,
-        version: { increment: 1 },
-      },
-      include: {
-        author: {
-          select: { id: true, name: true, role: true },
-        },
-      },
+      data,
+      include: ENTRY_INCLUDE,
     });
     return NextResponse.json(updated);
   } catch (error) {
@@ -191,15 +211,13 @@ export async function POST(request: Request, context: RouteContext) {
         title: `${source.title} (Clone)`,
         description: source.description,
         technique: source.technique,
+        entryType: source.entryType,
+        typedData: (source.typedData as object) ?? {},
         body: source.body,
         authorId: actor.id,
         version: 1,
       },
-      include: {
-        author: {
-          select: { id: true, name: true, role: true },
-        },
-      },
+      include: ENTRY_INCLUDE,
     });
 
     return NextResponse.json(cloned, { status: 201 });
