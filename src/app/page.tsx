@@ -118,6 +118,12 @@ export default function Home() {
         </section>
 
       </div>
+
+      {/* Attribution */}
+      <p className="mt-auto text-right text-[10px] leading-relaxed text-zinc-700">
+        Developed by Tynan Young &mdash; John C. Williams Lab,{" "}
+        Beckman Research Institute at City of Hope
+      </p>
     </div>
   );
 }
