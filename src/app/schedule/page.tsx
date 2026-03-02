@@ -92,7 +92,8 @@ const ALL_RESOURCES: (ResourceMeta & { group: ResourceGroup })[] =
 
 const HOURS = Array.from({ length: 14 }, (_, i) => i + 7); // 7 a.m.–8 p.m.
 
-const EVENTS_KEY = "eln-schedule-events";
+const EVENTS_KEY   = "eln-schedule-events";
+const ENABLED_KEY  = "eln-schedule-enabled";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -164,16 +165,23 @@ export default function SchedulePage() {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  // View
-  const [view,        setView]        = useState<ViewMode>("weekly");
+  // View — always resets to daily on mount; other nav state persists in session
+  const [view,        setView]        = useState<ViewMode>("daily");
   const [weekOffset,  setWeekOffset]  = useState(0);
   const [monthOffset, setMonthOffset] = useState(0);
   const [dailyDate,   setDailyDate]   = useState(localDateStr());
 
-  // Enabled resources (all on by default)
+  // Enabled resources — all on by default; sessionStorage restores user's toggles client-side
   const [enabled, setEnabled] = useState<Set<ResourceId>>(
     () => new Set(ALL_RESOURCES.map(r => r.id))
   );
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(ENABLED_KEY);
+      if (raw) setEnabled(new Set(JSON.parse(raw) as ResourceId[]));
+    } catch { /* ignore */ }
+  }, []);
 
   function toggleResource(id: ResourceId) {
     setEnabled(prev => {
@@ -206,6 +214,10 @@ export default function SchedulePage() {
   useEffect(() => {
     localStorage.setItem(EVENTS_KEY, JSON.stringify(events));
   }, [events]);
+
+  useEffect(() => {
+    sessionStorage.setItem(ENABLED_KEY, JSON.stringify([...enabled]));
+  }, [enabled]);
 
   // Booking modal
   const [showModal,  setShowModal]  = useState(false);
@@ -302,7 +314,6 @@ export default function SchedulePage() {
           </p>
           {RESOURCE_GROUPS.map(group => {
             const groupIds = group.resources.map(r => r.id);
-            const allOn    = groupIds.every(id => enabled.has(id));
             const someOn   = groupIds.some(id => enabled.has(id));
             return (
               <div key={group.id} className="mb-2">
@@ -313,7 +324,7 @@ export default function SchedulePage() {
                 >
                   <span
                     className={`h-2.5 w-2.5 rounded-sm border ${group.borderCls} transition ${
-                      allOn ? "bg-current opacity-80" : someOn ? "opacity-40" : "opacity-20"
+                      someOn ? "bg-current opacity-80" : "opacity-20"
                     }`}
                   />
                   {group.label}
@@ -356,7 +367,7 @@ export default function SchedulePage() {
           <div className="flex items-center gap-3 border-b border-zinc-800 bg-zinc-950 px-5 py-3">
             {/* View switcher */}
             <div className="flex overflow-hidden rounded border border-zinc-700 bg-zinc-800">
-              {(["weekly", "monthly", "daily"] as ViewMode[]).map(v => (
+              {(["daily", "weekly", "monthly"] as ViewMode[]).map(v => (
                 <button
                   key={v}
                   onClick={() => setView(v)}
