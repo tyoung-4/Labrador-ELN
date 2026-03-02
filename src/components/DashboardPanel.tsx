@@ -35,9 +35,10 @@ type TodoItem = {
   text: string;
   done: boolean;
   timeSensitive: boolean;
-  date?: string;   // "YYYY-MM-DD"
-  time?: string;   // "HH:MM"
-  notes?: string;  // free-form notes, shown on hover/click
+  date?: string;     // "YYYY-MM-DD"
+  time?: string;     // "HH:MM"
+  endTime?: string;  // "HH:MM"
+  notes?: string;    // free-form notes, shown on hover/click
   links: LinkRef[];
 };
 
@@ -398,20 +399,31 @@ function CalendarPicker({
 // ─── Daily schedule ───────────────────────────────────────────────────────────
 
 function DailySchedulePanel({ items }: { items: TodoItem[] }) {
-  const today       = localDateStr();
-  const todayItems  = items.filter(i => i.date === today && !i.done);
-  const timedItems  = todayItems
+  const today        = localDateStr();
+  const todayItems   = items.filter(i => i.date === today && !i.done);
+  const timedItems   = todayItems
     .filter(i => i.time)
     .sort((a, b) => (a.time! > b.time! ? 1 : -1));
-  const allDayItems = todayItems.filter(i => !i.time);
-  const nowHour     = new Date().getHours();
+  const allDayItems  = todayItems.filter(i => !i.time);
+  const nowHour      = new Date().getHours();
+  const scrollRef    = useRef<HTMLDivElement>(null);
+  const workStartRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      if (scrollRef.current && workStartRef.current) {
+        // Container is position:relative, so el.offsetTop is relative to it
+        scrollRef.current.scrollTop = Math.max(0, workStartRef.current.offsetTop - 4);
+      }
+    });
+  }, []);
 
   return (
     <div className="space-y-px">
       {/* All-day row */}
       {allDayItems.length > 0 && (
         <div className="mb-1.5 rounded border border-zinc-700/40 bg-zinc-800/30 p-1.5">
-          <p className="mb-1 text-[9px] font-semibold uppercase tracking-widest text-zinc-600">
+          <p className="mb-1 text-[9px] font-semibold uppercase tracking-widest text-zinc-500">
             All day
           </p>
           {allDayItems.map(item => (
@@ -423,45 +435,59 @@ function DailySchedulePanel({ items }: { items: TodoItem[] }) {
         </div>
       )}
 
-      {/* Hourly rows */}
-      {HOURS.map(h => {
-        const hh        = String(h).padStart(2, "0");
-        const slotItems = timedItems.filter(i => i.time!.startsWith(hh + ":"));
-        const isPast    = h < nowHour;
-        const isCurrent = h === nowHour;
-        const label     = `${h % 12 === 0 ? 12 : h % 12}${h < 12 ? "a" : "p"}`;
+      {/* Hourly rows – scrollable, defaults to 8 am */}
+      <div ref={scrollRef} className="relative overflow-y-auto space-y-px" style={{ maxHeight: "14rem" }}>
+        {HOURS.map(h => {
+          const hh         = String(h).padStart(2, "0");
+          const slotItems  = timedItems.filter(i => i.time!.startsWith(hh + ":"));
+          const isPast     = h < nowHour;
+          const isCurrent  = h === nowHour;
+          const isWorkHour = h >= 8 && h <= 17;
+          const label      = `${h % 12 === 0 ? 12 : h % 12}${h < 12 ? "a" : "p"}`;
 
-        return (
-          <div
-            key={h}
-            className={`flex min-h-[1.75rem] items-start gap-1.5 ${isPast ? "opacity-35" : ""}`}
-          >
-            <span
-              className={`w-7 shrink-0 pt-0.5 text-right text-[9px] leading-none ${
-                isCurrent ? "font-semibold text-indigo-400" : "text-zinc-700"
-              }`}
-            >
-              {label}
-            </span>
+          return (
             <div
-              className={`flex flex-1 flex-col gap-0.5 border-l py-0.5 pl-1.5 ${
-                isCurrent ? "border-indigo-500" : "border-zinc-800"
-              }`}
+              key={h}
+              ref={h === 8 ? workStartRef : undefined}
+              className={`flex min-h-[1.75rem] items-start gap-1.5 rounded-sm px-0.5 ${
+                isPast ? "opacity-40" : ""
+              } ${isWorkHour ? "bg-zinc-700/25" : ""}`}
             >
-              {slotItems.map(item => (
-                <div
-                  key={item.id}
-                  className="rounded bg-indigo-500/25 px-1.5 py-px text-[10px] leading-tight text-indigo-200"
-                >
-                  <span className="opacity-70">{formatTime12h(item.time!)} · </span>
-                  {item.text}
-                </div>
-              ))}
-              {slotItems.length === 0 && <div className="h-3.5" />}
+              <span
+                className={`w-7 shrink-0 pt-0.5 text-right text-[9px] leading-none ${
+                  isCurrent ? "font-semibold text-indigo-400" : "text-zinc-500"
+                }`}
+              >
+                {label}
+              </span>
+              <div
+                className={`flex flex-1 flex-col gap-0.5 border-l py-0.5 pl-1.5 ${
+                  isCurrent
+                    ? "border-indigo-500"
+                    : isWorkHour
+                    ? "border-zinc-600"
+                    : "border-zinc-700/40"
+                }`}
+              >
+                {slotItems.map(item => (
+                  <div
+                    key={item.id}
+                    className="rounded bg-indigo-500/25 px-1.5 py-px text-[10px] leading-tight text-indigo-200"
+                  >
+                    <span className="opacity-70">
+                      {formatTime12h(item.time!)}
+                      {item.endTime ? `–${formatTime12h(item.endTime)}` : ""}
+                      {" · "}
+                    </span>
+                    {item.text}
+                  </div>
+                ))}
+                {slotItems.length === 0 && <div className="h-3.5" />}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -498,19 +524,19 @@ function WeeklySchedulePanel({
             className={`min-h-[6rem] rounded border p-1 ${
               isToday
                 ? "border-indigo-500/40 bg-indigo-500/10"
-                : "border-zinc-800 bg-zinc-900/40"
+                : "border-zinc-700/40 bg-zinc-800/20"
             }`}
           >
             <p
               className={`text-[9px] font-semibold uppercase tracking-wide ${
-                isToday ? "text-indigo-400" : "text-zinc-600"
+                isToday ? "text-indigo-400" : "text-zinc-500"
               }`}
             >
               {date.toLocaleDateString("en-US", { weekday: "short" })}
             </p>
             <p
               className={`mb-1 text-xs font-bold ${
-                isToday ? "text-indigo-200" : "text-zinc-500"
+                isToday ? "text-indigo-200" : "text-zinc-400"
               }`}
             >
               {date.getDate()}
@@ -807,6 +833,8 @@ export default function DashboardPanel() {
   const [timeSensitive,   setTimeSensitive]   = useState(false);
   const [newDate,         setNewDate]         = useState("");
   const [newTime,         setNewTime]         = useState("");
+  const [newEndTime,      setNewEndTime]      = useState("");
+  const [showEndTime,     setShowEndTime]     = useState(false);
   const [newLinks,        setNewLinks]        = useState<LinkRef[]>([]);
   const [showProtoPicker, setShowProtoPicker] = useState(false);
   const [showInvPicker,   setShowInvPicker]   = useState(false);
@@ -883,6 +911,7 @@ export default function DashboardPanel() {
 
     let finalDate: string | undefined;
     let finalTime: string | undefined;
+    let finalEndTime: string | undefined;
 
     if (timeSensitive) {
       const today = localDateStr();
@@ -893,6 +922,7 @@ export default function DashboardPanel() {
         // Time only → auto today + time
         finalDate = today;
         finalTime = newTime;
+        if (showEndTime && newEndTime) finalEndTime = newEndTime;
       } else if (newDate && !newTime) {
         // Date only → date, no time
         finalDate = newDate;
@@ -900,6 +930,7 @@ export default function DashboardPanel() {
         // Both given
         finalDate = newDate;
         finalTime = newTime;
+        if (showEndTime && newEndTime) finalEndTime = newEndTime;
       }
     }
 
@@ -911,6 +942,7 @@ export default function DashboardPanel() {
         timeSensitive,
         date: finalDate,
         time: finalTime,
+        endTime: finalEndTime,
         notes: newNotes.trim() || undefined,
         links: newLinks,
       },
@@ -921,6 +953,8 @@ export default function DashboardPanel() {
     setTimeSensitive(false);
     setNewDate("");
     setNewTime("");
+    setNewEndTime("");
+    setShowEndTime(false);
     setNewLinks([]);
   }
 
@@ -1154,7 +1188,7 @@ export default function DashboardPanel() {
                     if (!newDate) setNewDate(localDateStr());
                     if (!newTime) setNewTime("12:00");
                   }
-                  if (!e.target.checked) { setNewDate(""); setNewTime(""); }
+                  if (!e.target.checked) { setNewDate(""); setNewTime(""); setNewEndTime(""); setShowEndTime(false); }
                 }}
                 className="h-3.5 w-3.5 accent-indigo-500"
               />
@@ -1169,12 +1203,38 @@ export default function DashboardPanel() {
                   <CalendarPicker value={newDate} onChange={setNewDate} />
                 </div>
                 <div>
-                  <label className="mb-1 block text-[10px] text-zinc-500">
-                    Time{" "}
-                    <span className="text-zinc-600">(optional)</span>
-                  </label>
+                  <div className="mb-1 flex items-center justify-between">
+                    <label className="text-[10px] text-zinc-500">
+                      Time{" "}
+                      <span className="text-zinc-600">(optional)</span>
+                    </label>
+                    {newTime && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowEndTime(s => {
+                            if (s) setNewEndTime("");
+                            return !s;
+                          });
+                        }}
+                        className={`text-[9px] font-semibold transition ${
+                          showEndTime
+                            ? "text-indigo-400 hover:text-zinc-400"
+                            : "text-zinc-600 hover:text-indigo-400"
+                        }`}
+                      >
+                        {showEndTime ? "− end" : "+ end"}
+                      </button>
+                    )}
+                  </div>
                   <CustomTimePicker value={newTime} onChange={setNewTime} />
                 </div>
+                {showEndTime && (
+                  <div>
+                    <label className="mb-1 block text-[10px] text-zinc-500">End time</label>
+                    <CustomTimePicker value={newEndTime} onChange={setNewEndTime} />
+                  </div>
+                )}
               </div>
             )}
 
