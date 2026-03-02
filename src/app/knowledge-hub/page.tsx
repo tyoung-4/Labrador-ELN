@@ -25,6 +25,13 @@ export default function KnowledgeHubPage() {
             {s.label}
           </Link>
         ))}
+        {/* Data Migration — full-width at the bottom */}
+        <Link
+          href="/migration"
+          className="col-span-2 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-6 text-center text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-800 sm:col-span-3"
+        >
+          📥 Data Migration
+        </Link>
       </div>
     </div>
   );

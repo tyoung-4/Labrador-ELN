@@ -114,6 +114,12 @@ export default function Home() {
             >
               Meeting Notes
             </Link>
+            <Link
+              href="/migration"
+              className="col-span-2 rounded-lg border border-rose-700/50 bg-rose-900/20 px-3 py-2 text-sm text-rose-200 transition hover:bg-rose-900/40"
+            >
+              📥 Data Migration
+            </Link>
           </div>
         </section>
 
