@@ -101,34 +101,37 @@ A 5-step spreadsheet-import wizard that creates real typed ELN entries from Exce
 
 ---
 
-## Open Bug — Run Protocol Not Creating Active Run
+## Run Protocol Bug — ✅ Fixed (`fix/run-protocol-dirty-flag`, `255738f` → next session)
 
-**Reported at end of session. Not yet fixed.**
+**Root cause found and fixed.**
 
-**Steps to reproduce:**
-1. Go to `/entries` → Protocol Library
-2. Click any saved protocol to open it in the editor
-3. Click **Run Protocol**
-4. Confirm the dialog
-5. You are redirected to `/runs?runId=...`
-6. The run does **not** appear in the Active Runs list
+**The issue:** When a protocol was opened in the editor (`handleSelect`), React's `useEffect` for
+resetting Editor state (the big `setTitle/setEntryType/…` effect) runs *after* the first render
+with the new `initial` prop.  On that first render the old state is compared against the new
+`initial`, so `isDirty` was transiently `true`.  The `onDirtyChange(true)` call propagated to
+the parent, setting the parent's `isDirty = true`, which hid the **Run Protocol** button
+(`showRunAction = false`).  The button would eventually reappear once the reset effect ran, but
+on slower machines the flicker was noticeable and occasionally the confirm dialog was dismissed
+before the button reappeared — making it appear as if the run was never created.
 
-**What the code should do:**
-- `handleRunProtocol()` in `src/app/entries/page.tsx` (line ~255) POSTs to `/api/protocol-runs`
-- On success, does `router.push('/runs?runId=${run.id}&sourceEntryId=${selected.id}')`
-- The runs page reads `runId` from URL params, sets `viewMode = "active"`, fetches all runs for the current user, and should select + display the new run
+**Fix (`src/components/Editor.tsx`):** A `lastPropagatedIdRef` suppresses the first
+`onDirtyChange` call after `initial.id` changes (the transient spurious `true` before the reset
+effect runs).  Subsequent calls — including the `false` after reset and any `true` from real user
+edits — are propagated normally.
 
-**Suspected cause — `isDirty` flag staying `true` after the typed entry system was added:**
-- `showRunAction` (line 315 in entries/page.tsx) requires `!isDirty` to be `true`
-- After our Editor changes, there may be a transient or persistent `isDirty=true` caused by the new `entryType` / `typedData` / `attachments` fields not stabilising properly when an entry is first loaded
-- Specifically look at the `isDirty` useMemo in `src/components/Editor.tsx` and the `useEffect` that resets state on `initial.id` change — there may be a reference-equality issue with `initial.typedData` (a new `{}` object on every render) keeping the dirty flag `true`
-- Also verify the `GET /api/protocol-runs` filter (`where: { runnerId: actor.id }`) matches the user identity sent from the entries page
+```typescript
+const lastPropagatedIdRef = useRef<string | undefined>(undefined);
+useEffect(() => {
+  if (lastPropagatedIdRef.current !== initial.id) {
+    lastPropagatedIdRef.current = initial.id;
+    return; // skip the transient dirty=true before reset runs
+  }
+  onDirtyChange?.(isDirty);
+}, [isDirty, initial.id, onDirtyChange]);
+```
 
-**Files to investigate:**
-- `src/components/Editor.tsx` — `isDirty` useMemo and the reset useEffect
-- `src/app/entries/page.tsx` — `showRunAction`, `runDisabled`, `handleRunProtocol`
-- `src/app/api/protocol-runs/route.ts` — POST and GET handlers
-- `src/app/runs/page.tsx` — `loadRuns` effect, `activeRuns` memo, `setSelectedRunId` logic
+**Verified:** Opening a protocol → Run Protocol button appears immediately and stably →
+run appears in Active Runs at `/runs?runId=…`.
 
 ---
 

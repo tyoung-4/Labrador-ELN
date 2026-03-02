@@ -637,9 +637,17 @@ export default function Editor({
     initialTypedData, initialBody,
   ]);
 
+  // When initial.id changes (new entry loaded), the internal state hasn't been
+  // reset yet, so isDirty is transiently true for one render cycle.  Suppress
+  // that first onDirtyChange call so the parent never sees the spurious true.
+  const lastPropagatedIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
+    if (lastPropagatedIdRef.current !== initial.id) {
+      lastPropagatedIdRef.current = initial.id;
+      return; // skip the transient dirty=true before reset runs
+    }
     onDirtyChange?.(isDirty);
-  }, [isDirty, onDirtyChange]);
+  }, [isDirty, initial.id, onDirtyChange]);
 
   function buildTypedData(): TypedData {
     return { typed: typedFields, custom: customFields };
