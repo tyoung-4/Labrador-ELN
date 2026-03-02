@@ -691,6 +691,7 @@ function SortableItem({
   onRemove: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [pendingRemove, setPendingRemove] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id });
 
@@ -803,14 +804,34 @@ function SortableItem({
         )}
       </div>
 
-      {/* Remove */}
-      <button
-        onClick={() => onRemove(item.id)}
-        aria-label="Remove item"
-        className="mt-0.5 text-xs text-zinc-700 opacity-0 transition hover:text-red-400 group-hover:opacity-100"
-      >
-        ✕
-      </button>
+      {/* Remove — two-step inline confirmation */}
+      {pendingRemove ? (
+        <div className="mt-0.5 flex shrink-0 items-center gap-1.5">
+          <span className="text-[10px] text-zinc-400">Remove?</span>
+          <button
+            onClick={() => onRemove(item.id)}
+            aria-label="Confirm remove"
+            className="text-[10px] font-semibold text-red-400 transition hover:text-red-300"
+          >
+            Yes
+          </button>
+          <button
+            onClick={() => setPendingRemove(false)}
+            aria-label="Cancel remove"
+            className="text-[10px] text-zinc-500 transition hover:text-zinc-300"
+          >
+            No
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setPendingRemove(true)}
+          aria-label="Remove item"
+          className="mt-0.5 shrink-0 text-xs text-zinc-700 opacity-0 transition hover:text-red-400 group-hover:opacity-100"
+        >
+          ✕
+        </button>
+      )}
     </div>
   );
 }
