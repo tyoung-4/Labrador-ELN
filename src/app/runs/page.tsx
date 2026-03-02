@@ -80,10 +80,7 @@ const DEFAULT_UTILITY: UtilityTimerState = {
 function parsePersistedState(raw: string): { interaction: InteractionState; utilityTimer: UtilityTimerState; utilityMinutes: number; utilitySeconds: number } {
   try {
     const parsed = JSON.parse(raw || "{}") as PersistedRunState;
-    const utilityTimer = parsed.__ui?.utilityTimer ?? DEFAULT_UTILITY;
-    const utilityMinutes = parsed.__ui?.utilityMinutes ?? 5;
-    const utilitySeconds = parsed.__ui?.utilitySeconds ?? 0;
-
+    // Timers are not persisted — always start fresh from defaults
     return {
       interaction: {
         stepCompletion: parsed.stepCompletion ?? {},
@@ -92,9 +89,9 @@ function parsePersistedState(raw: string): { interaction: InteractionState; util
         entryFields: parsed.entryFields ?? {},
         timers: parsed.timers ?? {},
       },
-      utilityTimer,
-      utilityMinutes,
-      utilitySeconds,
+      utilityTimer: DEFAULT_UTILITY,
+      utilityMinutes: 5,
+      utilitySeconds: 0,
     };
   } catch {
     return {
@@ -106,22 +103,9 @@ function parsePersistedState(raw: string): { interaction: InteractionState; util
   }
 }
 
-function serializePersistedState(
-  interaction: InteractionState,
-  utilityTimer: UtilityTimerState,
-  utilityMinutes: number,
-  utilitySeconds: number
-): string {
-  const payload: PersistedRunState = {
-    ...interaction,
-    __ui: {
-      utilityTimer,
-      utilityMinutes,
-      utilitySeconds,
-    },
-  };
-
-  return JSON.stringify(payload);
+function serializePersistedState(interaction: InteractionState): string {
+  // Timers are session-only and not persisted; only interaction state is saved
+  return JSON.stringify(interaction);
 }
 
 function toAutoSaveSignature(interaction: InteractionState): string {
@@ -425,12 +409,7 @@ function RunsPageContent() {
       try {
         setAutoSaveState("saving");
         const updated = await updateRun(selectedRun.id, {
-          interactionState: serializePersistedState(
-            interactionState,
-            savedUtilitySnapshot.utilityTimer,
-            savedUtilitySnapshot.utilityMinutes,
-            savedUtilitySnapshot.utilitySeconds
-          ),
+          interactionState: serializePersistedState(interactionState),
         });
         setRuns((prev) => prev.map((run) => (run.id === updated.id ? updated : run)));
         lastAutoSavedSignatureRef.current = signature;
@@ -470,7 +449,7 @@ function RunsPageContent() {
     try {
       const updated = await updateRun(selectedRun.id, {
         notes,
-        interactionState: serializePersistedState(interactionState, utilityTimer, utilityMinutes, utilitySeconds),
+        interactionState: serializePersistedState(interactionState),
       });
       setRuns((prev) => prev.map((run) => (run.id === updated.id ? updated : run)));
       setSavedUtilitySnapshot({
@@ -523,7 +502,7 @@ function RunsPageContent() {
       const updated = await updateRun(selectedRun.id, {
         status: "COMPLETED",
         notes,
-        interactionState: serializePersistedState(interactionState, utilityTimer, utilityMinutes, utilitySeconds),
+        interactionState: serializePersistedState(interactionState),
       });
       setRuns((prev) => prev.map((run) => (run.id === updated.id ? updated : run)));
       setSelectedRunId(updated.id);
@@ -700,25 +679,31 @@ function RunsPageContent() {
           </main>
 
           <aside className="space-y-3">
-            <button
-              onClick={() => setShowNotesPopup((prev) => !prev)}
-              className={`w-full rounded border px-3 py-2 text-left text-sm font-semibold ${
-                showNotesPopup ? "border-indigo-500 bg-indigo-500/20 text-indigo-100" : "border-zinc-700 bg-zinc-900 text-zinc-200"
-              }`}
-            >
-              {showNotesPopup ? "Hide Notes" : "Open Notes"}
-            </button>
-            {showNotesPopup && (
-              <div className="rounded border border-zinc-800 bg-zinc-900 p-3">
-                <h3 className="mb-2 text-sm font-semibold text-zinc-100">Notes</h3>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={10}
-                  placeholder="Run-specific notes"
-                  className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
-                />
-              </div>
+            {selectedRun && (
+              <>
+                <button
+                  onClick={() => setShowNotesPopup((prev) => !prev)}
+                  className={`w-full rounded border px-3 py-2 text-left text-sm font-semibold ${
+                    showNotesPopup ? "border-indigo-500 bg-indigo-500/20 text-indigo-100" : "border-zinc-700 bg-zinc-900 text-zinc-200"
+                  }`}
+                >
+                  {showNotesPopup ? "Hide Notes" : "Open Notes"}
+                </button>
+                {showNotesPopup && (
+                  <div className="rounded border border-zinc-800 bg-zinc-900 p-3">
+                    <h3 className="mb-2 text-sm font-semibold text-zinc-100">
+                      Notes — {selectedRun.title}
+                    </h3>
+                    <textarea
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      rows={10}
+                      placeholder="Run-specific notes…"
+                      className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500"
+                    />
+                  </div>
+                )}
+              </>
             )}
 
             <button
@@ -793,7 +778,7 @@ function RunsPageContent() {
             >
               Save Run Progress
             </button>
-            <p className="text-[11px] text-zinc-500">Manual save persists Notes and Utility Timer.</p>
+            <p className="text-[11px] text-zinc-500">Manual save persists run notes. Timers are session-only.</p>
           </aside>
         </div>
       ) : (
