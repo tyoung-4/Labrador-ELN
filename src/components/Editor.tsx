@@ -23,6 +23,8 @@ type Props = {
   protocolShell?: boolean;
   /** Controlled title for protocolShell mode — managed by the parent modal header */
   titleValue?: string;
+  /** Called when the user clicks the parent-protocol link in the Version panel */
+  onOpenParent?: (parentId: string) => void;
 };
 
 // Component items shown in the right-sidebar dropdown.
@@ -563,6 +565,7 @@ export default function Editor({
   saving = false,
   protocolShell = false,
   titleValue,
+  onOpenParent,
 }: Props) {
   const [title, setTitle]           = useState(initial.title ?? "");
   const [description, setDescription] = useState(initial.description ?? "");
@@ -592,6 +595,26 @@ export default function Editor({
   } | null>(null);
 
   const [showComponentsMenu, setShowComponentsMenu] = useState(false);
+  const [showVersionPanel, setShowVersionPanel] = useState(false);
+
+  // ── Version info (read-only, derived from initial.typedData) ──────────────
+  const semVer = useMemo(() => {
+    const td = initial.typedData;
+    if (!td || typeof td !== "object") return "1.0";
+    return (td as { typed?: Record<string, string> }).typed?._semVer || "1.0";
+  }, [initial.typedData]);
+
+  const versionParentId = useMemo(() => {
+    const td = initial.typedData;
+    if (!td || typeof td !== "object") return undefined;
+    return (td as { typed?: Record<string, string> }).typed?._parentId || undefined;
+  }, [initial.typedData]);
+
+  const versionParentTitle = useMemo(() => {
+    const td = initial.typedData;
+    if (!td || typeof td !== "object") return undefined;
+    return (td as { typed?: Record<string, string> }).typed?._parentTitle || undefined;
+  }, [initial.typedData]);
 
   // Reset all when entry changes
   useEffect(() => {
@@ -828,8 +851,49 @@ export default function Editor({
               )}
             </div>
 
-            {/* Right sidebar — Components (only enabled for Steps tab) */}
+            {/* Right sidebar — Version + Components */}
             <aside className="lg:sticky lg:top-2 lg:h-fit rounded border border-zinc-800 bg-zinc-900 p-3">
+
+              {/* ── Version panel (collapsible) ── */}
+              <div className="mb-3 border-b border-zinc-800 pb-3">
+                <button
+                  onClick={() => setShowVersionPanel((v) => !v)}
+                  className="flex w-full items-center justify-between text-sm font-semibold text-zinc-100"
+                >
+                  <span>Version</span>
+                  <span className="text-xs text-zinc-500">{showVersionPanel ? "▾" : "▸"}</span>
+                </button>
+                {showVersionPanel && (
+                  <div className="mt-2 space-y-2 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="text-zinc-500">Current:</span>
+                      <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 font-semibold text-emerald-300">
+                        v{semVer}
+                      </span>
+                    </div>
+                    {versionParentId && (
+                      <div className="flex flex-wrap items-start gap-1">
+                        <span className="shrink-0 text-zinc-500">Cloned from:</span>
+                        {onOpenParent ? (
+                          <button
+                            onClick={() => onOpenParent(versionParentId)}
+                            className="text-left text-indigo-400 underline underline-offset-2 hover:text-indigo-300"
+                          >
+                            {versionParentTitle || versionParentId}
+                          </button>
+                        ) : (
+                          <span className="text-zinc-300">{versionParentTitle || versionParentId}</span>
+                        )}
+                      </div>
+                    )}
+                    {!versionParentId && (
+                      <p className="text-zinc-600">Original protocol</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Components ── */}
               <p className="mb-2 text-sm font-semibold text-zinc-100">Components</p>
               {activeTab !== "steps" && (
                 <p className="mb-2 text-[10px] text-zinc-600">Switch to Steps tab to insert components.</p>

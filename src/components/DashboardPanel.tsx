@@ -8,6 +8,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,
   type DragEndEvent,
 } from "@dnd-kit/core";
 import {
@@ -22,7 +23,7 @@ import { USER_STORAGE_KEY, ELN_USERS } from "@/components/AppTopNav";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type LinkCategory = "protocol" | "stock" | "reagent" | "knowledge" | "run";
+type LinkCategory = "protocol" | "stock" | "reagent" | "knowledge" | "run" | "equipment";
 
 type LinkRef = {
   type: LinkCategory;
@@ -35,11 +36,12 @@ type TodoItem = {
   text: string;
   done: boolean;
   timeSensitive: boolean;
-  date?: string;     // "YYYY-MM-DD"
-  time?: string;     // "HH:MM"
-  endTime?: string;  // "HH:MM"
-  notes?: string;    // free-form notes, shown on hover/click
+  date?: string;      // "YYYY-MM-DD"
+  time?: string;      // "HH:MM"
+  endTime?: string;   // "HH:MM"
+  notes?: string;     // free-form notes, shown on hover/click
   links: LinkRef[];
+  carryover?: boolean; // true if carried over from a previous day
 };
 
 type ScheduleView = "daily" | "weekly";
@@ -53,9 +55,89 @@ const LINK_STYLE: Record<LinkCategory, string> = {
   reagent:   "border-amber-500/30  bg-amber-500/10  text-amber-300",
   knowledge: "border-violet-500/30 bg-violet-500/10 text-violet-300",
   run:       "border-indigo-500/30 bg-indigo-500/10 text-indigo-300",
+  equipment: "border-purple-500/30 bg-purple-500/10 text-purple-300",
 };
 
+// ─── Equipment scheduling data (mirrors schedule/page.tsx) ────────────────────
+
+type EquipResourceId =
+  | "tc147" | "tc127"
+  | "akta1" | "akta2" | "ngc" | "hplc"
+  | "spr-t200" | "spr-new"
+  | "plasmid-pro";
+
+const EQUIP_RESOURCE_GROUPS: {
+  id: string; label: string;
+  borderCls: string; chipBg: string; chipText: string;
+  resources: { id: EquipResourceId; label: string }[];
+}[] = [
+  {
+    id: "tc", label: "TC Rooms",
+    borderCls: "border-emerald-500/30", chipBg: "bg-emerald-500/20", chipText: "text-emerald-200",
+    resources: [
+      { id: "tc147", label: "TC Room 147" },
+      { id: "tc127", label: "TC Room 127" },
+    ],
+  },
+  {
+    id: "fplc", label: "FPLC / HPLC",
+    borderCls: "border-sky-500/30", chipBg: "bg-sky-500/20", chipText: "text-sky-200",
+    resources: [
+      { id: "akta1", label: "AKTA 1" },
+      { id: "akta2", label: "AKTA 2" },
+      { id: "ngc",   label: "NGC" },
+      { id: "hplc",  label: "HPLC" },
+    ],
+  },
+  {
+    id: "spr", label: "SPR",
+    borderCls: "border-violet-500/30", chipBg: "bg-violet-500/20", chipText: "text-violet-200",
+    resources: [
+      { id: "spr-t200", label: "SPR T200" },
+      { id: "spr-new",  label: "SPR (new)" },
+    ],
+  },
+  {
+    id: "other", label: "Other",
+    borderCls: "border-amber-500/30", chipBg: "bg-amber-500/20", chipText: "text-amber-200",
+    resources: [
+      { id: "plasmid-pro", label: "Plasmid Pro" },
+    ],
+  },
+];
+
+type EquipEvent = {
+  id: string;
+  resourceId: string;
+  date: string;
+  startTime?: string;
+  endTime?: string;
+  title: string;
+  userId: string;
+  userName: string;
+};
+
+const EQUIP_EVENTS_KEY = "eln-schedule-events";
+
 const HOURS = Array.from({ length: 14 }, (_, i) => i + 7); // 7 a.m.–8 p.m.
+
+// ─── Schedule grid constants ──────────────────────────────────────────────────
+
+const PX_PER_HOUR = 48;   // pixels per hour in the daily time grid
+const GRID_START  = 7;    // first hour shown (7 AM)
+const GRID_HOURS  = 14;   // number of hours shown
+const GRID_END    = GRID_START + GRID_HOURS; // 21 (9 PM)
+
+function timeToMinutes(t: string): number {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + (m || 0);
+}
+
+function minutesToTime(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -396,30 +478,154 @@ function CalendarPicker({
   );
 }
 
-// ─── Daily schedule ───────────────────────────────────────────────────────────
+// ─── Daily schedule — pixel-grid with drag-drop & resize ─────────────────────
 
-function DailySchedulePanel({ items }: { items: TodoItem[] }) {
-  const today        = localDateStr();
-  const todayItems   = items.filter(i => i.date === today && !i.done);
-  const timedItems   = todayItems
+/** One droppable zone per hour — accepts todo items dragged from the list */
+function DroppableHour({ h }: { h: number }) {
+  const { isOver, setNodeRef } = useDroppable({ id: `hour-${h}` });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        position: "absolute",
+        top: (h - GRID_START) * PX_PER_HOUR,
+        height: PX_PER_HOUR,
+        left: 0,
+        right: 0,
+        zIndex: 1,
+      }}
+      className={`transition-colors ${isOver ? "bg-indigo-500/20 rounded" : ""}`}
+    />
+  );
+}
+
+/** Absolutely-positioned block representing a timed todo item in the grid */
+function ScheduleBlock({
+  item,
+  onUpdateItem,
+}: {
+  item: TodoItem;
+  onUpdateItem: (id: string, updates: Partial<TodoItem>) => void;
+}) {
+  const startMins = timeToMinutes(item.time!);
+  const endMins   = item.endTime ? timeToMinutes(item.endTime) : startMins + 60;
+  const top       = ((startMins - GRID_START * 60) / 60) * PX_PER_HOUR;
+  const height    = Math.max(((endMins - startMins) / 60) * PX_PER_HOUR, 20);
+
+  // Ref-based drag state for resize handles (native mousemove, not dnd-kit)
+  const dragRef = useRef<{
+    edge: "top" | "bottom";
+    startY: number;
+    startMins: number;
+    otherMins: number;
+  } | null>(null);
+
+  function startResize(edge: "top" | "bottom", e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = {
+      edge,
+      startY: e.clientY,
+      startMins: edge === "top" ? startMins : endMins,
+      otherMins: edge === "top" ? endMins : startMins,
+    };
+
+    function onMove(ev: MouseEvent) {
+      if (!dragRef.current) return;
+      const deltaY = ev.clientY - dragRef.current.startY;
+      // Snap to 30-min increments
+      const deltaMins = Math.round((deltaY / PX_PER_HOUR) * 60 / 30) * 30;
+      const newMins   = dragRef.current.startMins + deltaMins;
+
+      if (dragRef.current.edge === "top") {
+        const clamped = Math.max(
+          GRID_START * 60,
+          Math.min(dragRef.current.otherMins - 30, newMins)
+        );
+        onUpdateItem(item.id, { time: minutesToTime(clamped) });
+      } else {
+        const clamped = Math.max(
+          dragRef.current.otherMins + 30,
+          Math.min(GRID_END * 60, newMins)
+        );
+        onUpdateItem(item.id, { endTime: minutesToTime(clamped) });
+      }
+    }
+
+    function onUp() {
+      dragRef.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    }
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  return (
+    <div
+      style={{ position: "absolute", top, height, left: 38, right: 4, zIndex: 3 }}
+      className="group/block rounded border border-indigo-500/50 bg-indigo-500/25 overflow-hidden select-none"
+    >
+      {/* Top resize handle */}
+      <div
+        onMouseDown={e => startResize("top", e)}
+        className="absolute top-0 left-0 right-0 h-2 cursor-n-resize flex items-center justify-center opacity-0 group-hover/block:opacity-100 transition"
+      >
+        <div className="w-5 h-0.5 rounded bg-indigo-300/70" />
+      </div>
+
+      {/* Content */}
+      <div className="px-1.5 pt-2.5 pb-1">
+        <p className="text-[9px] text-indigo-300/70 leading-none">
+          {formatTimeShort(item.time!)}
+          {item.endTime ? `–${formatTimeShort(item.endTime)}` : ""}
+        </p>
+        <p className="text-[10px] text-indigo-100 leading-tight truncate">{item.text}</p>
+      </div>
+
+      {/* Bottom resize handle */}
+      <div
+        onMouseDown={e => startResize("bottom", e)}
+        className="absolute bottom-0 left-0 right-0 h-2 cursor-s-resize flex items-center justify-center opacity-0 group-hover/block:opacity-100 transition"
+      >
+        <div className="w-5 h-0.5 rounded bg-indigo-300/70" />
+      </div>
+    </div>
+  );
+}
+
+function DailySchedulePanel({
+  items,
+  onUpdateItem,
+}: {
+  items: TodoItem[];
+  onUpdateItem: (id: string, updates: Partial<TodoItem>) => void;
+}) {
+  const today       = localDateStr();
+  const todayItems  = items.filter(i => i.date === today && !i.done);
+  const timedItems  = todayItems
     .filter(i => i.time)
     .sort((a, b) => (a.time! > b.time! ? 1 : -1));
-  const allDayItems  = todayItems.filter(i => !i.time);
-  const nowHour      = new Date().getHours();
-  const scrollRef    = useRef<HTMLDivElement>(null);
-  const workStartRef = useRef<HTMLDivElement>(null);
+  const allDayItems = todayItems.filter(i => !i.time);
+  const now         = new Date();
+  const nowH        = now.getHours();
+  const nowMin      = now.getMinutes();
+  const scrollRef   = useRef<HTMLDivElement>(null);
 
+  // Auto-scroll to 8 AM on mount
   useEffect(() => {
     requestAnimationFrame(() => {
-      if (scrollRef.current && workStartRef.current) {
-        // Container is position:relative, so el.offsetTop is relative to it
-        scrollRef.current.scrollTop = Math.max(0, workStartRef.current.offsetTop - 4);
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = (8 - GRID_START) * PX_PER_HOUR - 4;
       }
     });
   }, []);
 
+  const totalHeight = GRID_HOURS * PX_PER_HOUR;
+
   return (
-    <div className="space-y-px">
+    <div className="space-y-1">
       {/* All-day row */}
       {allDayItems.length > 0 && (
         <div className="mb-1.5 rounded border border-zinc-700/40 bg-zinc-800/30 p-1.5">
@@ -435,58 +641,68 @@ function DailySchedulePanel({ items }: { items: TodoItem[] }) {
         </div>
       )}
 
-      {/* Hourly rows – scrollable, defaults to 8 am */}
-      <div ref={scrollRef} className="relative overflow-y-auto space-y-px" style={{ maxHeight: "14rem" }}>
-        {HOURS.map(h => {
-          const hh         = String(h).padStart(2, "0");
-          const slotItems  = timedItems.filter(i => i.time!.startsWith(hh + ":"));
-          const isPast     = h < nowHour;
-          const isCurrent  = h === nowHour;
-          const isWorkHour = h >= 8 && h <= 17;
-          const label      = `${h % 12 === 0 ? 12 : h % 12}${h < 12 ? "a" : "p"}`;
+      {/* Pixel-grid time column */}
+      <div ref={scrollRef} className="overflow-y-auto" style={{ maxHeight: "14rem" }}>
+        <div className="relative" style={{ height: totalHeight }}>
 
-          return (
-            <div
-              key={h}
-              ref={h === 8 ? workStartRef : undefined}
-              className={`flex min-h-[1.75rem] items-start gap-1.5 rounded-sm px-0.5 ${
-                isPast ? "opacity-40" : ""
-              } ${isWorkHour ? "bg-zinc-700/25" : ""}`}
-            >
-              <span
-                className={`w-7 shrink-0 pt-0.5 text-right text-[9px] leading-none ${
-                  isCurrent ? "font-semibold text-indigo-400" : "text-zinc-500"
-                }`}
-              >
-                {label}
-              </span>
+          {/* Hour drop zones (behind everything) */}
+          {HOURS.map(h => <DroppableHour key={h} h={h} />)}
+
+          {/* Hour rules + labels */}
+          {HOURS.map(h => {
+            const isPast     = h < nowH;
+            const isCurrent  = h === nowH;
+            const isWorkHour = h >= 8 && h <= 17;
+            const label      = `${h % 12 === 0 ? 12 : h % 12}${h < 12 ? "a" : "p"}`;
+            const top        = (h - GRID_START) * PX_PER_HOUR;
+            return (
               <div
-                className={`flex flex-1 flex-col gap-0.5 border-l py-0.5 pl-1.5 ${
-                  isCurrent
-                    ? "border-indigo-500"
-                    : isWorkHour
-                    ? "border-zinc-600"
-                    : "border-zinc-700/40"
-                }`}
+                key={h}
+                style={{ position: "absolute", top, left: 0, right: 0, height: PX_PER_HOUR }}
+                className={`flex items-start pointer-events-none ${isPast ? "opacity-40" : ""} ${isWorkHour ? "bg-zinc-700/20" : ""}`}
               >
-                {slotItems.map(item => (
-                  <div
-                    key={item.id}
-                    className="rounded bg-indigo-500/25 px-1.5 py-px text-[10px] leading-tight text-indigo-200"
-                  >
-                    <span className="opacity-70">
-                      {formatTime12h(item.time!)}
-                      {item.endTime ? `–${formatTime12h(item.endTime)}` : ""}
-                      {" · "}
-                    </span>
-                    {item.text}
-                  </div>
-                ))}
-                {slotItems.length === 0 && <div className="h-3.5" />}
+                <span
+                  className={`w-9 shrink-0 pt-0.5 text-right text-[9px] leading-none pr-1.5 ${
+                    isCurrent ? "font-semibold text-indigo-400" : "text-zinc-600"
+                  }`}
+                >
+                  {label}
+                </span>
+                <div
+                  className={`flex-1 border-t ${
+                    isCurrent
+                      ? "border-indigo-500"
+                      : isWorkHour
+                      ? "border-zinc-700/60"
+                      : "border-zinc-800"
+                  }`}
+                />
               </div>
+            );
+          })}
+
+          {/* Current-time indicator */}
+          {nowH >= GRID_START && nowH < GRID_END && (
+            <div
+              style={{
+                position: "absolute",
+                top: ((nowH - GRID_START) + nowMin / 60) * PX_PER_HOUR,
+                left: 36,
+                right: 0,
+                zIndex: 4,
+              }}
+              className="flex items-center pointer-events-none"
+            >
+              <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-400" />
+              <div className="flex-1 h-px bg-red-400/60" />
             </div>
-          );
-        })}
+          )}
+
+          {/* Scheduled item blocks */}
+          {timedItems.map(item => (
+            <ScheduleBlock key={item.id} item={item} onUpdateItem={onUpdateItem} />
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -568,13 +784,11 @@ function ProtocolPicker({
   protocols,
   selectedLinks,
   onAdd,
-  onQuickAdd,
   onClose,
 }: {
   protocols: ProtocolEntry[];
   selectedLinks: LinkRef[];
   onAdd: (link: LinkRef) => void;
-  onQuickAdd: (entry: ProtocolEntry) => void;
   onClose: () => void;
 }) {
   const [q, setQ] = useState("");
@@ -591,11 +805,7 @@ function ProtocolPicker({
         <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
           <div>
             <p className="text-sm font-semibold text-emerald-300">Protocols</p>
-            <p className="text-[10px] text-zinc-500">
-              Click a protocol to link it, or{" "}
-              <span className="text-emerald-500">＋ Add to list</span>{" "}
-              to create a to-do directly.
-            </p>
+            <p className="text-[10px] text-zinc-500">Click a protocol to link it.</p>
           </div>
           <button onClick={onClose} className="text-sm text-zinc-500 hover:text-zinc-300">✕</button>
         </div>
@@ -637,14 +847,6 @@ function ProtocolPicker({
                       )}
                     </button>
 
-                    {/* Quick-add to todo list */}
-                    <button
-                      onClick={() => { onQuickAdd(p); onClose(); }}
-                      title="Add as new to-do item"
-                      className="shrink-0 rounded border border-emerald-600/40 bg-emerald-600/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 opacity-0 transition hover:bg-emerald-600/20 group-hover:opacity-100"
-                    >
-                      ＋ Add to list
-                    </button>
                   </div>
                 );
               })}
@@ -679,16 +881,404 @@ function InventoryPicker({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ─── Equipment booking modal ──────────────────────────────────────────────────
+
+function EquipmentPicker({
+  todoTitle = "",
+  userId,
+  userName,
+  onAdd,
+  onCreateItem,
+  onClose,
+}: {
+  todoTitle?: string;
+  userId: string;
+  userName: string;
+  /** Link-mode (from Edit modal): adds a link chip to an existing item */
+  onAdd?: (link: LinkRef) => void;
+  /** Standalone mode (from Feature column): creates a brand-new todo item */
+  onCreateItem?: (item: Omit<TodoItem, "id" | "done">) => void;
+  onClose: () => void;
+}) {
+  const [resourceId, setResourceId] = useState<EquipResourceId | "">("");
+  const [date,       setDate]       = useState(localDateStr());
+  const [startTime,  setStartTime]  = useState("09:00");
+  const [endTime,    setEndTime]    = useState("10:00");
+  const [conflictMsg, setConflictMsg] = useState<string | null>(null);
+
+  const allEquipResources = EQUIP_RESOURCE_GROUPS.flatMap(g => g.resources);
+  const selectedLabel = allEquipResources.find(r => r.id === resourceId)?.label ?? "";
+
+  function handleConfirm() {
+    if (!resourceId || !date || !startTime || !endTime) return;
+
+    // Auto-generate title from resource name + time if no todo title given
+    const autoTitle = todoTitle.trim() || `${selectedLabel} — ${formatTime12h(startTime)}`;
+
+    // Conflict check
+    try {
+      const raw = localStorage.getItem(EQUIP_EVENTS_KEY);
+      const existing: EquipEvent[] = raw ? JSON.parse(raw) : [];
+      const clash = existing.find(
+        e =>
+          e.resourceId === resourceId &&
+          e.date === date &&
+          e.startTime &&
+          e.endTime &&
+          e.startTime < endTime &&
+          e.endTime > startTime
+      );
+      if (clash) {
+        setConflictMsg(
+          `"${clash.title}" is already booked ${clash.startTime}–${clash.endTime}` +
+            (clash.userName ? ` by ${clash.userName}` : "") +
+            ". Please choose a different time or resource."
+        );
+        return;
+      }
+    } catch { /* ignore parse errors */ }
+
+    // Write booking to equipment localStorage (updates /equipment calendar)
+    try {
+      const raw = localStorage.getItem(EQUIP_EVENTS_KEY);
+      const existing: EquipEvent[] = raw ? JSON.parse(raw) : [];
+      existing.push({
+        id: crypto.randomUUID(),
+        resourceId,
+        date,
+        startTime,
+        endTime,
+        title: autoTitle,
+        userId,
+        userName,
+      });
+      localStorage.setItem(EQUIP_EVENTS_KEY, JSON.stringify(existing));
+    } catch { /* ignore write errors */ }
+
+    const link: LinkRef = {
+      type: "equipment",
+      label: `${selectedLabel} ${formatTime12h(startTime)}`,
+      href: "/equipment",
+    };
+
+    if (onCreateItem) {
+      // Standalone mode: create a new todo item with time set so it appears
+      // in both the ToDo list AND the Personal Schedule panel
+      onCreateItem({
+        text: autoTitle,
+        timeSensitive: true,
+        date,
+        time: startTime,
+        endTime,
+        links: [link],
+        carryover: false,
+      });
+    } else if (onAdd) {
+      // Link mode: just add a chip to the current item being edited
+      onAdd(link);
+    }
+    onClose();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="w-full max-w-md rounded-xl border border-purple-700/40 bg-zinc-950 shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold text-purple-300">Book Equipment</p>
+            <p className="text-[10px] text-zinc-500">
+              Select equipment, date &amp; time. Booking is saved to the equipment calendar.
+            </p>
+          </div>
+          <button onClick={onClose} className="text-sm text-zinc-500 hover:text-zinc-300">✕</button>
+        </div>
+
+        <div className="space-y-4 p-4">
+          {/* Resource selection */}
+          <div>
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
+              Select Equipment
+            </p>
+            {EQUIP_RESOURCE_GROUPS.map(group => (
+              <div key={group.id} className="mb-2">
+                <p className={`mb-1 text-[9px] font-bold uppercase tracking-wider ${group.chipText}`}>
+                  {group.label}
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {group.resources.map(r => (
+                    <button
+                      key={r.id}
+                      onClick={() => { setResourceId(r.id); setConflictMsg(null); }}
+                      className={`rounded border px-2 py-1 text-[10px] font-semibold transition ${
+                        resourceId === r.id
+                          ? `${group.chipBg} ${group.chipText} ${group.borderCls}`
+                          : "border-zinc-700 bg-zinc-800/60 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                      }`}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Date */}
+          <div>
+            <label className="mb-1 block text-[10px] text-zinc-500">Date</label>
+            <CalendarPicker value={date} onChange={v => { setDate(v); setConflictMsg(null); }} />
+          </div>
+
+          {/* Start / End time */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-[10px] text-zinc-500">Start</label>
+              <CustomTimePicker value={startTime} onChange={v => { setStartTime(v); setConflictMsg(null); }} />
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] text-zinc-500">End</label>
+              <CustomTimePicker value={endTime} onChange={v => { setEndTime(v); setConflictMsg(null); }} />
+            </div>
+          </div>
+
+          {/* Conflict error */}
+          {conflictMsg && (
+            <div className="rounded border border-red-500/40 bg-red-900/20 px-3 py-2 text-[11px] text-red-300">
+              ⚠ {conflictMsg}
+            </div>
+          )}
+
+          {/* Confirm button — appears only once a resource is selected */}
+          {resourceId && (
+            <button
+              onClick={handleConfirm}
+              className="w-full rounded bg-purple-700 py-2 text-xs font-semibold text-white transition hover:bg-purple-600"
+            >
+              Confirm Booking
+              <span className="ml-1.5 opacity-70 text-[10px]">({selectedLabel})</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Edit item modal ──────────────────────────────────────────────────────────
+
+function EditItemModal({
+  item,
+  protocolEntries,
+  userId,
+  userName,
+  onSave,
+  onClose,
+}: {
+  item: TodoItem;
+  protocolEntries: ProtocolEntry[];
+  userId: string;
+  userName: string;
+  onSave: (id: string, updates: Partial<TodoItem>) => void;
+  onClose: () => void;
+}) {
+  const [text,          setText]          = useState(item.text);
+  const [notes,         setNotes]         = useState(item.notes ?? "");
+  const [timeSensitive, setTimeSensitive] = useState(item.timeSensitive);
+  const [date,          setDate]          = useState(item.date ?? "");
+  const [time,          setTime]          = useState(item.time ?? "");
+  const [endTime,       setEndTime]       = useState(item.endTime ?? "");
+  const [showEndTime,   setShowEndTime]   = useState(!!item.endTime);
+  const [links,         setLinks]         = useState<LinkRef[]>(item.links);
+  const [showProtoPicker, setShowProtoPicker] = useState(false);
+  const [showInvPicker,   setShowInvPicker]   = useState(false);
+  const [showEquipPicker, setShowEquipPicker] = useState(false);
+
+  function handleSave() {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    onSave(item.id, {
+      text: trimmed,
+      notes: notes.trim() || undefined,
+      timeSensitive,
+      date:    timeSensitive ? (date || localDateStr()) : undefined,
+      time:    timeSensitive && time ? time : undefined,
+      endTime: timeSensitive && time && showEndTime && endTime ? endTime : undefined,
+      links,
+    });
+    onClose();
+  }
+
+  return (
+    <>
+      {showProtoPicker && (
+        <ProtocolPicker
+          protocols={protocolEntries}
+          selectedLinks={links}
+          onAdd={link => {
+            setLinks(s => [...s, link]);
+            if (!text.trim() && link.type === "protocol") setText(firstFourWords(link.label));
+          }}
+          onClose={() => setShowProtoPicker(false)}
+        />
+      )}
+      {showInvPicker && <InventoryPicker onClose={() => setShowInvPicker(false)} />}
+      {showEquipPicker && (
+        <EquipmentPicker
+          todoTitle={text.trim()}
+          userId={userId}
+          userName={userName}
+          onAdd={link => setLinks(s => [...s, link])}
+          onClose={() => setShowEquipPicker(false)}
+        />
+      )}
+
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+        onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
+      >
+        <div className="w-full max-w-sm rounded-xl border border-indigo-700/40 bg-zinc-950 shadow-2xl">
+          <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+            <p className="text-sm font-semibold text-indigo-300">Edit Task</p>
+            <button onClick={onClose} className="text-sm text-zinc-500 hover:text-zinc-300">✕</button>
+          </div>
+
+          <div className="flex flex-col gap-3 p-4">
+            {/* Title */}
+            <textarea
+              autoFocus
+              value={text}
+              onChange={e => setText(e.target.value)}
+              placeholder="Task title"
+              rows={2}
+              className="w-full resize-none rounded border border-zinc-700 bg-zinc-800/80 px-2.5 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
+            />
+
+            {/* Notes */}
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Notes (optional)…"
+              rows={2}
+              className="w-full resize-none rounded border border-zinc-700 bg-zinc-800/80 px-2.5 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
+            />
+
+            {/* Time sensitive */}
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={timeSensitive}
+                onChange={e => {
+                  setTimeSensitive(e.target.checked);
+                  if (e.target.checked) {
+                    if (!date) setDate(localDateStr());
+                    if (!time) setTime("12:00");
+                  } else {
+                    setDate(""); setTime(""); setEndTime(""); setShowEndTime(false);
+                  }
+                }}
+                className="h-3.5 w-3.5 accent-indigo-500"
+              />
+              <span className="text-[10px] text-zinc-400">Time sensitive?</span>
+            </label>
+
+            {timeSensitive && (
+              <div className="space-y-2 rounded border border-zinc-700/50 bg-zinc-800/40 p-2">
+                <div>
+                  <label className="mb-1 block text-[10px] text-zinc-500">Date</label>
+                  <CalendarPicker value={date} onChange={setDate} />
+                </div>
+                <div>
+                  <div className="mb-1 flex items-center justify-between">
+                    <label className="text-[10px] text-zinc-500">
+                      Time <span className="text-zinc-600">(optional)</span>
+                    </label>
+                    {time && (
+                      <button
+                        type="button"
+                        onClick={() => { setShowEndTime(s => { if (s) setEndTime(""); return !s; }); }}
+                        className={`text-[9px] font-semibold transition ${showEndTime ? "text-indigo-400 hover:text-zinc-400" : "text-zinc-600 hover:text-indigo-400"}`}
+                      >
+                        {showEndTime ? "− end" : "+ end"}
+                      </button>
+                    )}
+                  </div>
+                  <CustomTimePicker value={time} onChange={setTime} />
+                </div>
+                {showEndTime && (
+                  <div>
+                    <label className="mb-1 block text-[10px] text-zinc-500">End time</label>
+                    <CustomTimePicker value={endTime} onChange={setEndTime} />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Link to */}
+            <div>
+              <p className="mb-1.5 text-[10px] text-zinc-500">Link to…</p>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex gap-1.5">
+                  <button onClick={() => setShowProtoPicker(true)} className="flex-1 rounded border border-emerald-500/40 bg-emerald-500/10 py-1.5 text-[10px] font-semibold text-emerald-300 transition hover:bg-emerald-500/20">
+                    Protocols
+                  </button>
+                  <button onClick={() => setShowInvPicker(true)} className="flex-1 rounded border border-blue-500/40 bg-blue-500/10 py-1.5 text-[10px] font-semibold text-blue-300 transition hover:bg-blue-500/20">
+                    Inventory
+                  </button>
+                </div>
+                <button onClick={() => setShowEquipPicker(true)} className="w-full rounded border border-purple-500/40 bg-purple-500/10 py-1.5 text-[10px] font-semibold text-purple-300 transition hover:bg-purple-500/20">
+                  Equipment
+                </button>
+              </div>
+            </div>
+
+            {/* Link chips */}
+            {links.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {links.map((l, i) => (
+                  <span key={i} className={`flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] ${LINK_STYLE[l.type]}`}>
+                    {l.label}
+                    <button onClick={() => setLinks(s => s.filter((_, j) => j !== i))} className="opacity-60 hover:opacity-100">✕</button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-2 pt-1">
+              <button onClick={onClose} className="flex-1 rounded border border-zinc-700 py-2 text-xs text-zinc-400 transition hover:text-zinc-200">
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={!text.trim()}
+                className="flex-1 rounded bg-indigo-600 py-2 text-xs font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-30"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── Sortable todo card ───────────────────────────────────────────────────────
 
 function SortableItem({
   item,
   onToggle,
   onRemove,
+  onEdit,
 }: {
   item: TodoItem;
   onToggle: (id: string) => void;
   onRemove: (id: string) => void;
+  onEdit: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [pendingRemove, setPendingRemove] = useState(false);
@@ -697,6 +1287,7 @@ function SortableItem({
 
   const today      = localDateStr();
   const hasDetails = !!(item.date || item.links.length > 0 || item.notes);
+  const isCarryover = !item.done && !!item.carryover;
 
   return (
     <div
@@ -707,7 +1298,11 @@ function SortableItem({
         opacity: isDragging ? 0.4 : 1,
         zIndex: isDragging ? 50 : "auto",
       }}
-      className="group flex items-start gap-2 rounded-lg border border-zinc-700/70 bg-zinc-800/50 p-3 shadow-sm transition-colors hover:border-zinc-600"
+      className={`group flex items-start gap-2 rounded-lg border p-3 shadow-sm transition-colors ${
+        isCarryover
+          ? "border-red-500/30 bg-red-500/5 hover:border-red-500/40"
+          : "border-zinc-700/70 bg-zinc-800/50 hover:border-zinc-600"
+      }`}
     >
       {/* Drag handle */}
       <button
@@ -743,6 +1338,9 @@ function SortableItem({
           <p className={`text-sm leading-snug ${item.done ? "text-zinc-600 line-through" : "text-zinc-100"}`}>
             {item.text}
           </p>
+          {isCarryover && (
+            <span className="shrink-0 text-[9px] text-red-400/70 font-medium">carried over</span>
+          )}
           {/* Subtle hint dot when details exist but panel is collapsed */}
           {hasDetails && (
             <span className={`shrink-0 text-[10px] text-zinc-700 transition-opacity ${
@@ -804,7 +1402,7 @@ function SortableItem({
         )}
       </div>
 
-      {/* Remove — two-step inline confirmation */}
+      {/* Edit + Remove — two-step confirmation for remove */}
       {pendingRemove ? (
         <div className="mt-0.5 flex shrink-0 items-center gap-1.5">
           <span className="text-[10px] text-zinc-400">Remove?</span>
@@ -824,13 +1422,22 @@ function SortableItem({
           </button>
         </div>
       ) : (
-        <button
-          onClick={() => setPendingRemove(true)}
-          aria-label="Remove item"
-          className="mt-0.5 shrink-0 text-xs text-zinc-700 opacity-0 transition hover:text-red-400 group-hover:opacity-100"
-        >
-          ✕
-        </button>
+        <div className="mt-0.5 flex shrink-0 items-center gap-1.5 opacity-0 transition group-hover:opacity-100">
+          <button
+            onClick={e => { e.stopPropagation(); onEdit(item.id); }}
+            aria-label="Edit item"
+            className="text-xs text-zinc-600 transition hover:text-zinc-200"
+          >
+            ✏
+          </button>
+          <button
+            onClick={() => setPendingRemove(true)}
+            aria-label="Remove item"
+            className="text-xs text-zinc-700 transition hover:text-red-400"
+          >
+            ✕
+          </button>
+        </div>
       )}
     </div>
   );
@@ -859,7 +1466,10 @@ export default function DashboardPanel() {
   const [newLinks,        setNewLinks]        = useState<LinkRef[]>([]);
   const [showProtoPicker, setShowProtoPicker] = useState(false);
   const [showInvPicker,   setShowInvPicker]   = useState(false);
+  const [showEquipPicker, setShowEquipPicker] = useState(false);
+  const [showFeatureEquipPicker, setShowFeatureEquipPicker] = useState(false);
   const [protocolEntries, setProtocolEntries] = useState<ProtocolEntry[]>([]);
+  const [editingItemId,   setEditingItemId]   = useState<string | null>(null);
 
   // Stay in sync with AppTopNav user selection
   useEffect(() => {
@@ -880,18 +1490,45 @@ export default function DashboardPanel() {
   }, []);
 
   // Persist todo list per user (migrate old items that lack timeSensitive).
-  // isLoadingRef is set true here so the save effect below skips its run on
-  // the same render cycle — preventing items=[] from overwriting stored data
-  // before the setItems call has had a chance to re-render with loaded data.
+  // Also runs nightly cleanup: removes done items and flags remaining as carryover
+  // if the stored last-cleared date is before today.
   useEffect(() => {
     isLoadingRef.current = true;
+    const CLEARED_KEY = `eln-todo-lastCleared-${userId}`;
+    const today = localDateStr();
     try {
       const raw = localStorage.getItem(`eln-todo-${userId}`);
-      const parsed: TodoItem[] = raw ? JSON.parse(raw) : [];
-      setItems(parsed.map(item => ({ ...item, timeSensitive: item.timeSensitive ?? false })));
+      let parsed: TodoItem[] = raw ? JSON.parse(raw) : [];
+      // Migrate legacy items
+      parsed = parsed.map(item => ({ ...item, timeSensitive: item.timeSensitive ?? false }));
+      // Nightly cleanup: if last-cleared date is before today, remove done + flag remaining
+      const lastCleared = localStorage.getItem(CLEARED_KEY);
+      if (lastCleared && lastCleared < today) {
+        parsed = parsed.filter(x => !x.done).map(x => ({ ...x, carryover: true }));
+        localStorage.setItem(CLEARED_KEY, today);
+      } else if (!lastCleared) {
+        localStorage.setItem(CLEARED_KEY, today);
+      }
+      setItems(parsed);
     } catch {
       setItems([]);
     }
+  }, [userId]);
+
+  // Schedule midnight cleanup to fire while the page is open
+  useEffect(() => {
+    const CLEARED_KEY = `eln-todo-lastCleared-${userId}`;
+    const now    = new Date();
+    const target = new Date();
+    target.setHours(23, 59, 0, 0);
+    const msUntil = target.getTime() - now.getTime();
+    if (msUntil <= 0) return;
+    const tid = setTimeout(() => {
+      const today = localDateStr();
+      setItems(prev => prev.filter(x => !x.done).map(x => ({ ...x, carryover: true })));
+      localStorage.setItem(CLEARED_KEY, today);
+    }, msUntil);
+    return () => clearTimeout(tid);
   }, [userId]);
 
   useEffect(() => {
@@ -911,19 +1548,45 @@ export default function DashboardPanel() {
   }, []);
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   function handleDragEnd(e: DragEndEvent) {
     const { active, over } = e;
-    if (over && active.id !== over.id) {
+    if (!over) return;
+
+    // Drop onto a schedule hour slot → schedule the item
+    if (String(over.id).startsWith("hour-")) {
+      const h = parseInt(String(over.id).split("-")[1]);
+      setItems(prev => prev.map(item =>
+        String(item.id) === String(active.id)
+          ? {
+              ...item,
+              timeSensitive: true,
+              date: localDateStr(),
+              time: `${String(h).padStart(2, "0")}:00`,
+              endTime: `${String(Math.min(h + 1, GRID_END)).padStart(2, "0")}:00`,
+              carryover: false,
+            }
+          : item
+      ));
+      return;
+    }
+
+    // Reorder within todo list
+    if (active.id !== over.id) {
       setItems(prev => {
         const oi = prev.findIndex(x => x.id === active.id);
         const ni = prev.findIndex(x => x.id === over.id);
+        if (oi === -1 || ni === -1) return prev;
         return arrayMove(prev, oi, ni);
       });
     }
+  }
+
+  function updateItem(id: string, updates: Partial<TodoItem>) {
+    setItems(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item));
   }
 
   function addItem() {
@@ -987,8 +1650,10 @@ export default function DashboardPanel() {
   const done          = items.filter(x =>  x.done);
   const currentUser   = ELN_USERS.find(u => u.id === userId) ?? ELN_USERS[0];
 
+  const editingItem = editingItemId ? items.find(i => i.id === editingItemId) : null;
+
   return (
-    <>
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       {showProtoPicker && (
         <ProtocolPicker
           protocols={protocolEntries}
@@ -1000,22 +1665,43 @@ export default function DashboardPanel() {
               setNewText(firstFourWords(link.label));
             }
           }}
-          onQuickAdd={entry => {
-            setItems(prev => [
-              {
-                id: crypto.randomUUID(),
-                text: firstFourWords(entry.title),
-                done: false,
-                timeSensitive: false,
-                links: [{ type: "protocol", label: entry.title, href: `/protocols?open=${entry.id}` }],
-              },
-              ...prev,
-            ]);
-          }}
           onClose={() => setShowProtoPicker(false)}
         />
       )}
       {showInvPicker && <InventoryPicker onClose={() => setShowInvPicker(false)} />}
+      {showEquipPicker && (
+        <EquipmentPicker
+          todoTitle={newText.trim()}
+          userId={userId}
+          userName={currentUser.name}
+          onAdd={link => setNewLinks(s => [...s, link])}
+          onClose={() => setShowEquipPicker(false)}
+        />
+      )}
+      {showFeatureEquipPicker && (
+        <EquipmentPicker
+          userId={userId}
+          userName={currentUser.name}
+          onCreateItem={newItem =>
+            setItems(prev => [{
+              id: crypto.randomUUID(),
+              done: false,
+              ...newItem,
+            }, ...prev])
+          }
+          onClose={() => setShowFeatureEquipPicker(false)}
+        />
+      )}
+      {editingItem && (
+        <EditItemModal
+          item={editingItem}
+          protocolEntries={protocolEntries}
+          userId={userId}
+          userName={currentUser.name}
+          onSave={updateItem}
+          onClose={() => setEditingItemId(null)}
+        />
+      )}
 
       <section className="overflow-hidden rounded-xl border border-indigo-500/30 bg-zinc-900">
 
@@ -1093,15 +1779,11 @@ export default function DashboardPanel() {
           </p>
         </div>
 
-        {/* Body: [Schedule LEFT] | [Todo MIDDLE] | [Form RIGHT] */}
-        <div className="flex min-h-[20rem]">
+        {/* Body: [Schedule LEFT] | [Todo MIDDLE] | [Feature] | [Form RIGHT] */}
+        <div className="flex h-80 overflow-hidden">
 
           {/* ── Schedule panel ── */}
-          <div
-            className={`overflow-y-auto border-r border-zinc-800 p-3 ${
-              scheduleView === "weekly" ? "flex-[2]" : "flex-1"
-            }`}
-          >
+          <div className="w-2/5 shrink-0 overflow-y-auto border-r border-zinc-800 p-3">
             <p className="mb-2 text-[9px] font-semibold uppercase tracking-widest text-zinc-600">
               {scheduleView === "daily"
                 ? new Date().toLocaleDateString("en-US", {
@@ -1116,7 +1798,7 @@ export default function DashboardPanel() {
                   })()}
             </p>
             {scheduleView === "daily" ? (
-              <DailySchedulePanel items={items} />
+              <DailySchedulePanel items={items} onUpdateItem={updateItem} />
             ) : (
               <WeeklySchedulePanel items={items} weekOffset={weekOffset} showWeekends={showWeekends} />
             )}
@@ -1129,44 +1811,65 @@ export default function DashboardPanel() {
                 <p className="text-sm text-zinc-700">No items — add one on the right.</p>
               </div>
             ) : (
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
+              <SortableContext
+                items={items.map(i => i.id)}
+                strategy={verticalListSortingStrategy}
               >
-                <SortableContext
-                  items={items.map(i => i.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="space-y-2">
-                    {incomplete.map(item => (
+                <div className="space-y-2">
+                  {incomplete.map(item => (
+                    <SortableItem
+                      key={item.id}
+                      item={item}
+                      onToggle={toggle}
+                      onRemove={remove}
+                      onEdit={setEditingItemId}
+                    />
+                  ))}
+                </div>
+                {done.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-700">
+                      Completed ({done.length})
+                    </p>
+                    {done.map(item => (
                       <SortableItem
                         key={item.id}
                         item={item}
                         onToggle={toggle}
                         onRemove={remove}
+                        onEdit={setEditingItemId}
                       />
                     ))}
                   </div>
-                  {done.length > 0 && (
-                    <div className="mt-4 space-y-2">
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-700">
-                        Completed ({done.length})
-                      </p>
-                      {done.map(item => (
-                        <SortableItem
-                          key={item.id}
-                          item={item}
-                          onToggle={toggle}
-                          onRemove={remove}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </SortableContext>
-              </DndContext>
+                )}
+              </SortableContext>
             )}
           </div>
+
+          {/* ── Feature column ── */}
+          <aside className="flex w-36 shrink-0 flex-col gap-2 border-l border-zinc-800 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+              Feature
+            </p>
+
+            {/* Active Runs */}
+            <a
+              href="/runs"
+              className="flex items-center gap-1.5 rounded border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-2 text-[11px] font-semibold text-emerald-300 transition hover:bg-emerald-500/20"
+            >
+              <span>▶</span>
+              <span>Active Runs</span>
+            </a>
+
+            {/* Equipment booking */}
+            <button
+              onClick={() => setShowFeatureEquipPicker(true)}
+              className="flex items-center gap-1.5 rounded border border-purple-500/40 bg-purple-500/10 px-2.5 py-2 text-[11px] font-semibold text-purple-300 transition hover:bg-purple-500/20"
+            >
+              <span>🔬</span>
+              <span>Equipment</span>
+            </button>
+          </aside>
 
           {/* ── Add to List form ── */}
           <aside className="flex w-56 shrink-0 flex-col gap-3 border-l border-zinc-800 p-4">
@@ -1308,6 +2011,6 @@ export default function DashboardPanel() {
           </aside>
         </div>
       </section>
-    </>
+    </DndContext>
   );
 }

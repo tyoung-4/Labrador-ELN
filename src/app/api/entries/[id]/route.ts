@@ -206,13 +206,28 @@ export async function POST(request: Request, context: RouteContext) {
     const source = await prisma.entry.findUnique({ where: { id } });
     if (!source) return new NextResponse(null, { status: 404 });
 
+    // Merge versioning metadata into cloned typedData
+    const sourceTypedData =
+      source.typedData && typeof source.typedData === "object"
+        ? (source.typedData as { typed?: Record<string, string>; custom?: unknown[] })
+        : { typed: {}, custom: [] };
+    const cloneTypedData = {
+      ...sourceTypedData,
+      typed: {
+        ...(sourceTypedData.typed ?? {}),
+        _semVer: "1.0",
+        _parentId: source.id,
+        _parentTitle: source.title,
+      },
+    };
+
     const cloned = await prisma.entry.create({
       data: {
         title: `${source.title} (Clone)`,
         description: source.description,
         technique: source.technique,
         entryType: source.entryType,
-        typedData: (source.typedData as object) ?? {},
+        typedData: cloneTypedData,
         body: source.body,
         authorId: actor.id,
         version: 1,

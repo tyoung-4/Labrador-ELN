@@ -92,8 +92,8 @@ const ALL_RESOURCES: (ResourceMeta & { group: ResourceGroup })[] =
 
 const HOURS = Array.from({ length: 14 }, (_, i) => i + 7); // 7 a.m.–8 p.m.
 
-const EVENTS_KEY   = "eln-schedule-events";
-const ENABLED_KEY  = "eln-schedule-enabled";
+export const EVENTS_KEY   = "eln-schedule-events";
+export const ENABLED_KEY  = "eln-schedule-enabled";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -144,7 +144,7 @@ function groupFor(id: ResourceId): ResourceGroup {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-export default function SchedulePage() {
+export default function EquipmentPage() {
   // User
   const [userId,   setUserId]   = useState(ELN_USERS[0].id);
   const [userName, setUserName] = useState(ELN_USERS[0].name);
@@ -171,14 +171,14 @@ export default function SchedulePage() {
   const [monthOffset, setMonthOffset] = useState(0);
   const [dailyDate,   setDailyDate]   = useState(localDateStr());
 
-  // Enabled resources — all on by default; sessionStorage restores user's toggles client-side
+  // Enabled resources — all on by default; localStorage persists across pages for shared state
   const [enabled, setEnabled] = useState<Set<ResourceId>>(
     () => new Set(ALL_RESOURCES.map(r => r.id))
   );
 
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem(ENABLED_KEY);
+      const raw = localStorage.getItem(ENABLED_KEY);
       if (raw) setEnabled(new Set(JSON.parse(raw) as ResourceId[]));
     } catch { /* ignore */ }
   }, []);
@@ -215,8 +215,9 @@ export default function SchedulePage() {
     localStorage.setItem(EVENTS_KEY, JSON.stringify(events));
   }, [events]);
 
+  // Persist enabled state to localStorage so home page mirror can read it
   useEffect(() => {
-    sessionStorage.setItem(ENABLED_KEY, JSON.stringify([...enabled]));
+    localStorage.setItem(ENABLED_KEY, JSON.stringify([...enabled]));
   }, [enabled]);
 
   // Booking modal
@@ -256,11 +257,13 @@ export default function SchedulePage() {
   }
 
   function saveBooking() {
-    if (!draft.title.trim() || !draft.resourceId || !draft.date) return;
+    if (!draft.resourceId || !draft.date) return;
+    const autoTitle = draft.title.trim() ||
+      (ALL_RESOURCES.find(r => r.id === draft.resourceId)?.label ?? draft.resourceId);
     if (editEventId) {
       setEvents(prev => prev.map(e =>
         e.id === editEventId
-          ? { ...e, resourceId: draft.resourceId as ResourceId, date: draft.date, startTime: draft.startTime, endTime: draft.endTime, title: draft.title.trim(), userId, userName }
+          ? { ...e, resourceId: draft.resourceId as ResourceId, date: draft.date, startTime: draft.startTime, endTime: draft.endTime, title: autoTitle, userId, userName }
           : e
       ));
     } else {
@@ -270,7 +273,7 @@ export default function SchedulePage() {
         date: draft.date,
         startTime: draft.startTime || undefined,
         endTime: draft.endTime || undefined,
-        title: draft.title.trim(),
+        title: autoTitle,
         userId,
         userName,
       }]);
@@ -486,14 +489,16 @@ export default function SchedulePage() {
               {editEventId ? "Edit Booking" : "New Booking"}
             </h3>
             <div className="space-y-3">
-              {/* Title */}
+              {/* Title (optional) */}
               <div>
-                <label className="mb-1 block text-xs font-medium text-zinc-400">Title</label>
+                <label className="mb-1 block text-xs font-medium text-zinc-400">
+                  Title <span className="text-zinc-600">(optional)</span>
+                </label>
                 <input
                   autoFocus
                   value={draft.title}
                   onChange={e => setDraft(d => ({ ...d, title: e.target.value }))}
-                  placeholder="e.g. Western blot run"
+                  placeholder="Auto-filled from resource name if blank"
                   className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
                 />
               </div>
@@ -569,7 +574,7 @@ export default function SchedulePage() {
                 </button>
                 <button
                   onClick={saveBooking}
-                  disabled={!draft.title.trim() || !draft.resourceId || !draft.date}
+                  disabled={!draft.resourceId || !draft.date}
                   className="rounded bg-indigo-600 px-4 py-2 text-xs text-white hover:bg-indigo-500 disabled:opacity-50"
                 >
                   {editEventId ? "Update" : "Book"}

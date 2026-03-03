@@ -75,7 +75,7 @@ export default function MiniCalendar() {
           ) : (
             <Link
               key={day}
-              href={`/schedule?date=${fmt(day)}`}
+              href={`/equipment?date=${fmt(day)}`}
               className={`rounded py-1 text-xs transition ${
                 isToday(day)
                   ? "bg-emerald-600 font-semibold text-white"
@@ -91,10 +91,10 @@ export default function MiniCalendar() {
       {/* Footer link */}
       <div className="mt-3 text-right">
         <Link
-          href="/schedule"
+          href="/equipment"
           className="text-xs text-zinc-600 underline underline-offset-2 transition hover:text-zinc-400"
         >
-          View full schedule →
+          View equipment →
         </Link>
       </div>
     </div>
