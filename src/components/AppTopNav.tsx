@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import GlobalClock from "./GlobalClock";
 
 const NAV_ITEMS = [
   { href: "/",              label: "Home",          exact: true,  activeClass: "bg-sky-500 text-white"     },
@@ -67,8 +68,9 @@ export default function AppTopNav() {
         );
       })}
 
-      {/* User selector — pushed to far right */}
+      {/* Clock + user selector — pushed to far right */}
       <div className="ml-auto flex items-center gap-2">
+        <GlobalClock />
         <span className="text-xs text-zinc-400">
           <span className="font-semibold text-zinc-100">{currentUser.name}</span>
         </span>

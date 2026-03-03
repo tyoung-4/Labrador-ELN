@@ -478,6 +478,47 @@ function CalendarPicker({
   );
 }
 
+// ─── Concurrent item layout ────────────────────────────────────────────────────
+/**
+ * Greedy interval-coloring: assigns each timed item a `col` (0-based) and
+ * `totalCols` so that overlapping items render side-by-side.
+ */
+function layoutTimedItems(
+  items: TodoItem[]
+): { item: TodoItem; col: number; totalCols: number }[] {
+  const sorted = [...items].sort(
+    (a, b) => timeToMinutes(a.time!) - timeToMinutes(b.time!)
+  );
+
+  const colEnds: number[] = []; // end-time of the last item in each column
+  const assigned = sorted.map(item => {
+    const start = timeToMinutes(item.time!);
+    const end   = item.endTime ? timeToMinutes(item.endTime) : start + 60;
+    let col     = colEnds.findIndex(e => e <= start);
+    if (col === -1) { col = colEnds.length; colEnds.push(end); }
+    else            { colEnds[col] = end; }
+    return { item, col, totalCols: 0 };
+  });
+
+  // totalCols = max(col+1) among all items that overlap this one
+  for (let i = 0; i < assigned.length; i++) {
+    const si    = timeToMinutes(assigned[i].item.time!);
+    const eiRaw = assigned[i].item.endTime;
+    const ei    = eiRaw ? timeToMinutes(eiRaw) : si + 60;
+    let max     = assigned[i].col + 1;
+    for (let j = 0; j < assigned.length; j++) {
+      if (i === j) continue;
+      const sj    = timeToMinutes(assigned[j].item.time!);
+      const ejRaw = assigned[j].item.endTime;
+      const ej    = ejRaw ? timeToMinutes(ejRaw) : sj + 60;
+      if (si < ej && ei > sj) max = Math.max(max, assigned[j].col + 1);
+    }
+    assigned[i].totalCols = max;
+  }
+
+  return assigned;
+}
+
 // ─── Daily schedule — pixel-grid with drag-drop & resize ─────────────────────
 
 /** One droppable zone per hour — accepts todo items dragged from the list */
@@ -503,14 +544,29 @@ function DroppableHour({ h }: { h: number }) {
 function ScheduleBlock({
   item,
   onUpdateItem,
+  col = 0,
+  totalCols = 1,
 }: {
   item: TodoItem;
   onUpdateItem: (id: string, updates: Partial<TodoItem>) => void;
+  col?: number;
+  totalCols?: number;
 }) {
   const startMins = timeToMinutes(item.time!);
   const endMins   = item.endTime ? timeToMinutes(item.endTime) : startMins + 60;
   const top       = ((startMins - GRID_START * 60) / 60) * PX_PER_HOUR;
   const height    = Math.max(((endMins - startMins) / 60) * PX_PER_HOUR, 20);
+
+  // Concurrent column layout: split the usable width (left:38 to right:4) into totalCols lanes
+  const LABEL_W  = 38;  // px — time label column
+  const PAD_R    = 4;   // px — right padding
+  const colStyle = totalCols > 1
+    ? {
+        left:  `calc(${LABEL_W}px + ${col} * (100% - ${LABEL_W}px - ${PAD_R}px) / ${totalCols})`,
+        width: `calc((100% - ${LABEL_W}px - ${PAD_R}px) / ${totalCols})`,
+        right: "auto" as const,
+      }
+    : { left: LABEL_W, right: PAD_R };
 
   // Ref-based drag state for resize handles (native mousemove, not dnd-kit)
   const dragRef = useRef<{
@@ -564,7 +620,7 @@ function ScheduleBlock({
 
   return (
     <div
-      style={{ position: "absolute", top, height, left: 38, right: 4, zIndex: 3 }}
+      style={{ position: "absolute", top, height, zIndex: 3, ...colStyle }}
       className="group/block rounded border border-indigo-500/50 bg-indigo-500/25 overflow-hidden select-none"
     >
       {/* Top resize handle */}
@@ -613,13 +669,16 @@ function DailySchedulePanel({
   const nowMin      = now.getMinutes();
   const scrollRef   = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to 8 AM on mount
+  // Auto-scroll to show a 4-hour window centred on the current time on every mount
   useEffect(() => {
     requestAnimationFrame(() => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = (8 - GRID_START) * PX_PER_HOUR - 4;
-      }
+      if (!scrollRef.current) return;
+      const visiblePx   = scrollRef.current.clientHeight || 224; // 14rem fallback
+      const nowOffsetPx = ((nowH - GRID_START) + nowMin / 60) * PX_PER_HOUR;
+      const target      = nowOffsetPx - visiblePx / 2 + PX_PER_HOUR / 2;
+      scrollRef.current.scrollTop = Math.max(0, target);
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const totalHeight = GRID_HOURS * PX_PER_HOUR;
@@ -698,9 +757,15 @@ function DailySchedulePanel({
             </div>
           )}
 
-          {/* Scheduled item blocks */}
-          {timedItems.map(item => (
-            <ScheduleBlock key={item.id} item={item} onUpdateItem={onUpdateItem} />
+          {/* Scheduled item blocks — concurrent items rendered side-by-side */}
+          {layoutTimedItems(timedItems).map(({ item, col, totalCols }) => (
+            <ScheduleBlock
+              key={item.id}
+              item={item}
+              onUpdateItem={onUpdateItem}
+              col={col}
+              totalCols={totalCols}
+            />
           ))}
         </div>
       </div>
@@ -726,7 +791,7 @@ function WeeklySchedulePanel({
 
   return (
     <div
-      className="grid gap-0.5"
+      className="grid h-full gap-0.5"
       style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
     >
       {weekDates.map(date => {
@@ -737,7 +802,7 @@ function WeeklySchedulePanel({
         return (
           <div
             key={ds}
-            className={`min-h-[6rem] rounded border p-1 ${
+            className={`h-full min-h-[6rem] rounded border p-1 ${
               isToday
                 ? "border-indigo-500/40 bg-indigo-500/10"
                 : "border-zinc-700/40 bg-zinc-800/20"
@@ -952,7 +1017,12 @@ function EquipmentPicker({
         userId,
         userName,
       });
-      localStorage.setItem(EQUIP_EVENTS_KEY, JSON.stringify(existing));
+      const newValue = JSON.stringify(existing);
+      localStorage.setItem(EQUIP_EVENTS_KEY, newValue);
+      // Dispatch synthetic event so same-tab listeners (e.g. /equipment) pick it up
+      window.dispatchEvent(
+        new StorageEvent("storage", { key: EQUIP_EVENTS_KEY, newValue })
+      );
     } catch { /* ignore write errors */ }
 
     const link: LinkRef = {
@@ -1453,7 +1523,9 @@ export default function DashboardPanel() {
   const isLoadingRef = useRef(true);
   const [scheduleView, setScheduleView] = useState<ScheduleView>("daily");
   const [weekOffset,   setWeekOffset]   = useState(0);
-  const [showWeekends, setShowWeekends] = useState(true);
+  const [showWeekends, setShowWeekends] = useState(() => {
+    try { return localStorage.getItem("eln-showWeekends") === "true"; } catch { return false; }
+  });
 
   // Form state
   const [newText,         setNewText]         = useState("");
@@ -1539,6 +1611,11 @@ export default function DashboardPanel() {
     localStorage.setItem(`eln-todo-${userId}`, JSON.stringify(items));
   }, [items, userId]);
 
+  // Persist showWeekends toggle
+  useEffect(() => {
+    try { localStorage.setItem("eln-showWeekends", String(showWeekends)); } catch {}
+  }, [showWeekends]);
+
   // Fetch protocols for picker
   useEffect(() => {
     fetch("/api/entries")
@@ -1559,14 +1636,37 @@ export default function DashboardPanel() {
     // Drop onto a schedule hour slot → schedule the item
     if (String(over.id).startsWith("hour-")) {
       const h = parseInt(String(over.id).split("-")[1]);
+      const today       = localDateStr();
+      const slotStart   = `${String(h).padStart(2, "0")}:00`;
+      const slotEnd     = `${String(Math.min(h + 1, GRID_END)).padStart(2, "0")}:00`;
+      const slotStartM  = timeToMinutes(slotStart);
+      const slotEndM    = timeToMinutes(slotEnd);
+
+      // Check for existing items already in this hour
+      const occupied = items.filter(item => {
+        if (String(item.id) === String(active.id)) return false;
+        if (!item.timeSensitive || item.date !== today || !item.time) return false;
+        const iStart = timeToMinutes(item.time);
+        const iEnd   = item.endTime ? timeToMinutes(item.endTime) : iStart + 60;
+        return iStart < slotEndM && iEnd > slotStartM;
+      });
+
+      if (occupied.length > 0) {
+        const names = occupied.map(i => `"${i.text}"`).join(", ");
+        const ok = window.confirm(
+          `You already have ${names} at this time. Schedule concurrently?`
+        );
+        if (!ok) return;
+      }
+
       setItems(prev => prev.map(item =>
         String(item.id) === String(active.id)
           ? {
               ...item,
               timeSensitive: true,
-              date: localDateStr(),
-              time: `${String(h).padStart(2, "0")}:00`,
-              endTime: `${String(Math.min(h + 1, GRID_END)).padStart(2, "0")}:00`,
+              date: today,
+              time: slotStart,
+              endTime: slotEnd,
               carryover: false,
             }
           : item
@@ -1828,9 +1928,17 @@ export default function DashboardPanel() {
                 </div>
                 {done.length > 0 && (
                   <div className="mt-4 space-y-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-700">
-                      Completed ({done.length})
-                    </p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-700">
+                        Completed ({done.length})
+                      </p>
+                      <button
+                        onClick={() => setItems(prev => prev.filter(i => !i.done))}
+                        className="text-[10px] text-zinc-600 underline underline-offset-2 hover:text-red-400 transition"
+                      >
+                        Clear completed
+                      </button>
+                    </div>
                     {done.map(item => (
                       <SortableItem
                         key={item.id}

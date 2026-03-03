@@ -209,9 +209,9 @@ export async function POST(request: Request, context: RouteContext) {
     // Merge versioning metadata into cloned typedData
     const sourceTypedData =
       source.typedData && typeof source.typedData === "object"
-        ? (source.typedData as { typed?: Record<string, string>; custom?: unknown[] })
-        : { typed: {}, custom: [] };
-    const cloneTypedData = {
+        ? (source.typedData as { typed?: Record<string, string>; custom?: string[] })
+        : { typed: {}, custom: [] as string[] };
+    const cloneTypedData: Record<string, unknown> = {
       ...sourceTypedData,
       typed: {
         ...(sourceTypedData.typed ?? {}),
@@ -227,7 +227,7 @@ export async function POST(request: Request, context: RouteContext) {
         description: source.description,
         technique: source.technique,
         entryType: source.entryType,
-        typedData: cloneTypedData,
+        typedData: cloneTypedData as never,
         body: source.body,
         authorId: actor.id,
         version: 1,

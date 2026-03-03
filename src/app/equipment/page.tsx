@@ -160,6 +160,10 @@ export default function EquipmentPage() {
         const u = ELN_USERS.find(u => u.id === e.newValue);
         if (u) { setUserId(u.id); setUserName(u.name); }
       }
+      // Pick up equipment bookings written by the Dashboard (same-tab synthetic events)
+      if (e.key === EVENTS_KEY) {
+        try { setEvents(e.newValue ? JSON.parse(e.newValue) : []); } catch {}
+      }
     }
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);

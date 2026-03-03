@@ -185,8 +185,12 @@ export default function EquipmentMirror() {
         <span className="text-[10px] font-medium text-zinc-400">{weekLabel}</span>
       </div>
 
-      {/* Compact read-only weekly grid */}
-      <div className="overflow-x-auto rounded border border-zinc-800">
+      {/* Compact read-only weekly grid — click anywhere to open /equipment */}
+      <Link
+        href="/equipment"
+        className="block overflow-x-auto rounded border border-zinc-800 transition hover:border-zinc-600 hover:ring-1 hover:ring-zinc-600/50"
+        title="Open Equipment Schedule"
+      >
         {enabledList.length === 0 ? (
           <div className="flex h-16 items-center justify-center">
             <p className="text-[10px] text-zinc-700">All calendars hidden in /equipment</p>
@@ -267,16 +271,13 @@ export default function EquipmentMirror() {
             </tbody>
           </table>
         )}
-      </div>
+      </Link>
 
-      {/* Footer link */}
+      {/* Footer label */}
       <div className="text-right">
-        <Link
-          href="/equipment"
-          className="text-[10px] text-zinc-600 underline underline-offset-2 transition hover:text-zinc-400"
-        >
-          View full schedule →
-        </Link>
+        <span className="text-[10px] text-zinc-600">
+          Click grid to open full schedule →
+        </span>
       </div>
     </div>
   );
