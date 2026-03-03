@@ -1,6 +1,6 @@
 import Link from "next/link";
 import AppTopNav from "@/components/AppTopNav";
-import EquipmentMirror from "@/components/EquipmentMirror";
+import EquipmentCalendar from "@/components/EquipmentCalendar";
 import DashboardPanel from "@/components/DashboardPanel";
 
 export default function Home() {
@@ -15,10 +15,18 @@ export default function Home() {
       {/* Dashboard — full width, above module grid */}
       <DashboardPanel />
 
-      {/* Single-row condensed module bar: 4 equal columns */}
-      <div className="grid grid-cols-4 gap-3">
+      {/* Module bar — Equipment 4× wider than each of the other three */}
+      <div className="grid gap-3" style={{ gridTemplateColumns: "4fr 1fr 1fr 1fr" }}>
 
-        {/* ── Protocols ── */}
+        {/* ── Equipment (4fr) — live daily calendar mirror ── */}
+        <section className="flex h-[600px] flex-col rounded-lg border border-purple-500/30 bg-zinc-900 p-3">
+          <p className="mb-2 shrink-0 text-xs font-semibold text-purple-300">Equipment</p>
+          <div className="min-h-0 flex-1">
+            <EquipmentCalendar />
+          </div>
+        </section>
+
+        {/* ── Protocols (1fr) ── */}
         <section className="rounded-lg border border-emerald-500/30 bg-zinc-900 p-3">
           <p className="mb-2 text-xs font-semibold text-emerald-300">Protocols</p>
           <div className="flex flex-col gap-1">
@@ -43,10 +51,10 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ── Inventory ── */}
+        {/* ── Inventory (1fr) ── */}
         <section className="rounded-lg border border-blue-500/30 bg-zinc-900 p-3">
           <p className="mb-2 text-xs font-semibold text-blue-300">Inventory</p>
-          <div className="grid grid-cols-2 gap-1">
+          <div className="grid grid-cols-1 gap-1">
             <Link
               href="/inventory/stocks"
               className="rounded border border-blue-400/40 bg-blue-400/10 px-2 py-1.5 text-xs text-blue-100 transition hover:bg-blue-400/20"
@@ -74,16 +82,10 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ── Equipment (mirror of /equipment — read-only) ── */}
-        <section className="rounded-lg border border-purple-500/30 bg-zinc-900 p-3">
-          <p className="mb-2 text-xs font-semibold text-purple-300">Equipment</p>
-          <EquipmentMirror />
-        </section>
-
-        {/* ── Knowledge Hub ── */}
+        {/* ── Knowledge Hub (1fr) ── */}
         <section className="rounded-lg border border-rose-800/40 bg-zinc-900 p-3">
           <p className="mb-2 text-xs font-semibold text-rose-300">Knowledge Hub</p>
-          <div className="grid grid-cols-2 gap-1">
+          <div className="flex flex-col gap-1">
             <Link
               href="/knowledge-hub/papers-grants"
               className="rounded border border-rose-700/40 bg-rose-900/15 px-2 py-1.5 text-xs text-rose-200 transition hover:bg-rose-900/30"
@@ -122,7 +124,7 @@ export default function Home() {
             </Link>
             <Link
               href="/ingestion"
-              className="col-span-2 rounded border border-amber-600/40 bg-amber-600/10 px-2 py-1.5 text-xs text-amber-200 transition hover:bg-amber-600/20"
+              className="rounded border border-amber-600/40 bg-amber-600/10 px-2 py-1.5 text-xs text-amber-200 transition hover:bg-amber-600/20"
             >
               👾 Data Ingestion
             </Link>

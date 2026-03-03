@@ -82,3 +82,12 @@ model ProtocolRun {
   runnerId       String?
   linkedEntries  Entry[]   @relation("RunLink")
 }
+
+model TodoHistory {
+  id        String   @id @default(uuid())
+  userId    String
+  userName  String
+  date      String   // YYYY-MM-DD — the day the list belonged to
+  items     Json     // TodoItem[] snapshot at time of cleanup
+  createdAt DateTime @default(now())
+}

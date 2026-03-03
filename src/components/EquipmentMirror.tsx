@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { EVENTS_KEY, ENABLED_KEY } from "@/app/equipment/page";
+import { EVENTS_KEY, ENABLED_KEY } from "@/components/EquipmentShared";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

@@ -1576,6 +1576,20 @@ export default function DashboardPanel() {
       // Nightly cleanup: if last-cleared date is before today, remove done + flag remaining
       const lastCleared = localStorage.getItem(CLEARED_KEY);
       if (lastCleared && lastCleared < today) {
+        // Save history snapshot before discarding done items
+        if (parsed.length > 0) {
+          const user = ELN_USERS.find(u => u.id === userId);
+          fetch("/api/todo-history", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId,
+              userName: user?.name ?? userId,
+              date: lastCleared,
+              items: parsed,
+            }),
+          }).catch(() => {});
+        }
         parsed = parsed.filter(x => !x.done).map(x => ({ ...x, carryover: true }));
         localStorage.setItem(CLEARED_KEY, today);
       } else if (!lastCleared) {
@@ -1597,6 +1611,24 @@ export default function DashboardPanel() {
     if (msUntil <= 0) return;
     const tid = setTimeout(() => {
       const today = localDateStr();
+      // Read latest items directly from localStorage for the history snapshot
+      try {
+        const raw = localStorage.getItem(`eln-todo-${userId}`);
+        const currentItems: TodoItem[] = raw ? JSON.parse(raw) : [];
+        if (currentItems.length > 0) {
+          const user = ELN_USERS.find(u => u.id === userId);
+          fetch("/api/todo-history", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId,
+              userName: user?.name ?? userId,
+              date: today,
+              items: currentItems,
+            }),
+          }).catch(() => {});
+        }
+      } catch { /* ignore */ }
       setItems(prev => prev.filter(x => !x.done).map(x => ({ ...x, carryover: true })));
       localStorage.setItem(CLEARED_KEY, today);
     }, msUntil);
