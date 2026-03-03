@@ -423,15 +423,41 @@ export default function ProtocolsPage() {
 
   async function handleSelect(id: string) {
     setLoading(true);
-    try {
+    setSaveError(null);
+
+    // Inner fetch with one auto-retry for Turbopack dev cold-start (308 mismatch)
+    async function attempt(): Promise<boolean> {
       const res = await fetch(`/api/entries/${id}`, { headers: authHeaders });
-      if (res.ok) {
-        const data = (await res.json()) as Entry;
-        setEditorMode("edit");
-        setSelected(data);
-        setEditorTitle(data.title || "");
-        setIsDirty(false);
-        setEditorOpen(true);
+      if (!res.ok) {
+        setSaveError(`Failed to load protocol (${res.status}). Please try again.`);
+        return false;
+      }
+      const data = (await res.json()) as Entry;
+      // Wrong shape = Turbopack served wrong route before compilation finished
+      if (!data || Array.isArray(data) || !("id" in data)) return false;
+      setEditorMode("edit");
+      setSelected(data);
+      setEditorTitle(data.title || "");
+      setIsDirty(false);
+      setEditorOpen(true);
+      return true;
+    }
+
+    try {
+      const ok = await attempt();
+      if (!ok) {
+        // One retry after a short pause (handles cold-start 308 or wrong payload)
+        await new Promise(r => setTimeout(r, 600));
+        const ok2 = await attempt();
+        if (!ok2) setSaveError("Network error — could not load protocol. Please try again.");
+      }
+    } catch (e) {
+      console.error("handleSelect network error:", e);
+      try {
+        await new Promise(r => setTimeout(r, 600));
+        await attempt();
+      } catch {
+        setSaveError("Network error — could not load protocol. Please try again.");
       }
     } finally {
       setLoading(false);
@@ -446,9 +472,13 @@ export default function ProtocolsPage() {
 
   async function handleClone(id: string) {
     setLoading(true);
+    setSaveError(null);
     try {
       const res = await fetch(`/api/entries/${id}`, { method: "POST", headers: authHeaders });
-      if (!res.ok) { console.error("Failed to clone entry:", res.status); return; }
+      if (!res.ok) {
+        setSaveError(`Clone failed (${res.status}). Please try again.`);
+        return;
+      }
       const cloned = (await res.json()) as Entry;
       setEntries((s) => [cloned, ...s]);
       setSelected(cloned);
@@ -456,6 +486,9 @@ export default function ProtocolsPage() {
       setEditorTitle(cloned.title || "");
       setIsDirty(false);
       setEditorOpen(true);
+    } catch (e) {
+      console.error("handleClone network error:", e);
+      setSaveError("Network error — could not clone protocol. Please try again.");
     } finally {
       setLoading(false);
     }
