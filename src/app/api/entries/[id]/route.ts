@@ -81,13 +81,16 @@ async function getEntryId(context: RouteContext): Promise<string> {
   return resolved.id;
 }
 
-// Standard include for single-entry queries (includes attachments)
+// Standard include for single-entry queries (includes attachments and linked run)
 const ENTRY_INCLUDE = {
   author: {
     select: { id: true, name: true, role: true },
   },
   attachments: {
     orderBy: { createdAt: "asc" as const },
+  },
+  linkedRun: {
+    select: { id: true, title: true, status: true, createdAt: true },
   },
 };
 
@@ -136,9 +139,10 @@ export async function PUT(request: Request, context: RouteContext) {
       version: { increment: 1 },
     };
 
-    // Only update entryType / typedData if they were explicitly sent
-    if ("entryType" in payload) data.entryType = normalizeEntryType(payload.entryType);
-    if ("typedData" in payload) data.typedData = normalizeTypedData(payload.typedData);
+    // Only update entryType / typedData / linkedRunId if they were explicitly sent
+    if ("entryType"   in payload) data.entryType   = normalizeEntryType(payload.entryType);
+    if ("typedData"   in payload) data.typedData   = normalizeTypedData(payload.typedData);
+    if ("linkedRunId" in payload) data.linkedRunId = payload.linkedRunId ?? null;
 
     const updated = await prisma.entry.update({
       where: { id },

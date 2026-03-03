@@ -14,6 +14,15 @@ export type AttachmentRecord = {
   createdAt: string;
 };
 
+// ─── LinkedRun summary (returned with Entry when linked) ─────────────────────
+
+export type LinkedRun = {
+  id: string;
+  title: string;
+  status: string;
+  createdAt: string;
+};
+
 // ─── Entry ────────────────────────────────────────────────────────────────────
 
 export type Entry = {
@@ -21,7 +30,7 @@ export type Entry = {
   title: string;
   description: string;
   technique?: string;
-  /** Enum value: GENERAL | EXPERIMENT | PROTOCOL | NOTE */
+  /** Enum value: GENERAL | EXPERIMENT | PROTOCOL | NOTE | CELL_LINE | PROTEIN | REAGENT | CHROMATOGRAPHY_RUN */
   entryType?: string;
   /** Structured + custom fields stored as JSON in the DB */
   typedData?: TypedData | null;
@@ -37,6 +46,9 @@ export type Entry = {
     role: string;
   } | null;
   version?: number;
+  /** Nullable FK to ProtocolRun — set when this entry is linked to a run */
+  linkedRunId?: string | null;
+  linkedRun?: LinkedRun | null;
 };
 
 export const TECHNIQUE_OPTIONS = [

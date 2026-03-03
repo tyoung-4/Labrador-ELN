@@ -121,10 +121,10 @@ export default function Home() {
               Meeting Notes
             </Link>
             <Link
-              href="/migration"
-              className="col-span-2 rounded border border-rose-700/40 bg-rose-900/15 px-2 py-1.5 text-xs text-rose-200 transition hover:bg-rose-900/30"
+              href="/ingestion"
+              className="col-span-2 rounded border border-amber-600/40 bg-amber-600/10 px-2 py-1.5 text-xs text-amber-200 transition hover:bg-amber-600/20"
             >
-              📥 Data Migration
+              👾 Data Ingestion
             </Link>
           </div>
         </section>

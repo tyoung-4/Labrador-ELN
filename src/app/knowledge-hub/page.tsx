@@ -25,12 +25,12 @@ export default function KnowledgeHubPage() {
             {s.label}
           </Link>
         ))}
-        {/* Data Migration — full-width at the bottom */}
+        {/* Data Ingestion — full-width at the bottom */}
         <Link
-          href="/migration"
-          className="col-span-2 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-6 text-center text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-800 sm:col-span-3"
+          href="/ingestion"
+          className="col-span-2 rounded-xl border border-amber-700/50 bg-amber-900/10 px-4 py-6 text-center text-sm font-medium text-amber-200 transition hover:border-amber-600/70 hover:bg-amber-900/20 sm:col-span-3"
         >
-          📥 Data Migration
+          👾 Data Ingestion
         </Link>
       </div>
     </div>

@@ -113,6 +113,9 @@ export async function GET(request: Request) {
         author: {
           select: { id: true, name: true, role: true },
         },
+        linkedRun: {
+          select: { id: true, title: true, status: true, createdAt: true },
+        },
       },
     });
 
@@ -130,6 +133,8 @@ export async function POST(request: Request) {
     await ensureActor(actor);
 
     const payload = await request.json().catch(() => ({}));
+    const linkedRunId = payload.linkedRunId ? String(payload.linkedRunId).trim() : undefined;
+
     const created = await prisma.entry.create({
       data: {
         title: payload.title ?? "Untitled",
@@ -139,12 +144,16 @@ export async function POST(request: Request) {
         typedData: normalizeTypedData(payload.typedData),
         body: payload.body ?? "",
         authorId: actor.id,
+        ...(linkedRunId ? { linkedRunId } : {}),
       },
       include: {
         author: {
           select: { id: true, name: true, role: true },
         },
         attachments: true,
+        linkedRun: {
+          select: { id: true, title: true, status: true, createdAt: true },
+        },
       },
     });
     return NextResponse.json(created, { status: 201 });

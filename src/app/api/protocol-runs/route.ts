@@ -46,8 +46,19 @@ export async function GET(request: Request) {
     const actor = getActorFromRequest(request);
     await ensureActor(actor);
 
+    const url = new URL(request.url);
+    const statusParam = url.searchParams.get("status"); // "active" | "completed" | null (all)
+
+    // Map friendly query param to DB status values
+    let statusFilter: string | undefined;
+    if (statusParam === "active")    statusFilter = "IN_PROGRESS";
+    if (statusParam === "completed") statusFilter = "COMPLETED";
+
     const runs = await prisma.protocolRun.findMany({
-      where: actor.role === "ADMIN" ? undefined : { runnerId: actor.id },
+      where: {
+        ...(actor.role === "ADMIN" ? {} : { runnerId: actor.id }),
+        ...(statusFilter ? { status: statusFilter } : {}),
+      },
       orderBy: { createdAt: "desc" },
       include: {
         sourceEntry: {

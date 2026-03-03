@@ -47,62 +47,64 @@ textarea::placeholder {
   }
 }
 
-/* Heading Styles */
-h1 {
-  font-size: 2rem;
-  font-weight: 700;
-  margin: 1rem 0 0.5rem 0;
-  color: #1e3a8a;
-}
+/* Heading Styles — inside @layer base so Tailwind utility classes can override */
+@layer base {
+  h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin: 1rem 0 0.5rem 0;
+    color: #1e3a8a;
+  }
 
-h2 {
-  font-size: 1.75rem;
-  font-weight: 700;
-  margin: 0.875rem 0 0.4rem 0;
-  color: #1e40af;
-}
+  h2 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin: 0.875rem 0 0.4rem 0;
+    color: #1e40af;
+  }
 
-h3 {
-  font-size: 1.5rem;
-  font-weight: 700;
-  margin: 0.75rem 0 0.35rem 0;
-  color: #1e40af;
-}
+  h3 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0.75rem 0 0.35rem 0;
+    color: #1e40af;
+  }
 
-/* Subheader Styles with Colors */
-h4 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin: 0.75rem 0 0.3rem 0;
-  color: #2563eb;
-}
+  /* Subheader Styles with Colors */
+  h4 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0.75rem 0 0.3rem 0;
+    color: #2563eb;
+  }
 
-h5 {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin: 0.65rem 0 0.25rem 0;
-  color: #0891b2;
-}
+  h5 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0.65rem 0 0.25rem 0;
+    color: #0891b2;
+  }
 
-h6 {
-  font-size: 1rem;
-  font-weight: 600;
-  margin: 0.6rem 0 0.2rem 0;
-  color: #7c3aed;
-}
+  h6 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0.6rem 0 0.2rem 0;
+    color: #7c3aed;
+  }
 
-h7 {
-  font-size: 0.95rem;
-  font-weight: 600;
-  margin: 0.55rem 0 0.15rem 0;
-  color: #059669;
-}
+  h7 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin: 0.55rem 0 0.15rem 0;
+    color: #059669;
+  }
 
-h8 {
-  font-size: 0.9rem;
-  font-weight: 600;
-  margin: 0.5rem 0 0.1rem 0;
-  color: #dc2626;
+  h8 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin: 0.5rem 0 0.1rem 0;
+    color: #dc2626;
+  }
 }
 
 /* TipTap Table Styling */

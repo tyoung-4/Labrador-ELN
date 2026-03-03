@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/inventory",     label: "Inventory",     exact: false, activeClass: "bg-blue-600 text-white"    },
   { href: "/equipment",     label: "Equipment",     exact: false, activeClass: "bg-purple-600 text-white"  },
   { href: "/knowledge-hub", label: "Knowledge Hub", exact: false, activeClass: "bg-rose-700 text-white"    },
+  { href: "/ingestion",     label: "👾 Ingestion",  exact: false, activeClass: "bg-amber-600 text-white"   },
 ];
 
 export const ELN_USERS = [

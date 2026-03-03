@@ -22,6 +22,10 @@ enum EntryType {
   EXPERIMENT
   PROTOCOL
   NOTE
+  CELL_LINE
+  PROTEIN
+  REAGENT
+  CHROMATOGRAPHY_RUN
 }
 
 model Entry {
@@ -37,9 +41,11 @@ model Entry {
   version      Int           @default(1)
   author       User?         @relation(fields: [authorId], references: [id])
   authorId     String?
-  tags         Tag[]         @relation("EntryTags")
-  attachments  Attachment[]
-  protocolRuns ProtocolRun[]
+  tags          Tag[]          @relation("EntryTags")
+  attachments   Attachment[]
+  protocolRuns  ProtocolRun[]  @relation("RunSource")
+  linkedRun     ProtocolRun?   @relation("RunLink", fields: [linkedRunId], references: [id])
+  linkedRunId   String?
 }
 
 model Attachment {
@@ -70,8 +76,9 @@ model ProtocolRun {
   interactionState String   @default("{}")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
-  sourceEntry      Entry    @relation(fields: [sourceEntryId], references: [id])
-  sourceEntryId    String
-  runner           User?    @relation(fields: [runnerId], references: [id])
-  runnerId         String?
+  sourceEntry    Entry     @relation("RunSource", fields: [sourceEntryId], references: [id])
+  sourceEntryId  String
+  runner         User?     @relation(fields: [runnerId], references: [id])
+  runnerId       String?
+  linkedEntries  Entry[]   @relation("RunLink")
 }
