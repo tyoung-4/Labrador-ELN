@@ -5,7 +5,6 @@ import { USER_STORAGE_KEY, ELN_USERS } from "@/components/AppTopNav";
 import {
   RESOURCE_GROUPS,
   ALL_RESOURCES,
-  EVENTS_KEY,
   ENABLED_KEY,
   localDateStr,
   getWeekDates,
@@ -17,6 +16,8 @@ import {
   type ScheduleEvent,
   type BookingDraft,
 } from "@/components/EquipmentShared";
+import { useEquipmentBookings, canUserDelete } from "@/hooks/useEquipmentBookings";
+import { defaultEndTime } from "@/config/equipmentDefaults";
 
 type CalView = "daily" | "weekly";
 
@@ -30,35 +31,29 @@ export default function EquipmentCalendar() {
   const [dailyDate,  setDailyDate]  = useState(localDateStr());
   const [weekOffset, setWeekOffset] = useState(0);
 
-  // ── Data ──────────────────────────────────────────────────────────────────
-  const [events,  setEvents]  = useState<ScheduleEvent[]>([]);
+  // ── API-backed events ─────────────────────────────────────────────────────
+  const { events, saveBooking: saveBookingFn, deleteBooking: deleteBookingFn } = useEquipmentBookings();
+
+  // ── Enabled resources (localStorage preference, not shared) ──────────────
+  const enabledLoadingRef  = useRef(false);
+  const dispatchEnabledRef = useRef(false);
+
   const [enabled, setEnabled] = useState<Set<ResourceId>>(
     () => new Set(ALL_RESOURCES.map(r => r.id))
   );
 
-  // ── Booking modal ─────────────────────────────────────────────────────────
-  const [showModal,   setShowModal]   = useState(false);
-  const [editEventId, setEditEventId] = useState<string | null>(null);
-  const [draft,       setDraft]       = useState<BookingDraft>({
+  // ── Booking modal state ───────────────────────────────────────────────────
+  const [showModal,    setShowModal]    = useState(false);
+  const [editEventId,  setEditEventId]  = useState<string | null>(null);
+  const [draft,        setDraft]        = useState<BookingDraft>({
     resourceId: "", date: localDateStr(), startTime: "09:00", endTime: "10:00", title: "",
   });
+  const [bookingError, setBookingError] = useState<string | null>(null);
+  const [saving,       setSaving]       = useState(false);
 
-  // ── Guards: prevent persisting before initial load finishes ───────────────
-  const eventsLoadingRef  = useRef(false);
-  const enabledLoadingRef = useRef(false);
-  // Guards: prevent re-entrancy when we dispatch synthetic storage events
-  const dispatchEventsRef  = useRef(false);
-  const dispatchEnabledRef = useRef(false);
-
-  // ── Load from localStorage + subscribe to storage events ─────────────────
+  // ── Load user + enabled pref from localStorage ────────────────────────────
   useEffect(() => {
-    eventsLoadingRef.current  = true;
     enabledLoadingRef.current = true;
-
-    try {
-      const raw = localStorage.getItem(EVENTS_KEY);
-      if (raw) setEvents(JSON.parse(raw));
-    } catch { /* ignore */ }
 
     try {
       const raw = localStorage.getItem(ENABLED_KEY);
@@ -72,10 +67,6 @@ export default function EquipmentCalendar() {
     }
 
     function onStorage(e: StorageEvent) {
-      if (e.key === EVENTS_KEY && e.newValue !== null) {
-        if (dispatchEventsRef.current) { dispatchEventsRef.current = false; return; }
-        try { setEvents(JSON.parse(e.newValue)); } catch { /* ignore */ }
-      }
       if (e.key === ENABLED_KEY && e.newValue !== null) {
         if (dispatchEnabledRef.current) { dispatchEnabledRef.current = false; return; }
         try { setEnabled(new Set(JSON.parse(e.newValue) as ResourceId[])); } catch { /* ignore */ }
@@ -89,16 +80,7 @@ export default function EquipmentCalendar() {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  // ── Persist events ────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (eventsLoadingRef.current) { eventsLoadingRef.current = false; return; }
-    const json = JSON.stringify(events);
-    localStorage.setItem(EVENTS_KEY, json);
-    dispatchEventsRef.current = true;
-    window.dispatchEvent(new StorageEvent("storage", { key: EVENTS_KEY, newValue: json }));
-  }, [events]);
-
-  // ── Persist enabled ───────────────────────────────────────────────────────
+  // ── Persist enabled preference ────────────────────────────────────────────
   useEffect(() => {
     if (enabledLoadingRef.current) { enabledLoadingRef.current = false; return; }
     const json = JSON.stringify([...enabled]);
@@ -126,22 +108,41 @@ export default function EquipmentCalendar() {
     });
   }
 
+  // ── Draft change — auto-fill endTime when resource changes ────────────────
+  function handleDraftChange(next: BookingDraft) {
+    setBookingError(null);
+    if (next.resourceId && next.resourceId !== draft.resourceId) {
+      const end = defaultEndTime(next.resourceId as ResourceId, next.startTime || "09:00");
+      setDraft({ ...next, endTime: end });
+    } else {
+      setDraft(next);
+    }
+  }
+
   // ── Booking helpers ───────────────────────────────────────────────────────
   function openNew(params: Partial<BookingDraft> = {}) {
+    const resourceId = (params.resourceId ?? "") as ResourceId | "";
+    const startTime  = params.startTime ?? "09:00";
+    const computedEnd = resourceId
+      ? defaultEndTime(resourceId as ResourceId, startTime)
+      : "10:00";
+
     setEditEventId(null);
+    setBookingError(null);
     setDraft({
-      resourceId: "",
+      resourceId,
       date: view === "daily" ? dailyDate : localDateStr(),
-      startTime: "09:00",
-      endTime: "10:00",
+      startTime,
       title: "",
       ...params,
+      endTime: params.endTime ?? computedEnd,
     });
     setShowModal(true);
   }
 
   function openEdit(ev: ScheduleEvent) {
     setEditEventId(ev.id);
+    setBookingError(null);
     setDraft({
       resourceId: ev.resourceId,
       date:       ev.date,
@@ -152,38 +153,23 @@ export default function EquipmentCalendar() {
     setShowModal(true);
   }
 
-  function saveBooking() {
-    if (!draft.resourceId || !draft.date) return;
-    const autoTitle =
-      draft.title.trim() ||
-      (ALL_RESOURCES.find(r => r.id === draft.resourceId)?.label ?? draft.resourceId);
-
-    if (editEventId) {
-      setEvents(prev => prev.map(e =>
-        e.id === editEventId
-          ? { ...e, resourceId: draft.resourceId as ResourceId, date: draft.date,
-              startTime: draft.startTime, endTime: draft.endTime,
-              title: autoTitle, userId, userName }
-          : e
-      ));
+  async function handleSave() {
+    setSaving(true);
+    setBookingError(null);
+    const err = await saveBookingFn(draft, editEventId, userId, userName);
+    setSaving(false);
+    if (err) {
+      setBookingError(err);
     } else {
-      setEvents(prev => [...prev, {
-        id:          crypto.randomUUID(),
-        resourceId:  draft.resourceId as ResourceId,
-        date:        draft.date,
-        startTime:   draft.startTime || undefined,
-        endTime:     draft.endTime   || undefined,
-        title:       autoTitle,
-        userId,
-        userName,
-      }]);
+      setShowModal(false);
     }
-    setShowModal(false);
   }
 
-  function deleteBooking(id: string) {
+  async function handleDelete(id: string) {
     if (!window.confirm("Delete this booking?")) return;
-    setEvents(prev => prev.filter(e => e.id !== id));
+    setSaving(true);
+    await deleteBookingFn(id);
+    setSaving(false);
     setShowModal(false);
   }
 
@@ -220,6 +206,10 @@ export default function EquipmentCalendar() {
     const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     return `${fmt(weekDates[0])} – ${fmt(weekDates[6])}`;
   })();
+
+  // Delete button only shown when viewing your own booking
+  const editingEvent  = editEventId ? events.find(e => e.id === editEventId) : null;
+  const canDeleteEdit = editingEvent ? canUserDelete(editingEvent, userId) : false;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -277,7 +267,6 @@ export default function EquipmentCalendar() {
       <div className="mb-2 flex flex-wrap gap-x-3 gap-y-1 border-b border-zinc-800 pb-2">
         {RESOURCE_GROUPS.map(group => (
           <div key={group.id} className="flex items-center gap-1">
-            {/* Group label — click to toggle whole group */}
             <button
               onClick={() => toggleGroup(group)}
               className={`text-[9px] font-bold uppercase tracking-wider transition ${group.textCls} ${
@@ -288,7 +277,6 @@ export default function EquipmentCalendar() {
               {group.label}
             </button>
 
-            {/* Individual resource chips */}
             {group.resources.map(r => (
               <button
                 key={r.id}
@@ -336,10 +324,13 @@ export default function EquipmentCalendar() {
         <BookingModal
           draft={draft}
           editEventId={editEventId}
-          onDraftChange={setDraft}
-          onSave={saveBooking}
-          onDelete={deleteBooking}
-          onClose={() => setShowModal(false)}
+          onDraftChange={handleDraftChange}
+          onSave={handleSave}
+          onDelete={handleDelete}
+          onClose={() => { setShowModal(false); setBookingError(null); }}
+          errorMessage={bookingError}
+          saving={saving}
+          canDelete={canDeleteEdit}
         />
       )}
     </div>

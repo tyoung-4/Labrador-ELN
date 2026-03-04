@@ -5,7 +5,6 @@ import { USER_STORAGE_KEY, ELN_USERS } from "@/components/AppTopNav";
 import {
   RESOURCE_GROUPS,
   ALL_RESOURCES,
-  EVENTS_KEY,
   ENABLED_KEY,
   DAY_LABELS,
   localDateStr,
@@ -19,9 +18,11 @@ import {
   type ScheduleEvent,
   type BookingDraft,
 } from "@/components/EquipmentShared";
+import { useEquipmentBookings, canUserDelete } from "@/hooks/useEquipmentBookings";
+import { defaultEndTime } from "@/config/equipmentDefaults";
 
-// Re-export keys so any existing imports from this file continue to work
-export { EVENTS_KEY, ENABLED_KEY };
+// Re-export key so any existing imports from this file continue to work
+export { ENABLED_KEY };
 
 type ViewMode = "weekly" | "monthly" | "daily";
 
@@ -56,13 +57,13 @@ export default function EquipmentPage() {
         const u = ELN_USERS.find(u => u.id === e.newValue);
         if (u) { setUserId(u.id); setUserName(u.name); }
       }
-      if (e.key === EVENTS_KEY) {
-        try { setEvents(e.newValue ? JSON.parse(e.newValue) : []); } catch {}
-      }
     }
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, []);
+
+  // API-backed events
+  const { events, saveBooking: saveBookingFn, deleteBooking: deleteBookingFn } = useEquipmentBookings();
 
   // View — defaults to daily
   const [view,        setView]        = useState<ViewMode>("daily");
@@ -100,77 +101,78 @@ export default function EquipmentPage() {
     });
   }
 
-  // Events
-  const [events, setEvents] = useState<ScheduleEvent[]>([]);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(EVENTS_KEY);
-      setEvents(raw ? JSON.parse(raw) : []);
-    } catch { setEvents([]); }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem(EVENTS_KEY, JSON.stringify(events));
-  }, [events]);
-
   useEffect(() => {
     localStorage.setItem(ENABLED_KEY, JSON.stringify([...enabled]));
   }, [enabled]);
 
   // Booking modal
-  const [showModal,   setShowModal]  = useState(false);
-  const [editEventId, setEditEventId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<BookingDraft>({
-    resourceId: "",
-    date: localDateStr(),
-    startTime: "09:00",
-    endTime: "10:00",
-    title: "",
+  const [showModal,    setShowModal]    = useState(false);
+  const [editEventId,  setEditEventId]  = useState<string | null>(null);
+  const [draft,        setDraft]        = useState<BookingDraft>({
+    resourceId: "", date: localDateStr(), startTime: "09:00", endTime: "10:00", title: "",
   });
+  const [bookingError, setBookingError] = useState<string | null>(null);
+  const [saving,       setSaving]       = useState(false);
+
+  function handleDraftChange(next: BookingDraft) {
+    setBookingError(null);
+    if (next.resourceId && next.resourceId !== draft.resourceId) {
+      const end = defaultEndTime(next.resourceId as ResourceId, next.startTime || "09:00");
+      setDraft({ ...next, endTime: end });
+    } else {
+      setDraft(next);
+    }
+  }
 
   function openNew(params: Partial<BookingDraft> = {}) {
+    const resourceId = (params.resourceId ?? "") as ResourceId | "";
+    const startTime  = params.startTime ?? "09:00";
+    const computedEnd = resourceId
+      ? defaultEndTime(resourceId as ResourceId, startTime)
+      : "10:00";
     setEditEventId(null);
-    setDraft({ resourceId: "", date: localDateStr(), startTime: "09:00", endTime: "10:00", title: "", ...params });
+    setBookingError(null);
+    setDraft({
+      resourceId,
+      date: localDateStr(),
+      startTime,
+      title: "",
+      ...params,
+      endTime: params.endTime ?? computedEnd,
+    });
     setShowModal(true);
   }
 
   function openEdit(ev: ScheduleEvent) {
     setEditEventId(ev.id);
-    setDraft({ resourceId: ev.resourceId, date: ev.date, startTime: ev.startTime ?? "09:00", endTime: ev.endTime ?? "10:00", title: ev.title });
+    setBookingError(null);
+    setDraft({
+      resourceId: ev.resourceId,
+      date:       ev.date,
+      startTime:  ev.startTime ?? "09:00",
+      endTime:    ev.endTime   ?? "10:00",
+      title:      ev.title,
+    });
     setShowModal(true);
   }
 
-  function saveBooking() {
-    if (!draft.resourceId || !draft.date) return;
-    const autoTitle =
-      draft.title.trim() ||
-      (ALL_RESOURCES.find(r => r.id === draft.resourceId)?.label ?? draft.resourceId);
-    if (editEventId) {
-      setEvents(prev => prev.map(e =>
-        e.id === editEventId
-          ? { ...e, resourceId: draft.resourceId as ResourceId, date: draft.date,
-              startTime: draft.startTime, endTime: draft.endTime, title: autoTitle, userId, userName }
-          : e
-      ));
+  async function saveBooking() {
+    setSaving(true);
+    setBookingError(null);
+    const err = await saveBookingFn(draft, editEventId, userId, userName);
+    setSaving(false);
+    if (err) {
+      setBookingError(err);
     } else {
-      setEvents(prev => [...prev, {
-        id:         crypto.randomUUID(),
-        resourceId: draft.resourceId as ResourceId,
-        date:       draft.date,
-        startTime:  draft.startTime || undefined,
-        endTime:    draft.endTime   || undefined,
-        title:      autoTitle,
-        userId,
-        userName,
-      }]);
+      setShowModal(false);
     }
-    setShowModal(false);
   }
 
-  function deleteBooking(id: string) {
+  async function deleteBooking(id: string) {
     if (!window.confirm("Delete this booking?")) return;
-    setEvents(prev => prev.filter(e => e.id !== id));
+    setSaving(true);
+    await deleteBookingFn(id);
+    setSaving(false);
     setShowModal(false);
   }
 
@@ -347,10 +349,15 @@ export default function EquipmentPage() {
         <BookingModal
           draft={draft}
           editEventId={editEventId}
-          onDraftChange={setDraft}
+          onDraftChange={handleDraftChange}
           onSave={saveBooking}
           onDelete={deleteBooking}
-          onClose={() => setShowModal(false)}
+          onClose={() => { setShowModal(false); setBookingError(null); }}
+          errorMessage={bookingError}
+          saving={saving}
+          canDelete={editEventId
+            ? canUserDelete(events.find(e => e.id === editEventId)!, userId)
+            : false}
         />
       )}
     </div>

@@ -20,6 +20,8 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { USER_STORAGE_KEY, ELN_USERS } from "@/components/AppTopNav";
+import { defaultEndTime } from "@/config/equipmentDefaults";
+import type { ResourceId } from "@/components/EquipmentShared";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -965,65 +967,58 @@ function EquipmentPicker({
   onCreateItem?: (item: Omit<TodoItem, "id" | "done">) => void;
   onClose: () => void;
 }) {
-  const [resourceId, setResourceId] = useState<EquipResourceId | "">("");
-  const [date,       setDate]       = useState(localDateStr());
-  const [startTime,  setStartTime]  = useState("09:00");
-  const [endTime,    setEndTime]    = useState("10:00");
+  const [resourceId,  setResourceId]  = useState<EquipResourceId | "">("");
+  const [date,        setDate]        = useState(localDateStr());
+  const [startTime,   setStartTime]   = useState("09:00");
+  const [endTime,     setEndTime]     = useState("10:00");
   const [conflictMsg, setConflictMsg] = useState<string | null>(null);
+  const [submitting,  setSubmitting]  = useState(false);
 
   const allEquipResources = EQUIP_RESOURCE_GROUPS.flatMap(g => g.resources);
   const selectedLabel = allEquipResources.find(r => r.id === resourceId)?.label ?? "";
 
-  function handleConfirm() {
-    if (!resourceId || !date || !startTime || !endTime) return;
+  function handleResourceChange(id: EquipResourceId | "") {
+    setResourceId(id);
+    setConflictMsg(null);
+    if (id) {
+      // Auto-fill end time from defaults
+      setEndTime(defaultEndTime(id as ResourceId, startTime));
+    }
+  }
 
-    // Auto-generate title from resource name + time if no todo title given
+  async function handleConfirm() {
+    if (!resourceId || !date || !startTime || !endTime || submitting) return;
+
     const autoTitle = todoTitle.trim() || `${selectedLabel} — ${formatTime12h(startTime)}`;
 
-    // Conflict check
+    setSubmitting(true);
+    setConflictMsg(null);
+
     try {
-      const raw = localStorage.getItem(EQUIP_EVENTS_KEY);
-      const existing: EquipEvent[] = raw ? JSON.parse(raw) : [];
-      const clash = existing.find(
-        e =>
-          e.resourceId === resourceId &&
-          e.date === date &&
-          e.startTime &&
-          e.endTime &&
-          e.startTime < endTime &&
-          e.endTime > startTime
-      );
-      if (clash) {
-        setConflictMsg(
-          `"${clash.title}" is already booked ${clash.startTime}–${clash.endTime}` +
-            (clash.userName ? ` by ${clash.userName}` : "") +
-            ". Please choose a different time or resource."
-        );
+      const res = await fetch("/api/equipment-bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          equipmentId:  resourceId,
+          operatorName: userName,
+          userId,
+          startTime:    `${date}T${startTime}:00`,
+          endTime:      `${date}T${endTime}:00`,
+          title:        autoTitle,
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        setConflictMsg(body.error ?? "Failed to save booking. Please try again.");
+        setSubmitting(false);
         return;
       }
-    } catch { /* ignore parse errors */ }
-
-    // Write booking to equipment localStorage (updates /equipment calendar)
-    try {
-      const raw = localStorage.getItem(EQUIP_EVENTS_KEY);
-      const existing: EquipEvent[] = raw ? JSON.parse(raw) : [];
-      existing.push({
-        id: crypto.randomUUID(),
-        resourceId,
-        date,
-        startTime,
-        endTime,
-        title: autoTitle,
-        userId,
-        userName,
-      });
-      const newValue = JSON.stringify(existing);
-      localStorage.setItem(EQUIP_EVENTS_KEY, newValue);
-      // Dispatch synthetic event so same-tab listeners (e.g. /equipment) pick it up
-      window.dispatchEvent(
-        new StorageEvent("storage", { key: EQUIP_EVENTS_KEY, newValue })
-      );
-    } catch { /* ignore write errors */ }
+    } catch {
+      setConflictMsg("Network error — please try again.");
+      setSubmitting(false);
+      return;
+    }
 
     const link: LinkRef = {
       type: "equipment",
@@ -1032,8 +1027,6 @@ function EquipmentPicker({
     };
 
     if (onCreateItem) {
-      // Standalone mode: create a new todo item with time set so it appears
-      // in both the ToDo list AND the Personal Schedule panel
       onCreateItem({
         text: autoTitle,
         timeSensitive: true,
@@ -1044,7 +1037,6 @@ function EquipmentPicker({
         carryover: false,
       });
     } else if (onAdd) {
-      // Link mode: just add a chip to the current item being edited
       onAdd(link);
     }
     onClose();
@@ -1082,7 +1074,7 @@ function EquipmentPicker({
                   {group.resources.map(r => (
                     <button
                       key={r.id}
-                      onClick={() => { setResourceId(r.id); setConflictMsg(null); }}
+                      onClick={() => handleResourceChange(r.id)}
                       className={`rounded border px-2 py-1 text-[10px] font-semibold transition ${
                         resourceId === r.id
                           ? `${group.chipBg} ${group.chipText} ${group.borderCls}`
@@ -1126,10 +1118,11 @@ function EquipmentPicker({
           {resourceId && (
             <button
               onClick={handleConfirm}
-              className="w-full rounded bg-purple-700 py-2 text-xs font-semibold text-white transition hover:bg-purple-600"
+              disabled={submitting}
+              className="w-full rounded bg-purple-700 py-2 text-xs font-semibold text-white transition hover:bg-purple-600 disabled:opacity-50"
             >
-              Confirm Booking
-              <span className="ml-1.5 opacity-70 text-[10px]">({selectedLabel})</span>
+              {submitting ? "Booking…" : "Confirm Booking"}
+              {!submitting && <span className="ml-1.5 opacity-70 text-[10px]">({selectedLabel})</span>}
             </button>
           )}
         </div>

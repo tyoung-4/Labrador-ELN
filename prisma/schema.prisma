@@ -91,3 +91,16 @@ model TodoHistory {
   items     Json     // TodoItem[] snapshot at time of cleanup
   createdAt DateTime @default(now())
 }
+
+model EquipmentBooking {
+  id           String   @id @default(uuid())
+  equipmentId  String
+  operatorName String
+  userId       String
+  title        String   @default("")
+  startTime    DateTime
+  endTime      DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([equipmentId, startTime, endTime])
+}

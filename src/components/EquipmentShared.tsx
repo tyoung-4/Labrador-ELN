@@ -206,9 +206,13 @@ export function DailyView({
                     <div
                       key={ev.id}
                       onClick={e => { e.stopPropagation(); onEventClick(ev); }}
-                      className={`truncate rounded px-1.5 py-1 text-[9px] leading-tight cursor-pointer ${r.group.chipBg} ${r.group.chipText} hover:opacity-80`}
+                      className={`rounded px-1.5 py-1 text-[9px] leading-tight cursor-pointer ${r.group.chipBg} ${r.group.chipText} hover:opacity-80`}
                     >
-                      {ev.title}
+                      <div className="truncate font-medium">{ev.title}</div>
+                      <div className="truncate opacity-70">{ev.userName}</div>
+                      {ev.startTime && ev.endTime && (
+                        <div className="opacity-60">{fmt12h(ev.startTime)}–{fmt12h(ev.endTime)}</div>
+                      )}
                     </div>
                   ))}
                   {slotEvts.length === 0 && (
@@ -325,6 +329,7 @@ export function WeeklyView({
                           >
                             {ev.startTime && <span className="opacity-70">{fmt12h(ev.startTime)} </span>}
                             {ev.title}
+                            {ev.userName && <span className="opacity-60"> — {ev.userName}</span>}
                           </div>
                         ))}
                         {dayEvts.length > 3 && (
@@ -357,6 +362,9 @@ export function BookingModal({
   onSave,
   onDelete,
   onClose,
+  errorMessage,
+  saving,
+  canDelete,
 }: {
   draft: BookingDraft;
   editEventId: string | null;
@@ -364,6 +372,10 @@ export function BookingModal({
   onSave: () => void;
   onDelete: (id: string) => void;
   onClose: () => void;
+  errorMessage?: string | null;
+  saving?: boolean;
+  /** Show the Delete button — only true when the current user owns the booking */
+  canDelete?: boolean;
 }) {
   return (
     <div
@@ -437,13 +449,20 @@ export function BookingModal({
               />
             </div>
           </div>
+
+          {errorMessage && (
+            <div className="rounded border border-red-500/40 bg-red-900/20 px-3 py-2 text-xs text-red-300">
+              {errorMessage}
+            </div>
+          )}
         </div>
 
         <div className="mt-6 flex items-center gap-2">
-          {editEventId && (
+          {editEventId && canDelete && (
             <button
               onClick={() => onDelete(editEventId)}
-              className="rounded border border-red-700/50 bg-red-900/20 px-3 py-2 text-xs text-red-400 hover:bg-red-900/40"
+              disabled={saving}
+              className="rounded border border-red-700/50 bg-red-900/20 px-3 py-2 text-xs text-red-400 hover:bg-red-900/40 disabled:opacity-50"
             >
               Delete
             </button>
@@ -451,16 +470,17 @@ export function BookingModal({
           <div className="ml-auto flex gap-2">
             <button
               onClick={onClose}
-              className="rounded border border-zinc-700 px-4 py-2 text-xs text-zinc-400 hover:bg-zinc-800"
+              disabled={saving}
+              className="rounded border border-zinc-700 px-4 py-2 text-xs text-zinc-400 hover:bg-zinc-800 disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               onClick={onSave}
-              disabled={!draft.resourceId || !draft.date}
+              disabled={!draft.resourceId || !draft.date || saving}
               className="rounded bg-indigo-600 px-4 py-2 text-xs text-white hover:bg-indigo-500 disabled:opacity-50"
             >
-              {editEventId ? "Update" : "Book"}
+              {saving ? "Saving…" : editEventId ? "Update" : "Book"}
             </button>
           </div>
         </div>
