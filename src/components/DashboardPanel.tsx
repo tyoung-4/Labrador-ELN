@@ -151,6 +151,20 @@ function localDateStr(d: Date = new Date()): string {
     "-" + String(d.getDate()).padStart(2, "0")
   );
 }
+/** Round current time up to the next multiple of 30 min (strictly greater). */
+function roundUpTo30(now: Date = new Date()): string {
+  const totalMins = now.getHours() * 60 + now.getMinutes();
+  const nextMins  = Math.floor(totalMins / 30) * 30 + 30;
+  const h = Math.floor(nextMins / 60) % 24;
+  const m = nextMins % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+/** Add `mins` to a "HH:MM" string; wraps at midnight. */
+function addMins(timeStr: string, mins: number): string {
+  const [h, m] = timeStr.split(":").map(Number);
+  const total = h * 60 + m + mins;
+  return `${String(Math.floor(total / 60) % 24).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
 
 function parseDateStr(s: string): Date {
   const [y, m, d] = s.split("-").map(Number);
@@ -1534,11 +1548,11 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
   // Form state
   const [newText,         setNewText]         = useState("");
   const [newNotes,        setNewNotes]        = useState("");
+  const [showNotes,       setShowNotes]       = useState(false);
   const [timeSensitive,   setTimeSensitive]   = useState(false);
   const [newDate,         setNewDate]         = useState("");
   const [newTime,         setNewTime]         = useState("");
   const [newEndTime,      setNewEndTime]      = useState("");
-  const [showEndTime,     setShowEndTime]     = useState(false);
   const [newLinks,        setNewLinks]        = useState<LinkRef[]>([]);
   const [showProtoPicker, setShowProtoPicker] = useState(false);
   const [showInvPicker,   setShowInvPicker]   = useState(false);
@@ -1753,7 +1767,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
         // Time only → auto today + time
         finalDate = today;
         finalTime = newTime;
-        if (showEndTime && newEndTime) finalEndTime = newEndTime;
+        if (newEndTime) finalEndTime = newEndTime;
       } else if (newDate && !newTime) {
         // Date only → date, no time
         finalDate = newDate;
@@ -1761,7 +1775,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
         // Both given
         finalDate = newDate;
         finalTime = newTime;
-        if (showEndTime && newEndTime) finalEndTime = newEndTime;
+        if (newEndTime) finalEndTime = newEndTime;
       }
     }
 
@@ -1781,11 +1795,11 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
     ]);
     setNewText("");
     setNewNotes("");
+    setShowNotes(false);
     setTimeSensitive(false);
     setNewDate("");
     setNewTime("");
     setNewEndTime("");
-    setShowEndTime(false);
     setNewLinks([]);
   }
 
@@ -1997,30 +2011,47 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
 
             {/* Add to List form — collapsible */}
             {panelOpen && (
-              <div className="flex shrink-0 flex-col gap-3 overflow-y-auto border-b border-zinc-800 p-4">
-                {/* Task title */}
-                <textarea
-                  value={newText}
-                  onChange={e => setNewText(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      addItem();
-                    }
-                  }}
-                  placeholder="What needs to be done?"
-                  rows={2}
-                  className="w-full resize-none rounded border border-zinc-700 bg-zinc-800/80 px-2.5 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
-                />
-
-                {/* Notes (optional — shown on hover/click in the list) */}
-                <textarea
-                  value={newNotes}
-                  onChange={e => setNewNotes(e.target.value)}
-                  placeholder="Notes (optional)…"
-                  rows={2}
-                  className="w-full resize-none rounded border border-zinc-700 bg-zinc-800/80 px-2.5 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
-                />
+              <div className="flex shrink-0 flex-col gap-3 border-b border-zinc-800 p-4">
+                {/* Task title — notes toggle in top-right corner */}
+                <div className="relative">
+                  <textarea
+                    value={newText}
+                    onChange={e => setNewText(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        addItem();
+                      }
+                    }}
+                    placeholder="What needs to be done?"
+                    rows={2}
+                    className="w-full resize-none rounded border border-zinc-700 bg-zinc-800/80 px-2.5 py-2 pr-7 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
+                  />
+                  {/* + / × toggle to reveal notes input */}
+                  <button
+                    type="button"
+                    onClick={() => setShowNotes(s => !s)}
+                    title={showNotes ? "Hide notes" : "Add notes"}
+                    className={`absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded text-[11px] font-bold leading-none transition ${
+                      showNotes
+                        ? "bg-zinc-600 text-zinc-200 hover:bg-zinc-500"
+                        : "bg-zinc-700 text-zinc-500 hover:bg-zinc-600 hover:text-zinc-300"
+                    }`}
+                    style={{ transform: showNotes ? "rotate(45deg)" : undefined }}
+                  >
+                    +
+                  </button>
+                  {/* Collapsible notes input */}
+                  {showNotes && (
+                    <textarea
+                      value={newNotes}
+                      onChange={e => setNewNotes(e.target.value)}
+                      placeholder="Notes…"
+                      rows={2}
+                      className="mt-1.5 w-full resize-none rounded border border-zinc-700/70 bg-zinc-800/60 px-2.5 py-1.5 text-xs text-zinc-300 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
+                    />
+                  )}
+                </div>
 
                 {/* Time sensitive? */}
                 <label className="flex cursor-pointer items-center gap-2">
@@ -2031,52 +2062,40 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
                       setTimeSensitive(e.target.checked);
                       if (e.target.checked) {
                         if (!newDate) setNewDate(localDateStr());
-                        if (!newTime) setNewTime("12:00");
+                        const start = roundUpTo30();
+                        setNewTime(start);
+                        setNewEndTime(addMins(start, 60));
+                      } else {
+                        setNewDate(""); setNewTime(""); setNewEndTime("");
                       }
-                      if (!e.target.checked) { setNewDate(""); setNewTime(""); setNewEndTime(""); setShowEndTime(false); }
                     }}
                     className="h-3.5 w-3.5 accent-indigo-500"
                   />
                   <span className="text-[10px] text-zinc-400">Time sensitive?</span>
                 </label>
 
-                {/* Date + time inputs */}
+                {/* Date + time — inline, no labels, only when time-sensitive */}
                 {timeSensitive && (
-                  <div className="space-y-2 rounded border border-zinc-700/50 bg-zinc-800/40 p-2">
-                    <div>
-                      <label className="mb-1 block text-[10px] text-zinc-500">Date</label>
-                      <CalendarPicker value={newDate} onChange={setNewDate} />
-                    </div>
-                    <div>
-                      <div className="mb-1 flex items-center justify-between">
-                        <label className="text-[10px] text-zinc-500">
-                          Time{" "}
-                          <span className="text-zinc-600">(optional)</span>
-                        </label>
-                        {newTime && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowEndTime(s => {
-                                if (s) setNewEndTime("");
-                                return !s;
-                              });
-                            }}
-                            className={`text-[9px] font-semibold transition ${
-                              showEndTime
-                                ? "text-indigo-400 hover:text-zinc-400"
-                                : "text-zinc-600 hover:text-indigo-400"
-                            }`}
-                          >
-                            {showEndTime ? "− end" : "+ end"}
-                          </button>
-                        )}
+                  <div className="space-y-1.5 rounded border border-zinc-700/50 bg-zinc-800/40 p-2">
+                    {/* Date and start time on one row */}
+                    <div className="flex gap-2">
+                      <div className="flex-1 min-w-0">
+                        <CalendarPicker value={newDate} onChange={setNewDate} />
                       </div>
-                      <CustomTimePicker value={newTime} onChange={setNewTime} />
+                      <div className="flex-1 min-w-0">
+                        <CustomTimePicker
+                          value={newTime}
+                          onChange={v => {
+                            setNewTime(v);
+                            if (v) setNewEndTime(addMins(v, 60));
+                            else   setNewEndTime("");
+                          }}
+                        />
+                      </div>
                     </div>
-                    {showEndTime && (
+                    {/* End time — only visible when a start time is set */}
+                    {newTime && (
                       <div>
-                        <label className="mb-1 block text-[10px] text-zinc-500">End time</label>
                         <CustomTimePicker value={newEndTime} onChange={setNewEndTime} />
                       </div>
                     )}
