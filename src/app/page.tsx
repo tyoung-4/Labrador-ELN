@@ -13,20 +13,12 @@ export default function Home() {
       </p>
 
       {/* Dashboard — full width, above module grid */}
-      <DashboardPanel />
+      <DashboardPanel equipmentCalendar={<EquipmentCalendar />} />
 
-      {/* Module bar — Equipment 4× wider than each of the other three */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: "4fr 1fr 1fr 1fr" }}>
+      {/* Module bar — three equal boxes */}
+      <div className="grid grid-cols-3 gap-3">
 
-        {/* ── Equipment (4fr) — live daily calendar mirror ── */}
-        <section className="flex h-[600px] flex-col rounded-lg border border-purple-500/30 bg-zinc-900 p-3">
-          <p className="mb-2 shrink-0 text-xs font-semibold text-purple-300">Equipment</p>
-          <div className="min-h-0 flex-1">
-            <EquipmentCalendar />
-          </div>
-        </section>
-
-        {/* ── Protocols (1fr) ── */}
+        {/* ── Protocols ── */}
         <section className="rounded-lg border border-emerald-500/30 bg-zinc-900 p-3">
           <p className="mb-2 text-xs font-semibold text-emerald-300">Protocols</p>
           <div className="flex flex-col gap-1">

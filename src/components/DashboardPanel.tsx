@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   DndContext,
   closestCenter,
@@ -989,7 +989,8 @@ function EquipmentPicker({
   async function handleConfirm() {
     if (!resourceId || !date || !startTime || !endTime || submitting) return;
 
-    const autoTitle = todoTitle.trim() || `${selectedLabel} — ${formatTime12h(startTime)}`;
+    const bookingTitle = todoTitle.trim() || `${selectedLabel} — ${formatTime12h(startTime)}`;
+    const autoTitle    = todoTitle.trim() || selectedLabel;
 
     setSubmitting(true);
     setConflictMsg(null);
@@ -1004,7 +1005,7 @@ function EquipmentPicker({
           userId,
           startTime:    `${date}T${startTime}:00`,
           endTime:      `${date}T${endTime}:00`,
-          title:        autoTitle,
+          title:        bookingTitle,
         }),
       });
 
@@ -1508,7 +1509,9 @@ function SortableItem({
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
-export default function DashboardPanel() {
+const PANEL_OPEN_KEY = "eln-todo-panel-open";
+
+export default function DashboardPanel({ equipmentCalendar }: { equipmentCalendar?: ReactNode } = {}) {
   const [userId, setUserId]             = useState(ELN_USERS[0].id);
   const [items,  setItems]              = useState<TodoItem[]>([]);
   // Prevents the save effect from wiping localStorage on the render immediately
@@ -1533,6 +1536,7 @@ export default function DashboardPanel() {
   const [showInvPicker,   setShowInvPicker]   = useState(false);
   const [showEquipPicker, setShowEquipPicker] = useState(false);
   const [showFeatureEquipPicker, setShowFeatureEquipPicker] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
   const [protocolEntries, setProtocolEntries] = useState<ProtocolEntry[]>([]);
   const [editingItemId,   setEditingItemId]   = useState<string | null>(null);
 
@@ -1540,6 +1544,8 @@ export default function DashboardPanel() {
   useEffect(() => {
     const stored = localStorage.getItem(USER_STORAGE_KEY);
     if (stored && ELN_USERS.find(u => u.id === stored)) setUserId(stored);
+    const storedPanel = localStorage.getItem(PANEL_OPEN_KEY);
+    if (storedPanel !== null) setPanelOpen(storedPanel === "true");
 
     function handleStorage(e: StorageEvent) {
       if (
@@ -1640,6 +1646,14 @@ export default function DashboardPanel() {
   useEffect(() => {
     try { localStorage.setItem("eln-showWeekends", String(showWeekends)); } catch {}
   }, [showWeekends]);
+
+  function togglePanel() {
+    setPanelOpen(prev => {
+      const next = !prev;
+      try { localStorage.setItem(PANEL_OPEN_KEY, String(next)); } catch {}
+      return next;
+    });
+  }
 
   // Fetch protocols for picker
   useEffect(() => {
@@ -1904,8 +1918,8 @@ export default function DashboardPanel() {
           </p>
         </div>
 
-        {/* Body: [Schedule LEFT] | [Todo MIDDLE] | [Feature] | [Form RIGHT] */}
-        <div className="flex h-80 overflow-hidden">
+        {/* Body: [Schedule LEFT] | [▶ Tasks collapsible] | [Equipment RIGHT] */}
+        <div className="flex h-[420px] overflow-hidden">
 
           {/* ── Schedule panel ── */}
           <div className="w-2/5 shrink-0 overflow-y-auto border-r border-zinc-800 p-3">
@@ -1929,219 +1943,245 @@ export default function DashboardPanel() {
             )}
           </div>
 
-          {/* ── Todo list ── */}
-          <div className="flex-1 overflow-y-auto p-4">
-            {items.length === 0 ? (
-              <div className="flex h-full min-h-[12rem] items-center justify-center">
-                <p className="text-sm text-zinc-700">No items — add one on the right.</p>
-              </div>
-            ) : (
-              <SortableContext
-                items={items.map(i => i.id)}
-                strategy={verticalListSortingStrategy}
+          {/* ── Collapsible: Add to List + Todo ── */}
+          <div
+            className={`flex shrink-0 overflow-hidden border-r border-zinc-800 transition-[width] duration-200 ${
+              panelOpen ? "w-72" : "w-8"
+            }`}
+          >
+            {/* Toggle tab — always visible */}
+            <button
+              onClick={togglePanel}
+              className="flex w-8 shrink-0 select-none items-center justify-center border-r border-zinc-800 transition hover:bg-zinc-800/60"
+              title={panelOpen ? "Collapse tasks panel" : "Expand tasks panel"}
+            >
+              <span
+                className="text-[9px] font-semibold uppercase tracking-widest text-zinc-500"
+                style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
               >
-                <div className="space-y-2">
-                  {incomplete.map(item => (
-                    <SortableItem
-                      key={item.id}
-                      item={item}
-                      onToggle={toggle}
-                      onRemove={remove}
-                      onEdit={setEditingItemId}
+                {panelOpen ? "◀ Tasks" : "Tasks ▶"}
+              </span>
+            </button>
+
+            {/* Expanded content: Add to List (top) + Todo list (below) */}
+            {panelOpen && (
+              <div className="flex h-full flex-1 flex-col overflow-y-auto">
+                {/* Add to List form */}
+                <div className="flex flex-col gap-3 border-b border-zinc-800 p-4">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                    Add to list
+                  </p>
+
+                  {/* Task title */}
+                  <textarea
+                    value={newText}
+                    onChange={e => setNewText(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        addItem();
+                      }
+                    }}
+                    placeholder="What needs to be done?"
+                    rows={2}
+                    className="w-full resize-none rounded border border-zinc-700 bg-zinc-800/80 px-2.5 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
+                  />
+
+                  {/* Notes (optional — shown on hover/click in the list) */}
+                  <textarea
+                    value={newNotes}
+                    onChange={e => setNewNotes(e.target.value)}
+                    placeholder="Notes (optional)…"
+                    rows={2}
+                    className="w-full resize-none rounded border border-zinc-700 bg-zinc-800/80 px-2.5 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
+                  />
+
+                  {/* Time sensitive? */}
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={timeSensitive}
+                      onChange={e => {
+                        setTimeSensitive(e.target.checked);
+                        if (e.target.checked) {
+                          if (!newDate) setNewDate(localDateStr());
+                          if (!newTime) setNewTime("12:00");
+                        }
+                        if (!e.target.checked) { setNewDate(""); setNewTime(""); setNewEndTime(""); setShowEndTime(false); }
+                      }}
+                      className="h-3.5 w-3.5 accent-indigo-500"
                     />
-                  ))}
-                </div>
-                {done.length > 0 && (
-                  <div className="mt-4 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-700">
-                        Completed ({done.length})
-                      </p>
+                    <span className="text-[10px] text-zinc-400">Time sensitive?</span>
+                  </label>
+
+                  {/* Date + time inputs */}
+                  {timeSensitive && (
+                    <div className="space-y-2 rounded border border-zinc-700/50 bg-zinc-800/40 p-2">
+                      <div>
+                        <label className="mb-1 block text-[10px] text-zinc-500">Date</label>
+                        <CalendarPicker value={newDate} onChange={setNewDate} />
+                      </div>
+                      <div>
+                        <div className="mb-1 flex items-center justify-between">
+                          <label className="text-[10px] text-zinc-500">
+                            Time{" "}
+                            <span className="text-zinc-600">(optional)</span>
+                          </label>
+                          {newTime && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowEndTime(s => {
+                                  if (s) setNewEndTime("");
+                                  return !s;
+                                });
+                              }}
+                              className={`text-[9px] font-semibold transition ${
+                                showEndTime
+                                  ? "text-indigo-400 hover:text-zinc-400"
+                                  : "text-zinc-600 hover:text-indigo-400"
+                              }`}
+                            >
+                              {showEndTime ? "− end" : "+ end"}
+                            </button>
+                          )}
+                        </div>
+                        <CustomTimePicker value={newTime} onChange={setNewTime} />
+                      </div>
+                      {showEndTime && (
+                        <div>
+                          <label className="mb-1 block text-[10px] text-zinc-500">End time</label>
+                          <CustomTimePicker value={newEndTime} onChange={setNewEndTime} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Link to — Protocols / Inventory buttons */}
+                  <div>
+                    <p className="mb-1.5 text-[10px] text-zinc-500">Link to…</p>
+                    <div className="flex gap-1.5">
                       <button
-                        onClick={() => setItems(prev => prev.filter(i => !i.done))}
-                        className="text-[10px] text-zinc-600 underline underline-offset-2 hover:text-red-400 transition"
+                        onClick={() => setShowProtoPicker(true)}
+                        className="flex-1 rounded border border-emerald-500/40 bg-emerald-500/10 py-1.5 text-[10px] font-semibold text-emerald-300 transition hover:bg-emerald-500/20"
                       >
-                        Clear completed
+                        Protocols
+                      </button>
+                      <button
+                        onClick={() => setShowInvPicker(true)}
+                        className="flex-1 rounded border border-blue-500/40 bg-blue-500/10 py-1.5 text-[10px] font-semibold text-blue-300 transition hover:bg-blue-500/20"
+                      >
+                        Inventory
                       </button>
                     </div>
-                    {done.map(item => (
-                      <SortableItem
-                        key={item.id}
-                        item={item}
-                        onToggle={toggle}
-                        onRemove={remove}
-                        onEdit={setEditingItemId}
-                      />
-                    ))}
                   </div>
-                )}
-              </SortableContext>
+
+                  {/* Chosen link chips */}
+                  {newLinks.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {newLinks.map((l, i) => (
+                        <span
+                          key={i}
+                          className={`flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] ${LINK_STYLE[l.type]}`}
+                        >
+                          {l.label}
+                          <button
+                            onClick={() => setNewLinks(s => s.filter((_, j) => j !== i))}
+                            className="opacity-60 hover:opacity-100"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={addItem}
+                    disabled={!newText.trim()}
+                    className="w-full rounded bg-indigo-600 py-2 text-xs font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-30"
+                  >
+                    + Add
+                  </button>
+                </div>
+
+                {/* Todo list */}
+                <div className="p-4">
+                  {items.length === 0 ? (
+                    <div className="flex min-h-[6rem] items-center justify-center">
+                      <p className="text-sm text-zinc-700">No items — add one above.</p>
+                    </div>
+                  ) : (
+                    <SortableContext
+                      items={items.map(i => i.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-2">
+                        {incomplete.map(item => (
+                          <SortableItem
+                            key={item.id}
+                            item={item}
+                            onToggle={toggle}
+                            onRemove={remove}
+                            onEdit={setEditingItemId}
+                          />
+                        ))}
+                      </div>
+                      {done.length > 0 && (
+                        <div className="mt-4 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-700">
+                              Completed ({done.length})
+                            </p>
+                            <button
+                              onClick={() => setItems(prev => prev.filter(i => !i.done))}
+                              className="text-[10px] text-zinc-600 underline underline-offset-2 hover:text-red-400 transition"
+                            >
+                              Clear completed
+                            </button>
+                          </div>
+                          {done.map(item => (
+                            <SortableItem
+                              key={item.id}
+                              item={item}
+                              onToggle={toggle}
+                              onRemove={remove}
+                              onEdit={setEditingItemId}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </SortableContext>
+                  )}
+                </div>
+              </div>
             )}
           </div>
 
-          {/* ── Feature column ── */}
-          <aside className="flex w-36 shrink-0 flex-col gap-2 border-l border-zinc-800 p-3">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-              Feature
-            </p>
-
-            {/* Active Runs */}
-            <a
-              href="/runs"
-              className="flex items-center gap-1.5 rounded border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-2 text-[11px] font-semibold text-emerald-300 transition hover:bg-emerald-500/20"
-            >
-              <span>▶</span>
-              <span>Active Runs</span>
-            </a>
-
-            {/* Equipment booking */}
-            <button
-              onClick={() => setShowFeatureEquipPicker(true)}
-              className="flex items-center gap-1.5 rounded border border-purple-500/40 bg-purple-500/10 px-2.5 py-2 text-[11px] font-semibold text-purple-300 transition hover:bg-purple-500/20"
-            >
-              <span>🔬</span>
-              <span>Equipment</span>
-            </button>
-          </aside>
-
-          {/* ── Add to List form ── */}
-          <aside className="flex w-56 shrink-0 flex-col gap-3 border-l border-zinc-800 p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-              Add to list
-            </p>
-
-            {/* Task title */}
-            <textarea
-              value={newText}
-              onChange={e => setNewText(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  addItem();
-                }
-              }}
-              placeholder="What needs to be done?"
-              rows={2}
-              className="w-full resize-none rounded border border-zinc-700 bg-zinc-800/80 px-2.5 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
-            />
-
-            {/* Notes (optional — shown on hover/click in the list) */}
-            <textarea
-              value={newNotes}
-              onChange={e => setNewNotes(e.target.value)}
-              placeholder="Notes (optional)…"
-              rows={2}
-              className="w-full resize-none rounded border border-zinc-700 bg-zinc-800/80 px-2.5 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
-            />
-
-            {/* Time sensitive? */}
-            <label className="flex cursor-pointer items-center gap-2">
-              <input
-                type="checkbox"
-                checked={timeSensitive}
-                onChange={e => {
-                  setTimeSensitive(e.target.checked);
-                  if (e.target.checked) {
-                    if (!newDate) setNewDate(localDateStr());
-                    if (!newTime) setNewTime("12:00");
-                  }
-                  if (!e.target.checked) { setNewDate(""); setNewTime(""); setNewEndTime(""); setShowEndTime(false); }
-                }}
-                className="h-3.5 w-3.5 accent-indigo-500"
-              />
-              <span className="text-[10px] text-zinc-400">Time sensitive?</span>
-            </label>
-
-            {/* Date + time inputs */}
-            {timeSensitive && (
-              <div className="space-y-2 rounded border border-zinc-700/50 bg-zinc-800/40 p-2">
-                <div>
-                  <label className="mb-1 block text-[10px] text-zinc-500">Date</label>
-                  <CalendarPicker value={newDate} onChange={setNewDate} />
-                </div>
-                <div>
-                  <div className="mb-1 flex items-center justify-between">
-                    <label className="text-[10px] text-zinc-500">
-                      Time{" "}
-                      <span className="text-zinc-600">(optional)</span>
-                    </label>
-                    {newTime && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowEndTime(s => {
-                            if (s) setNewEndTime("");
-                            return !s;
-                          });
-                        }}
-                        className={`text-[9px] font-semibold transition ${
-                          showEndTime
-                            ? "text-indigo-400 hover:text-zinc-400"
-                            : "text-zinc-600 hover:text-indigo-400"
-                        }`}
-                      >
-                        {showEndTime ? "− end" : "+ end"}
-                      </button>
-                    )}
-                  </div>
-                  <CustomTimePicker value={newTime} onChange={setNewTime} />
-                </div>
-                {showEndTime && (
-                  <div>
-                    <label className="mb-1 block text-[10px] text-zinc-500">End time</label>
-                    <CustomTimePicker value={newEndTime} onChange={setNewEndTime} />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Link to — Protocols / Inventory buttons */}
-            <div>
-              <p className="mb-1.5 text-[10px] text-zinc-500">Link to…</p>
-              <div className="flex gap-1.5">
-                <button
-                  onClick={() => setShowProtoPicker(true)}
-                  className="flex-1 rounded border border-emerald-500/40 bg-emerald-500/10 py-1.5 text-[10px] font-semibold text-emerald-300 transition hover:bg-emerald-500/20"
-                >
-                  Protocols
-                </button>
-                <button
-                  onClick={() => setShowInvPicker(true)}
-                  className="flex-1 rounded border border-blue-500/40 bg-blue-500/10 py-1.5 text-[10px] font-semibold text-blue-300 transition hover:bg-blue-500/20"
-                >
-                  Inventory
-                </button>
-              </div>
+          {/* ── Equipment section (far right) ── */}
+          <div className="flex flex-1 flex-col overflow-hidden">
+            {/* Active Runs + +Book above the calendar */}
+            <div className="flex shrink-0 items-center gap-2 border-b border-zinc-800 p-2">
+              <a
+                href="/runs"
+                className="flex items-center gap-1.5 rounded border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-300 transition hover:bg-emerald-500/20"
+              >
+                <span>▶</span>
+                <span>Active Runs</span>
+              </a>
+              <button
+                onClick={() => setShowFeatureEquipPicker(true)}
+                className="flex items-center gap-1.5 rounded border border-purple-500/40 bg-purple-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-purple-300 transition hover:bg-purple-500/20"
+              >
+                <span>+</span>
+                <span>Book</span>
+              </button>
             </div>
-
-            {/* Chosen link chips */}
-            {newLinks.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {newLinks.map((l, i) => (
-                  <span
-                    key={i}
-                    className={`flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] ${LINK_STYLE[l.type]}`}
-                  >
-                    {l.label}
-                    <button
-                      onClick={() => setNewLinks(s => s.filter((_, j) => j !== i))}
-                      className="opacity-60 hover:opacity-100"
-                    >
-                      ✕
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-
-            <button
-              onClick={addItem}
-              disabled={!newText.trim()}
-              className="mt-auto w-full rounded bg-indigo-600 py-2 text-xs font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-30"
-            >
-              + Add
-            </button>
-          </aside>
+            {/* Equipment calendar */}
+            <div className="min-h-0 flex-1">
+              {equipmentCalendar}
+            </div>
+          </div>
         </div>
       </section>
     </DndContext>
