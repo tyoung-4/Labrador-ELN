@@ -69,6 +69,15 @@ export default function AppTopNav() {
         );
       })}
 
+      {/* Active Runs — visually distinct, before right-side controls */}
+      <Link
+        href="/runs"
+        className="flex items-center gap-1 rounded border border-emerald-500/50 bg-emerald-500/10 px-2.5 py-1.5 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/20"
+      >
+        <span>▶</span>
+        <span>Active Runs</span>
+      </Link>
+
       {/* Clock + user selector — pushed to far right */}
       <div className="ml-auto flex items-center gap-2">
         <GlobalClock />

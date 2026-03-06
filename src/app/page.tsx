@@ -13,7 +13,7 @@ export default function Home() {
       </p>
 
       {/* Dashboard — full width, above module grid */}
-      <DashboardPanel equipmentCalendar={<EquipmentCalendar />} />
+      <DashboardPanel equipmentCalendar={<EquipmentCalendar singleGroup />} />
 
       {/* Module bar — three equal boxes */}
       <div className="grid grid-cols-3 gap-3">

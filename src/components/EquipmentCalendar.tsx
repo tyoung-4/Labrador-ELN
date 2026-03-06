@@ -21,7 +21,9 @@ import { defaultEndTime } from "@/config/equipmentDefaults";
 
 type CalView = "daily" | "weekly";
 
-export default function EquipmentCalendar() {
+const DASHBOARD_GROUP_KEY = "eln-dashboard-equipment-group";
+
+export default function EquipmentCalendar({ singleGroup = false }: { singleGroup?: boolean }) {
   // ── User ──────────────────────────────────────────────────────────────────
   const [userId,   setUserId]   = useState(ELN_USERS[0].id);
   const [userName, setUserName] = useState(ELN_USERS[0].name);
@@ -41,6 +43,9 @@ export default function EquipmentCalendar() {
   const [enabled, setEnabled] = useState<Set<ResourceId>>(
     () => new Set(ALL_RESOURCES.map(r => r.id))
   );
+
+  // ── Active group (singleGroup mode only) ──────────────────────────────────
+  const [activeGroupId, setActiveGroupId] = useState<string>(RESOURCE_GROUPS[0].id);
 
   // ── Booking modal state ───────────────────────────────────────────────────
   const [showModal,    setShowModal]    = useState(false);
@@ -66,6 +71,11 @@ export default function EquipmentCalendar() {
       if (u) { setUserId(u.id); setUserName(u.name); }
     }
 
+    if (singleGroup) {
+      const gStored = localStorage.getItem(DASHBOARD_GROUP_KEY);
+      if (gStored && RESOURCE_GROUPS.some(g => g.id === gStored)) setActiveGroupId(gStored);
+    }
+
     function onStorage(e: StorageEvent) {
       if (e.key === ENABLED_KEY && e.newValue !== null) {
         if (dispatchEnabledRef.current) { dispatchEnabledRef.current = false; return; }
@@ -78,7 +88,7 @@ export default function EquipmentCalendar() {
     }
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, []);
+  }, [singleGroup]);
 
   // ── Persist enabled preference ────────────────────────────────────────────
   useEffect(() => {
@@ -193,8 +203,16 @@ export default function EquipmentCalendar() {
   function navToday() { setDailyDate(localDateStr()); setWeekOffset(0); }
 
   // ── Derived display values ────────────────────────────────────────────────
-  const enabledList = ALL_RESOURCES.filter(r => enabled.has(r.id));
-  const weekDates   = getWeekDates(weekOffset);
+  const activeGroup = singleGroup
+    ? RESOURCE_GROUPS.find(g => g.id === activeGroupId) ?? RESOURCE_GROUPS[0]
+    : null;
+
+  // In singleGroup mode, only show enabled resources from the active group
+  const enabledList = singleGroup
+    ? ALL_RESOURCES.filter(r => r.group.id === activeGroupId && enabled.has(r.id))
+    : ALL_RESOURCES.filter(r => enabled.has(r.id));
+
+  const weekDates = getWeekDates(weekOffset);
 
   const dateLabel = (() => {
     if (view === "daily") {
@@ -263,27 +281,37 @@ export default function EquipmentCalendar() {
         </button>
       </div>
 
-      {/* ── Resource toggle chips ── */}
-      <div className="mb-2 flex flex-wrap gap-x-3 gap-y-1 border-b border-zinc-800 pb-2">
-        {RESOURCE_GROUPS.map(group => (
-          <div key={group.id} className="flex items-center gap-1">
-            <button
-              onClick={() => toggleGroup(group)}
-              className={`text-[9px] font-bold uppercase tracking-wider transition ${group.textCls} ${
-                group.resources.some(r => enabled.has(r.id)) ? "opacity-80 hover:opacity-100" : "opacity-25 hover:opacity-50"
-              }`}
-              title={`Toggle all ${group.label}`}
-            >
-              {group.label}
-            </button>
-
-            {group.resources.map(r => (
+      {/* ── Resource toggle chips (full page) / Group tabs (dashboard) ── */}
+      {singleGroup && activeGroup ? (
+        <div className="mb-2 border-b border-zinc-800 pb-2">
+          {/* Group tab switcher */}
+          <div className="mb-1.5 flex gap-1">
+            {RESOURCE_GROUPS.map(g => (
+              <button
+                key={g.id}
+                onClick={() => {
+                  setActiveGroupId(g.id);
+                  localStorage.setItem(DASHBOARD_GROUP_KEY, g.id);
+                }}
+                className={`rounded px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider transition ${
+                  g.id === activeGroupId
+                    ? `${g.chipBg} ${g.chipText} ${g.borderCls} border`
+                    : "text-zinc-600 hover:text-zinc-400"
+                }`}
+              >
+                {g.label}
+              </button>
+            ))}
+          </div>
+          {/* Individual resource toggles for active group */}
+          <div className="flex gap-1">
+            {activeGroup.resources.map(r => (
               <button
                 key={r.id}
                 onClick={() => toggleResource(r.id)}
                 className={`rounded border px-1.5 py-0.5 text-[9px] transition ${
                   enabled.has(r.id)
-                    ? `${group.chipBg} ${group.chipText} ${group.borderCls}`
+                    ? `${activeGroup.chipBg} ${activeGroup.chipText} ${activeGroup.borderCls}`
                     : "border-zinc-800 bg-transparent text-zinc-700 hover:text-zinc-500"
                 }`}
                 title={r.label}
@@ -292,8 +320,39 @@ export default function EquipmentCalendar() {
               </button>
             ))}
           </div>
-        ))}
-      </div>
+        </div>
+      ) : (
+        <div className="mb-2 flex flex-wrap gap-x-3 gap-y-1 border-b border-zinc-800 pb-2">
+          {RESOURCE_GROUPS.map(group => (
+            <div key={group.id} className="flex items-center gap-1">
+              <button
+                onClick={() => toggleGroup(group)}
+                className={`text-[9px] font-bold uppercase tracking-wider transition ${group.textCls} ${
+                  group.resources.some(r => enabled.has(r.id)) ? "opacity-80 hover:opacity-100" : "opacity-25 hover:opacity-50"
+                }`}
+                title={`Toggle all ${group.label}`}
+              >
+                {group.label}
+              </button>
+
+              {group.resources.map(r => (
+                <button
+                  key={r.id}
+                  onClick={() => toggleResource(r.id)}
+                  className={`rounded border px-1.5 py-0.5 text-[9px] transition ${
+                    enabled.has(r.id)
+                      ? `${group.chipBg} ${group.chipText} ${group.borderCls}`
+                      : "border-zinc-800 bg-transparent text-zinc-700 hover:text-zinc-500"
+                  }`}
+                  title={r.label}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Calendar body ── */}
       <div className="flex-1 overflow-auto">
