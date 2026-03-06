@@ -673,10 +673,12 @@ function DailySchedulePanel({
   items,
   onUpdateItem,
   date,
+  scrollTrigger,
 }: {
   items: TodoItem[];
   onUpdateItem: (id: string, updates: Partial<TodoItem>) => void;
   date: string;
+  scrollTrigger: number;
 }) {
   const today       = localDateStr();
   const isToday     = date === today;
@@ -685,25 +687,26 @@ function DailySchedulePanel({
     .filter(i => i.time)
     .sort((a, b) => (a.time! > b.time! ? 1 : -1));
   const allDayItems = dayItems.filter(i => !i.time);
-  const now         = new Date();
-  const nowH        = now.getHours();
-  const nowMin      = now.getMinutes();
   const scrollRef   = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to current time only when viewing today
+  // Scroll so the visible window starts at (currentTime − 1 hour).
+  // Fires on mount, when navigating to/from today, and when scrollTrigger increments
+  // (e.g. the Today button is clicked while already viewing today).
   useEffect(() => {
     if (!isToday) return;
     requestAnimationFrame(() => {
       if (!scrollRef.current) return;
-      const visiblePx   = scrollRef.current.clientHeight || 224;
-      const nowOffsetPx = (nowH + nowMin / 60) * PX_PER_HOUR;
-      const target      = nowOffsetPx - visiblePx / 2 + PX_PER_HOUR / 2;
-      scrollRef.current.scrollTop = Math.max(0, target);
+      const now = new Date();
+      const nowOffsetPx = (now.getHours() + now.getMinutes() / 60) * PX_PER_HOUR;
+      scrollRef.current.scrollTop = Math.max(0, nowOffsetPx - PX_PER_HOUR);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isToday]);
+  }, [isToday, scrollTrigger]);
 
   const totalHeight = GRID_HOURS * PX_PER_HOUR;
+  const now_        = new Date();  // snapshot for render; used by hour labels + red bar
+  const nowH        = now_.getHours();
+  const nowMin      = now_.getMinutes();
 
   return (
     <div className="space-y-1">
@@ -722,8 +725,8 @@ function DailySchedulePanel({
         </div>
       )}
 
-      {/* Pixel-grid time column */}
-      <div ref={scrollRef} className="overflow-y-auto" style={{ maxHeight: "14rem" }}>
+      {/* Pixel-grid time column — 18rem = 6 h × 48 px/h, the default −1 h / +5 h window */}
+      <div ref={scrollRef} className="overflow-y-auto" style={{ maxHeight: "18rem" }}>
         <div className="relative" style={{ height: totalHeight }}>
 
           {/* Hour drop zones (behind everything) */}
@@ -1539,7 +1542,8 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
   // after a load (before setItems has flushed the loaded data into state).
   const isLoadingRef = useRef(true);
   const [scheduleView, setScheduleView] = useState<ScheduleView>("daily");
-  const [scheduleDate, setScheduleDate] = useState(localDateStr());          // daily nav date
+  const [scheduleDate,   setScheduleDate]   = useState(localDateStr());   // daily nav date
+  const [scrollTrigger,  setScrollTrigger]  = useState(0);                // inc → DailySchedulePanel re-scrolls
   const [weekOffset,   setWeekOffset]   = useState(0);
   const [showWeekends, setShowWeekends] = useState(() => {
     try { return localStorage.getItem("eln-showWeekends") === "true"; } catch { return false; }
@@ -1694,19 +1698,20 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
     const { active, over } = e;
     if (!over) return;
 
-    // Drop onto a schedule hour slot → schedule the item
+    // Drop onto a schedule hour slot → create a new scheduled event from the todo text
     if (String(over.id).startsWith("hour-")) {
       const h = parseInt(String(over.id).split("-")[1]);
-      const today       = localDateStr();
-      const slotStart   = `${String(h).padStart(2, "0")}:00`;
-      const slotEnd     = `${String(Math.min(h + 1, GRID_END)).padStart(2, "0")}:00`;
-      const slotStartM  = timeToMinutes(slotStart);
-      const slotEndM    = timeToMinutes(slotEnd);
+      const sourceItem  = items.find(i => String(i.id) === String(active.id));
+      if (!sourceItem) return;
+
+      const slotStart  = `${String(h).padStart(2, "0")}:00`;
+      const slotEnd    = `${String(Math.min(h + 1, GRID_END)).padStart(2, "0")}:00`;
+      const slotStartM = timeToMinutes(slotStart);
+      const slotEndM   = timeToMinutes(slotEnd);
 
       // Check for existing items already in this hour
       const occupied = items.filter(item => {
-        if (String(item.id) === String(active.id)) return false;
-        if (!item.timeSensitive || item.date !== today || !item.time) return false;
+        if (!item.timeSensitive || item.date !== scheduleDate || !item.time) return false;
         const iStart = timeToMinutes(item.time);
         const iEnd   = item.endTime ? timeToMinutes(item.endTime) : iStart + 60;
         return iStart < slotEndM && iEnd > slotStartM;
@@ -1720,18 +1725,19 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
         if (!ok) return;
       }
 
-      setItems(prev => prev.map(item =>
-        String(item.id) === String(active.id)
-          ? {
-              ...item,
-              timeSensitive: true,
-              date: today,
-              time: slotStart,
-              endTime: slotEnd,
-              carryover: false,
-            }
-          : item
-      ));
+      // Create a NEW time-sensitive item — source todo remains unchanged in the list
+      setItems(prev => [{
+        id:            crypto.randomUUID(),
+        text:          sourceItem.text,
+        done:          false,
+        timeSensitive: true,
+        date:          scheduleDate,
+        time:          slotStart,
+        endTime:       slotEnd,
+        links:         sourceItem.links ?? [],
+        notes:         sourceItem.notes,
+        carryover:     false,
+      }, ...prev]);
       return;
     }
 
@@ -1906,12 +1912,14 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
                 className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
                 aria-label="Previous day"
               >‹</button>
-              {scheduleDate !== localDateStr() && (
-                <button
-                  onClick={() => setScheduleDate(localDateStr())}
-                  className="rounded px-1 py-0.5 text-[9px] text-zinc-600 hover:text-zinc-400"
-                >Today</button>
-              )}
+              {/* Today — always visible; navigates to today AND resets scroll position */}
+              <button
+                onClick={() => {
+                  setScheduleDate(localDateStr());
+                  setScrollTrigger(t => t + 1);
+                }}
+                className="rounded px-1 py-0.5 text-[9px] text-zinc-600 hover:text-zinc-400"
+              >Today</button>
               <button
                 onClick={() => {
                   const d = new Date(scheduleDate + "T00:00:00");
@@ -1927,7 +1935,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
           {/* Week navigation + weekends toggle (weekly mode only) */}
           {scheduleView === "weekly" && (
             <>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-0.5">
                 <button
                   onClick={() => setWeekOffset(o => o - 1)}
                   className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
@@ -1935,14 +1943,13 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
                 >
                   ‹
                 </button>
-                {weekOffset !== 0 && (
-                  <button
-                    onClick={() => setWeekOffset(0)}
-                    className="rounded px-1 py-0.5 text-[9px] text-zinc-600 hover:text-zinc-400"
-                  >
-                    Today
-                  </button>
-                )}
+                {/* Today — always visible in weekly mode too */}
+                <button
+                  onClick={() => setWeekOffset(0)}
+                  className="rounded px-1 py-0.5 text-[9px] text-zinc-600 hover:text-zinc-400"
+                >
+                  Today
+                </button>
                 <button
                   onClick={() => setWeekOffset(o => o + 1)}
                   className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
@@ -1990,7 +1997,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
                   })()}
             </p>
             {scheduleView === "daily" ? (
-              <DailySchedulePanel items={items} onUpdateItem={updateItem} date={scheduleDate} />
+              <DailySchedulePanel items={items} onUpdateItem={updateItem} date={scheduleDate} scrollTrigger={scrollTrigger} />
             ) : (
               <WeeklySchedulePanel items={items} weekOffset={weekOffset} showWeekends={showWeekends} />
             )}

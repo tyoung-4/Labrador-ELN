@@ -228,6 +228,26 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
     }
   }
 
+  // ── Scroll-to-default-time (currentTime − 1 h from top) ──────────────────
+  // Each 30-min slot = min-h-[1.5rem] = 24 px → 1 hour = 48 px
+  const EQ_PX_PER_HOUR = 48;
+  const eqScrollRef = useRef<HTMLDivElement>(null);
+
+  function scrollToDefaultTime() {
+    requestAnimationFrame(() => {
+      if (!eqScrollRef.current) return;
+      const now    = new Date();
+      const target = Math.max(0, (now.getHours() + now.getMinutes() / 60 - 1) * EQ_PX_PER_HOUR);
+      eqScrollRef.current.scrollTop = target;
+    });
+  }
+
+  // On mount and whenever dailyDate changes to today in daily view → apply default window
+  useEffect(() => {
+    if (view === "daily" && dailyDate === localDateStr()) scrollToDefaultTime();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, dailyDate]);
+
   // ── Navigation ────────────────────────────────────────────────────────────
   function navPrev() {
     if (view === "daily") {
@@ -245,7 +265,12 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
     }
   }
 
-  function navToday() { setDailyDate(localDateStr()); setWeekOffset(0); }
+  function navToday() {
+    setDailyDate(localDateStr());
+    setWeekOffset(0);
+    // Always reset scroll even if dailyDate was already today (effect won't re-fire in that case)
+    if (view === "daily") scrollToDefaultTime();
+  }
 
   // ── Derived display values ────────────────────────────────────────────────
   const activeGroup = singleGroup
@@ -408,7 +433,7 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
       )}
 
       {/* ── Calendar body ── */}
-      <div className="flex-1 overflow-auto">
+      <div ref={eqScrollRef} className="flex-1 overflow-auto">
         {view === "daily" && (
           <DailyView
             date={dailyDate}
