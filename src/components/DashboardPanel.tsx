@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   DndContext,
@@ -121,14 +122,14 @@ type EquipEvent = {
 
 const EQUIP_EVENTS_KEY = "eln-schedule-events";
 
-const HOURS = Array.from({ length: 14 }, (_, i) => i + 7); // 7 a.m.–8 p.m.
+const HOURS = Array.from({ length: 24 }, (_, i) => i); // 12:00 am–11:00 pm (full day)
 
 // ─── Schedule grid constants ──────────────────────────────────────────────────
 
 const PX_PER_HOUR = 48;   // pixels per hour in the daily time grid
-const GRID_START  = 7;    // first hour shown (7 AM)
-const GRID_HOURS  = 14;   // number of hours shown
-const GRID_END    = GRID_START + GRID_HOURS; // 21 (9 PM)
+const GRID_START  = 0;    // first hour shown (12 AM)
+const GRID_HOURS  = 24;   // number of hours shown (full day)
+const GRID_END    = 24;   // last hour (exclusive)
 
 function timeToMinutes(t: string): number {
   const [h, m] = t.split(":").map(Number);
@@ -165,12 +166,12 @@ function formatDateBadge(dateStr: string): string {
   return parseDateStr(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-/** "07:30" → "7:30 AM",  "13:00" → "1:00 PM" */
+/** "07:30" → "7:30 am",  "13:00" → "1:00 pm" */
 function formatTime12h(t: string): string {
   const [h24s, min] = t.split(":");
   const h24  = parseInt(h24s);
   const h12  = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
-  const ampm = h24 < 12 ? "AM" : "PM";
+  const ampm = h24 < 12 ? "am" : "pm";
   return `${h12}:${min} ${ampm}`;
 }
 
@@ -179,11 +180,12 @@ function firstFourWords(s: string): string {
   return s.split(/\s+/).slice(0, 4).join(" ");
 }
 
-/** Short form for tight spaces: "7a", "1p" */
+/** Short form for schedule display: "7:00 am", "1:30 pm" */
 function formatTimeShort(t: string): string {
-  const h24 = parseInt(t.split(":")[0]);
+  const [h24s, min] = t.split(":");
+  const h24 = parseInt(h24s);
   const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
-  return `${h12}${h24 < 12 ? "a" : "p"}`;
+  return `${h12}:${min ?? "00"} ${h24 < 12 ? "am" : "pm"}`;
 }
 
 function getWeekDates(weekOffset: number = 0): Date[] {
@@ -559,8 +561,8 @@ function ScheduleBlock({
   const top       = ((startMins - GRID_START * 60) / 60) * PX_PER_HOUR;
   const height    = Math.max(((endMins - startMins) / 60) * PX_PER_HOUR, 20);
 
-  // Concurrent column layout: split the usable width (left:38 to right:4) into totalCols lanes
-  const LABEL_W  = 38;  // px — time label column
+  // Concurrent column layout: split the usable width (left:64 to right:4) into totalCols lanes
+  const LABEL_W  = 64;  // px — time label column (wider for "12:00 am" format)
   const PAD_R    = 4;   // px — right padding
   const colStyle = totalCols > 1
     ? {
@@ -656,32 +658,36 @@ function ScheduleBlock({
 function DailySchedulePanel({
   items,
   onUpdateItem,
+  date,
 }: {
   items: TodoItem[];
   onUpdateItem: (id: string, updates: Partial<TodoItem>) => void;
+  date: string;
 }) {
   const today       = localDateStr();
-  const todayItems  = items.filter(i => i.date === today && !i.done);
-  const timedItems  = todayItems
+  const isToday     = date === today;
+  const dayItems    = items.filter(i => i.date === date && !i.done);
+  const timedItems  = dayItems
     .filter(i => i.time)
     .sort((a, b) => (a.time! > b.time! ? 1 : -1));
-  const allDayItems = todayItems.filter(i => !i.time);
+  const allDayItems = dayItems.filter(i => !i.time);
   const now         = new Date();
   const nowH        = now.getHours();
   const nowMin      = now.getMinutes();
   const scrollRef   = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to show a 4-hour window centred on the current time on every mount
+  // Auto-scroll to current time only when viewing today
   useEffect(() => {
+    if (!isToday) return;
     requestAnimationFrame(() => {
       if (!scrollRef.current) return;
-      const visiblePx   = scrollRef.current.clientHeight || 224; // 14rem fallback
-      const nowOffsetPx = ((nowH - GRID_START) + nowMin / 60) * PX_PER_HOUR;
+      const visiblePx   = scrollRef.current.clientHeight || 224;
+      const nowOffsetPx = (nowH + nowMin / 60) * PX_PER_HOUR;
       const target      = nowOffsetPx - visiblePx / 2 + PX_PER_HOUR / 2;
       scrollRef.current.scrollTop = Math.max(0, target);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isToday]);
 
   const totalHeight = GRID_HOURS * PX_PER_HOUR;
 
@@ -711,20 +717,21 @@ function DailySchedulePanel({
 
           {/* Hour rules + labels */}
           {HOURS.map(h => {
-            const isPast     = h < nowH;
-            const isCurrent  = h === nowH;
+            const isPast     = isToday && h < nowH;
+            const isCurrent  = isToday && h === nowH;
             const isWorkHour = h >= 8 && h <= 17;
-            const label      = `${h % 12 === 0 ? 12 : h % 12}${h < 12 ? "a" : "p"}`;
-            const top        = (h - GRID_START) * PX_PER_HOUR;
+            const h12        = h === 0 ? 12 : h > 12 ? h - 12 : h;
+            const label      = `${h12}:00 ${h < 12 ? "am" : "pm"}`;
+            const top        = h * PX_PER_HOUR;
             return (
               <div
                 key={h}
                 style={{ position: "absolute", top, left: 0, right: 0, height: PX_PER_HOUR }}
-                className={`flex items-start pointer-events-none ${isPast ? "opacity-40" : ""} ${isWorkHour ? "bg-zinc-700/20" : ""}`}
+                className={`flex items-start pointer-events-none ${isPast ? "opacity-30" : ""} ${isWorkHour ? "bg-zinc-800/10" : ""}`}
               >
                 <span
-                  className={`w-9 shrink-0 pt-0.5 text-right text-[9px] leading-none pr-1.5 ${
-                    isCurrent ? "font-semibold text-indigo-400" : "text-zinc-600"
+                  className={`w-16 shrink-0 pt-0.5 text-right text-[9px] leading-none pr-1.5 ${
+                    isCurrent ? "font-semibold text-indigo-400" : "text-zinc-500"
                   }`}
                 >
                   {label}
@@ -732,23 +739,23 @@ function DailySchedulePanel({
                 <div
                   className={`flex-1 border-t ${
                     isCurrent
-                      ? "border-indigo-500"
+                      ? "border-indigo-400/60"
                       : isWorkHour
-                      ? "border-zinc-700/60"
-                      : "border-zinc-800"
+                      ? "border-zinc-700/30"
+                      : "border-zinc-800/50"
                   }`}
                 />
               </div>
             );
           })}
 
-          {/* Current-time indicator */}
-          {nowH >= GRID_START && nowH < GRID_END && (
+          {/* Current-time indicator — only shown when viewing today */}
+          {isToday && nowH >= GRID_START && nowH < GRID_END && (
             <div
               style={{
                 position: "absolute",
-                top: ((nowH - GRID_START) + nowMin / 60) * PX_PER_HOUR,
-                left: 36,
+                top: (nowH + nowMin / 60) * PX_PER_HOUR,
+                left: 64,
                 right: 0,
                 zIndex: 4,
               }}
@@ -1518,6 +1525,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
   // after a load (before setItems has flushed the loaded data into state).
   const isLoadingRef = useRef(true);
   const [scheduleView, setScheduleView] = useState<ScheduleView>("daily");
+  const [scheduleDate, setScheduleDate] = useState(localDateStr());          // daily nav date
   const [weekOffset,   setWeekOffset]   = useState(0);
   const [showWeekends, setShowWeekends] = useState(() => {
     try { return localStorage.getItem("eln-showWeekends") === "true"; } catch { return false; }
@@ -1872,6 +1880,36 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
             </button>
           </div>
 
+          {/* Day navigation (daily mode only) */}
+          {scheduleView === "daily" && (
+            <div className="flex items-center gap-0.5">
+              <button
+                onClick={() => {
+                  const d = new Date(scheduleDate + "T00:00:00");
+                  d.setDate(d.getDate() - 1);
+                  setScheduleDate(localDateStr(d));
+                }}
+                className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                aria-label="Previous day"
+              >‹</button>
+              {scheduleDate !== localDateStr() && (
+                <button
+                  onClick={() => setScheduleDate(localDateStr())}
+                  className="rounded px-1 py-0.5 text-[9px] text-zinc-600 hover:text-zinc-400"
+                >Today</button>
+              )}
+              <button
+                onClick={() => {
+                  const d = new Date(scheduleDate + "T00:00:00");
+                  d.setDate(d.getDate() + 1);
+                  setScheduleDate(localDateStr(d));
+                }}
+                className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                aria-label="Next day"
+              >›</button>
+            </div>
+          )}
+
           {/* Week navigation + weekends toggle (weekly mode only) */}
           {scheduleView === "weekly" && (
             <>
@@ -1925,11 +1963,12 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
           <div className="w-2/5 shrink-0 overflow-y-auto border-r border-zinc-800 p-3">
             <p className="mb-2 text-[9px] font-semibold uppercase tracking-widest text-zinc-600">
               {scheduleView === "daily"
-                ? new Date().toLocaleDateString("en-US", {
-                    weekday: "long",
-                    month:   "short",
-                    day:     "numeric",
-                  })
+                ? (() => {
+                    const d = new Date(scheduleDate + "T00:00:00");
+                    const isToday = scheduleDate === localDateStr();
+                    const label   = d.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+                    return isToday ? `Today · ${label}` : label;
+                  })()
                 : (() => {
                     const dates = getWeekDates(weekOffset);
                     const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -1937,7 +1976,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
                   })()}
             </p>
             {scheduleView === "daily" ? (
-              <DailySchedulePanel items={items} onUpdateItem={updateItem} />
+              <DailySchedulePanel items={items} onUpdateItem={updateItem} date={scheduleDate} />
             ) : (
               <WeeklySchedulePanel items={items} weekOffset={weekOffset} showWeekends={showWeekends} />
             )}
@@ -2155,6 +2194,12 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
                 <span>+</span>
                 <span>Book</span>
               </button>
+              <Link
+                href="/equipment"
+                className="text-[10px] text-zinc-500 transition hover:text-zinc-300"
+              >
+                Equipment ↗
+              </Link>
             </div>
             {/* Equipment calendar */}
             <div className="min-h-0 flex-1">

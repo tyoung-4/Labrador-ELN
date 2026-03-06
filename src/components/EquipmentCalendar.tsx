@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { USER_STORAGE_KEY, ELN_USERS } from "@/components/AppTopNav";
 import {
   RESOURCE_GROUPS,
@@ -18,6 +19,7 @@ import {
 } from "@/components/EquipmentShared";
 import { useEquipmentBookings, canUserDelete } from "@/hooks/useEquipmentBookings";
 import { defaultEndTime } from "@/config/equipmentDefaults";
+import { useToast } from "@/components/ToastProvider";
 
 type CalView = "daily" | "weekly";
 
@@ -34,7 +36,33 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
   const [weekOffset, setWeekOffset] = useState(0);
 
   // ── API-backed events ─────────────────────────────────────────────────────
-  const { events, saveBooking: saveBookingFn, deleteBooking: deleteBookingFn } = useEquipmentBookings();
+  const { events, refresh, saveBooking: saveBookingFn, deleteBooking: deleteBookingFn, endEarlyBooking } = useEquipmentBookings();
+
+  // ── Toast + Early Release ─────────────────────────────────────────────────
+  const { addToast }        = useToast();
+  const earlySeenRef        = useRef<Set<string>>(new Set());
+
+  // Poll /api/equipment/recent-releases every 30 s — surface toasts to all users
+  const stableAddToast = useCallback(addToast, [addToast]);
+  useEffect(() => {
+    let cancelled = false;
+    async function checkReleases() {
+      try {
+        const res = await fetch("/api/equipment/recent-releases");
+        if (!res.ok || cancelled) return;
+        const releases: Array<{ id: string; equipmentName: string; operatorName: string }> = await res.json();
+        for (const r of releases) {
+          if (!earlySeenRef.current.has(r.id)) {
+            earlySeenRef.current.add(r.id);
+            stableAddToast(`${r.equipmentName} is now available — session ended early by ${r.operatorName}`);
+          }
+        }
+      } catch { /* network — ignore */ }
+    }
+    checkReleases();
+    const interval = setInterval(checkReleases, 30_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [stableAddToast]);
 
   // ── Enabled resources (localStorage preference, not shared) ──────────────
   const enabledLoadingRef  = useRef(false);
@@ -183,10 +211,27 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
     setShowModal(false);
   }
 
+  async function handleEndEarly(ev: ScheduleEvent) {
+    const name = ALL_RESOURCES.find(r => r.id === ev.resourceId)?.label ?? ev.resourceId;
+    const ok   = window.confirm(
+      `End ${name} session early? This will notify other users that the equipment is now available.`
+    );
+    if (!ok) return;
+
+    // Pre-register so the poller doesn't fire a duplicate toast
+    earlySeenRef.current.add(ev.id);
+
+    const success = await endEarlyBooking(ev.id);
+    if (success) {
+      addToast(`${name} is now available — session ended early by ${ev.userName}`);
+      await refresh();
+    }
+  }
+
   // ── Navigation ────────────────────────────────────────────────────────────
   function navPrev() {
     if (view === "daily") {
-      const d = new Date(dailyDate); d.setDate(d.getDate() - 1); setDailyDate(localDateStr(d));
+      const d = new Date(dailyDate + "T00:00:00"); d.setDate(d.getDate() - 1); setDailyDate(localDateStr(d));
     } else {
       setWeekOffset(o => o - 1);
     }
@@ -194,7 +239,7 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
 
   function navNext() {
     if (view === "daily") {
-      const d = new Date(dailyDate); d.setDate(d.getDate() + 1); setDailyDate(localDateStr(d));
+      const d = new Date(dailyDate + "T00:00:00"); d.setDate(d.getDate() + 1); setDailyDate(localDateStr(d));
     } else {
       setWeekOffset(o => o + 1);
     }
@@ -272,13 +317,21 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
         {/* Date label */}
         <p className="text-[11px] font-semibold text-zinc-300">{dateLabel}</p>
 
-        {/* Book button */}
-        <button
-          onClick={() => openNew()}
-          className="ml-auto rounded bg-indigo-600 px-2.5 py-1 text-[10px] text-white hover:bg-indigo-500"
-        >
-          + Book
-        </button>
+        {/* Book button + Equipment page link */}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => openNew()}
+            className="rounded bg-indigo-600 px-2.5 py-1 text-[10px] text-white hover:bg-indigo-500"
+          >
+            + Book
+          </button>
+          <Link
+            href="/equipment"
+            className="text-[10px] text-zinc-500 transition hover:text-zinc-300"
+          >
+            Equipment ↗
+          </Link>
+        </div>
       </div>
 
       {/* ── Resource toggle chips (full page) / Group tabs (dashboard) ── */}
@@ -365,6 +418,7 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
               openNew({ resourceId, date: dailyDate, startTime })
             }
             onEventClick={openEdit}
+            onEndEarly={handleEndEarly}
           />
         )}
         {view === "weekly" && (

@@ -44,7 +44,11 @@ export async function PUT(
     const end   = new Date(endTime);
 
     if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
-      return NextResponse.json({ error: "Invalid time range" }, { status: 400 });
+      return NextResponse.json({ error: "End time must be after start time" }, { status: 400 });
+    }
+
+    if (end.getTime() - start.getTime() > 24 * 60 * 60 * 1000) {
+      return NextResponse.json({ error: "Bookings cannot exceed 24 hours" }, { status: 400 });
     }
 
     // Conflict check excluding the booking being updated
@@ -81,6 +85,32 @@ export async function PUT(
   } catch (error) {
     const detail = process.env.NODE_ENV === "development" && error instanceof Error ? error.message : undefined;
     return NextResponse.json({ error: "Failed to update booking", detail }, { status: 500 });
+  }
+}
+
+/** PATCH /api/equipment-bookings/[id] — end a booking early */
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id }     = await params;
+    const { action } = await req.json();
+
+    if (action !== "endEarly") {
+      return NextResponse.json({ error: "Unknown action" }, { status: 400 });
+    }
+
+    const now     = new Date();
+    const booking = await prisma.equipmentBooking.update({
+      where: { id },
+      data:  { endTime: now, endedEarlyAt: now },
+    });
+
+    return NextResponse.json(toEvent(booking));
+  } catch (error) {
+    const detail = process.env.NODE_ENV === "development" && error instanceof Error ? error.message : undefined;
+    return NextResponse.json({ error: "Failed to end booking early", detail }, { status: 500 });
   }
 }
 

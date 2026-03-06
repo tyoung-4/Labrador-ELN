@@ -25,9 +25,9 @@ export type ResourceGroup = {
 export type ScheduleEvent = {
   id: string;
   resourceId: ResourceId;
-  date: string;        // YYYY-MM-DD
+  date: string;        // YYYY-MM-DD  (start date)
   startTime?: string;  // HH:MM (24h)
-  endTime?: string;    // HH:MM (24h)
+  endTime?: string;    // HH:MM (24h) — may be on the next calendar day if overnight
   title: string;
   userId: string;
   userName: string;
@@ -39,6 +39,7 @@ export type BookingDraft = {
   startTime: string;
   endTime: string;
   title: string;
+  isOvernight?: boolean;
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -89,7 +90,8 @@ export const RESOURCE_GROUPS: ResourceGroup[] = [
 export const ALL_RESOURCES: (ResourceMeta & { group: ResourceGroup })[] =
   RESOURCE_GROUPS.flatMap(g => g.resources.map(r => ({ ...r, group: g })));
 
-export const HOURS = Array.from({ length: 14 }, (_, i) => i + 7); // 7 a.m.–8 p.m.
+/** Full 24-hour day, 12:00 am–11:00 pm */
+export const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 export const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -116,15 +118,44 @@ export function getWeekDates(weekOffset = 0): Date[] {
   });
 }
 
+/** "09:30" → "9:30 am",  "13:00" → "1:00 pm" */
 export function fmt12h(t: string): string {
   const [h24s, minS] = t.split(":");
   const h24 = parseInt(h24s, 10);
   const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
-  return `${h12}:${minS}${h24 < 12 ? "a" : "p"}`;
+  return `${h12}:${minS} ${h24 < 12 ? "am" : "pm"}`;
 }
 
 export function groupFor(id: ResourceId): ResourceGroup {
   return ALL_RESOURCES.find(r => r.id === id)!.group;
+}
+
+function timeToMins(t: string): number {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + (m || 0);
+}
+
+/** Generate all 30-min time options for a day */
+function gen30MinOptions(): { value: string; label: string }[] {
+  const opts: { value: string; label: string }[] = [];
+  for (let h = 0; h < 24; h++) {
+    for (const m of [0, 30]) {
+      const hh  = String(h).padStart(2, "0");
+      const mm  = String(m).padStart(2, "0");
+      const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+      opts.push({ value: `${hh}:${mm}`, label: `${h12}:${mm} ${h < 12 ? "am" : "pm"}` });
+    }
+  }
+  return opts;
+}
+
+const TIME_OPTIONS = gen30MinOptions();
+
+/** Advance a YYYY-MM-DD string by one calendar day */
+export function nextDayStr(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + 1);
+  return localDateStr(d);
 }
 
 // ─── DailyView ────────────────────────────────────────────────────────────────
@@ -135,12 +166,14 @@ export function DailyView({
   events,
   onCellClick,
   onEventClick,
+  onEndEarly,
 }: {
   date: string;
   enabledResources: (ResourceMeta & { group: ResourceGroup })[];
   events: ScheduleEvent[];
   onCellClick: (resourceId: ResourceId, startTime: string) => void;
   onEventClick: (ev: ScheduleEvent) => void;
+  onEndEarly?: (ev: ScheduleEvent) => void;
 }) {
   if (enabledResources.length === 0) {
     return (
@@ -153,6 +186,17 @@ export function DailyView({
   const colCount = enabledResources.length;
   const today    = localDateStr();
   const isToday  = date === today;
+
+  const now     = new Date();
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+
+  function isBookingActive(ev: ScheduleEvent): boolean {
+    if (!isToday || !ev.startTime || !ev.endTime) return false;
+    const s = timeToMins(ev.startTime);
+    const e = timeToMins(ev.endTime);
+    // Normal run: end > start; overnight: end < start (treat as running until midnight)
+    return e > s ? nowMins >= s && nowMins < e : nowMins >= s;
+  }
 
   return (
     <div className="min-w-[320px]">
@@ -172,54 +216,79 @@ export function DailyView({
         ))}
       </div>
 
-      {/* Hour rows */}
+      {/* 30-minute slot rows — 48 rows for full 24-hour day */}
       {HOURS.map(h => {
-        const hh        = String(h).padStart(2, "0");
-        const nowHour   = new Date().getHours();
-        const isCurrent = h === nowHour && isToday;
-
+        const hh = String(h).padStart(2, "0");
         return (
-          <div
-            key={h}
-            className={`grid border-b border-zinc-800/40 ${isCurrent ? "bg-indigo-950/20" : ""}`}
-            style={{ gridTemplateColumns: `3.5rem repeat(${colCount}, minmax(0, 1fr))` }}
-          >
-            <div className={`border-r border-zinc-800 px-1.5 py-2 text-right text-[9px] ${
-              isCurrent ? "font-bold text-indigo-400" : "text-zinc-700"
-            }`}>
-              {h % 12 === 0 ? 12 : h % 12}{h < 12 ? "a" : "p"}
-            </div>
+          <div key={h}>
+            {([0, 30] as const).map(halfMin => {
+              const mm           = String(halfMin).padStart(2, "0");
+              const slotTime     = `${hh}:${mm}`;
+              const slotMins     = h * 60 + halfMin;
+              const isHalfHour   = halfMin === 30;
+              const isCurrent    = isToday && slotMins === Math.floor(nowMins / 30) * 30;
+              const h12          = h === 0 ? 12 : h > 12 ? h - 12 : h;
+              const ampm         = h < 12 ? "am" : "pm";
 
-            {enabledResources.map(r => {
-              const slotEvts = events.filter(e =>
-                e.resourceId === r.id &&
-                e.date === date &&
-                e.startTime?.startsWith(hh + ":")
-              );
               return (
                 <div
-                  key={r.id}
-                  onClick={() => onCellClick(r.id, `${hh}:00`)}
-                  className="group min-h-[2.5rem] cursor-pointer border-r border-zinc-800 p-0.5 transition hover:bg-zinc-800/50"
+                  key={slotTime}
+                  className={`grid border-b ${
+                    isHalfHour ? "border-zinc-800/20" : "border-zinc-800/40"
+                  } ${isCurrent ? "bg-indigo-950/20" : ""}`}
+                  style={{ gridTemplateColumns: `3.5rem repeat(${colCount}, minmax(0, 1fr))` }}
                 >
-                  {slotEvts.map(ev => (
-                    <div
-                      key={ev.id}
-                      onClick={e => { e.stopPropagation(); onEventClick(ev); }}
-                      className={`rounded px-1.5 py-1 text-[9px] leading-tight cursor-pointer ${r.group.chipBg} ${r.group.chipText} hover:opacity-80`}
-                    >
-                      <div className="truncate font-medium">{ev.title}</div>
-                      <div className="truncate opacity-70">{ev.userName}</div>
-                      {ev.startTime && ev.endTime && (
-                        <div className="opacity-60">{fmt12h(ev.startTime)}–{fmt12h(ev.endTime)}</div>
-                      )}
-                    </div>
-                  ))}
-                  {slotEvts.length === 0 && (
-                    <div className="flex h-full items-center justify-center opacity-0 group-hover:opacity-100">
-                      <span className="text-[9px] text-zinc-700">+</span>
-                    </div>
-                  )}
+                  {/* Time label — only on :00 rows */}
+                  <div className={`border-r border-zinc-800 px-1.5 py-1 text-right text-[9px] leading-none ${
+                    isCurrent ? "font-bold text-indigo-400" : "text-zinc-700"
+                  }`}>
+                    {!isHalfHour && `${h12}:00 ${ampm}`}
+                  </div>
+
+                  {enabledResources.map(r => {
+                    const slotEvts = events.filter(e =>
+                      e.resourceId === r.id &&
+                      e.date === date &&
+                      e.startTime === slotTime
+                    );
+                    return (
+                      <div
+                        key={r.id}
+                        onClick={() => onCellClick(r.id, slotTime)}
+                        className="group min-h-[1.5rem] cursor-pointer border-r border-zinc-800 p-0.5 transition hover:bg-zinc-800/50"
+                      >
+                        {slotEvts.map(ev => {
+                          const active = isBookingActive(ev);
+                          return (
+                            <div
+                              key={ev.id}
+                              onClick={e => { e.stopPropagation(); onEventClick(ev); }}
+                              className={`rounded px-1.5 py-1 text-[9px] leading-tight cursor-pointer ${r.group.chipBg} ${r.group.chipText} hover:opacity-80`}
+                            >
+                              <div className="truncate font-medium">{ev.title}</div>
+                              <div className="truncate opacity-70">{ev.userName}</div>
+                              {ev.startTime && ev.endTime && (
+                                <div className="opacity-60">{fmt12h(ev.startTime)}–{fmt12h(ev.endTime)}</div>
+                              )}
+                              {active && onEndEarly && (
+                                <button
+                                  onClick={e => { e.stopPropagation(); onEndEarly(ev); }}
+                                  className="mt-1 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[8px] text-amber-300 transition hover:bg-amber-500/30"
+                                >
+                                  End Early
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {slotEvts.length === 0 && (
+                          <div className="flex h-full items-center justify-center opacity-0 group-hover:opacity-100">
+                            <span className="text-[9px] text-zinc-700">+</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
@@ -377,6 +446,38 @@ export function BookingModal({
   /** Show the Delete button — only true when the current user owns the booking */
   canDelete?: boolean;
 }) {
+  // ── Client-side validation ──────────────────────────────────────────────────
+  const startMins    = timeToMins(draft.startTime || "00:00");
+  const endMins      = timeToMins(draft.endTime   || "00:00");
+  const isOvernight  = draft.isOvernight ?? false;
+
+  // Duration: for overnight, add 24h to end so end is effectively next day
+  const effectiveEndMins = isOvernight ? endMins + 1440 : endMins;
+  const durationMins     = effectiveEndMins - startMins;
+
+  let validationError: string | null = null;
+  if (!isOvernight && endMins <= startMins) {
+    validationError = "End time must be after start time";
+  } else if (durationMins > 1440) {
+    validationError = "Bookings cannot exceed 24 hours";
+  } else if (isOvernight && durationMins <= 0) {
+    validationError = "End time must be after start time";
+  }
+
+  const displayError = validationError ?? errorMessage ?? null;
+  const canSubmit    = !saving && !!draft.resourceId && !!draft.date && !validationError;
+
+  // Compute the displayed end date for overnight runs
+  const endDateDisplay = isOvernight && draft.date
+    ? new Date(draft.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+    : null;
+  const nextDate = draft.date ? nextDayStr(draft.date) : "";
+  const nextDateDisplay = nextDate
+    ? new Date(nextDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+    : "";
+
+  void endDateDisplay; // suppress unused warning
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
@@ -388,6 +489,7 @@ export function BookingModal({
         </h3>
 
         <div className="space-y-3">
+          {/* Title */}
           <div>
             <label className="mb-1 block text-xs font-medium text-zinc-400">
               Title <span className="text-zinc-600">(optional)</span>
@@ -401,6 +503,7 @@ export function BookingModal({
             />
           </div>
 
+          {/* Resource */}
           <div>
             <label className="mb-1 block text-xs font-medium text-zinc-400">Resource</label>
             <select
@@ -419,40 +522,69 @@ export function BookingModal({
             </select>
           </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-medium text-zinc-400">Date</label>
-            <input
-              type="date"
-              value={draft.date}
-              onChange={e => onDraftChange({ ...draft, date: e.target.value })}
-              className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none"
-            />
+          {/* Date + Overnight toggle */}
+          <div className="flex items-end gap-3">
+            <div className="flex-1">
+              <label className="mb-1 block text-xs font-medium text-zinc-400">Start date</label>
+              <input
+                type="date"
+                value={draft.date}
+                onChange={e => onDraftChange({ ...draft, date: e.target.value })}
+                className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none"
+              />
+            </div>
+            <label className="flex shrink-0 cursor-pointer items-center gap-1.5 pb-2.5 text-xs text-zinc-400">
+              <input
+                type="checkbox"
+                checked={isOvernight}
+                onChange={e => onDraftChange({ ...draft, isOvernight: e.target.checked })}
+                className="rounded border-zinc-600 bg-zinc-800 accent-indigo-500"
+              />
+              Overnight run
+            </label>
           </div>
 
+          {/* Overnight end-date indicator */}
+          {isOvernight && nextDateDisplay && (
+            <p className="text-[10px] text-indigo-300">
+              Ends on: <span className="font-semibold">{nextDateDisplay}</span>
+            </p>
+          )}
+
+          {/* Start / End time selects */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-zinc-400">Start time</label>
-              <input
-                type="time"
+              <select
                 value={draft.startTime}
                 onChange={e => onDraftChange({ ...draft, startTime: e.target.value })}
                 className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none"
-              />
+              >
+                {TIME_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-zinc-400">End time</label>
-              <input
-                type="time"
+              <label className="mb-1 block text-xs font-medium text-zinc-400">
+                End time {isOvernight && <span className="text-indigo-300">(next day)</span>}
+              </label>
+              <select
                 value={draft.endTime}
                 onChange={e => onDraftChange({ ...draft, endTime: e.target.value })}
                 className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none"
-              />
+              >
+                {TIME_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
             </div>
           </div>
 
-          {errorMessage && (
+          {/* Validation / API error */}
+          {displayError && (
             <div className="rounded border border-red-500/40 bg-red-900/20 px-3 py-2 text-xs text-red-300">
-              {errorMessage}
+              {displayError}
             </div>
           )}
         </div>
@@ -476,8 +608,8 @@ export function BookingModal({
               Cancel
             </button>
             <button
-              onClick={onSave}
-              disabled={!draft.resourceId || !draft.date || saving}
+              onClick={() => { if (canSubmit) onSave(); }}
+              disabled={!canSubmit}
               className="rounded bg-indigo-600 px-4 py-2 text-xs text-white hover:bg-indigo-500 disabled:opacity-50"
             >
               {saving ? "Saving…" : editEventId ? "Update" : "Book"}

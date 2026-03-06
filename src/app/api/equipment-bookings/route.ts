@@ -52,7 +52,11 @@ export async function POST(req: NextRequest) {
     const end   = new Date(endTime);
 
     if (isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) {
-      return NextResponse.json({ error: "Invalid time range" }, { status: 400 });
+      return NextResponse.json({ error: "End time must be after start time" }, { status: 400 });
+    }
+
+    if (end.getTime() - start.getTime() > 24 * 60 * 60 * 1000) {
+      return NextResponse.json({ error: "Bookings cannot exceed 24 hours" }, { status: 400 });
     }
 
     // Server-side conflict detection

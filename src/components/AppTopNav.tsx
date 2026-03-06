@@ -6,12 +6,9 @@ import { useEffect, useState } from "react";
 import GlobalClock from "./GlobalClock";
 
 const NAV_ITEMS = [
-  { href: "/",              label: "Home",          exact: true,  activeClass: "bg-sky-500 text-white"     },
-  { href: "/protocols",     label: "Protocols",     exact: false, activeClass: "bg-emerald-600 text-white" },
-  { href: "/inventory",     label: "Inventory",     exact: false, activeClass: "bg-blue-600 text-white"    },
-  { href: "/equipment",     label: "Equipment",     exact: false, activeClass: "bg-purple-600 text-white"  },
-  { href: "/knowledge-hub", label: "Knowledge Hub", exact: false, activeClass: "bg-rose-700 text-white"    },
-  { href: "/ingestion",     label: "👾 Ingestion",  exact: false, activeClass: "bg-amber-600 text-white"   },
+  { href: "/",          label: "Home",         exact: true,  activeClass: "bg-sky-500 text-white"    },
+  { href: "/equipment", label: "Equipment",    exact: false, activeClass: "bg-purple-600 text-white" },
+  { href: "/ingestion", label: "👾 Ingestion", exact: false, activeClass: "bg-amber-600 text-white"  },
 ];
 
 export const ELN_USERS = [

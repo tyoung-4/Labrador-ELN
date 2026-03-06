@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ALL_RESOURCES } from "@/components/EquipmentShared";
-import type { ScheduleEvent, BookingDraft, ResourceId } from "@/components/EquipmentShared";
+import { ALL_RESOURCES, nextDayStr } from "@/components/EquipmentShared";
+import type { ScheduleEvent, BookingDraft } from "@/components/EquipmentShared";
 
 /**
  * Shared hook for API-backed equipment bookings.
@@ -48,12 +48,15 @@ export function useEquipmentBookings() {
       draft.title.trim() ||
       (ALL_RESOURCES.find(r => r.id === draft.resourceId)?.label ?? draft.resourceId);
 
+    // For overnight runs the end timestamp falls on the next calendar day
+    const endDate = draft.isOvernight ? nextDayStr(draft.date) : draft.date;
+
     const payload = {
       equipmentId:  draft.resourceId,
       operatorName: userName,
       userId,
       startTime:    `${draft.date}T${draft.startTime}:00`,
-      endTime:      `${draft.date}T${draft.endTime}:00`,
+      endTime:      `${endDate}T${draft.endTime}:00`,
       title:        autoTitle,
     };
 
@@ -87,7 +90,26 @@ export function useEquipmentBookings() {
     } catch { /* ignore */ }
   }
 
-  return { events, loading, refresh, saveBooking, deleteBooking };
+  /**
+   * End a booking early — sets endTime to now and marks endedEarlyAt.
+   * Returns true on success.
+   */
+  async function endEarlyBooking(id: string): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/equipment-bookings/${id}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ action: "endEarly" }),
+      });
+      if (!res.ok) return false;
+      await refresh();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  return { events, loading, refresh, saveBooking, deleteBooking, endEarlyBooking };
 }
 
 /** Helper: given a ResourceId and events list, checks if the userId owns an event */
