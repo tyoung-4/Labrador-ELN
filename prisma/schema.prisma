@@ -46,6 +46,7 @@ model Entry {
   protocolRuns  ProtocolRun[]  @relation("RunSource")
   linkedRun     ProtocolRun?   @relation("RunLink", fields: [linkedRunId], references: [id])
   linkedRunId   String?
+  protocol      Protocol?
 }
 
 model Attachment {
@@ -104,4 +105,49 @@ model EquipmentBooking {
   createdAt     DateTime  @default(now())
 
   @@index([equipmentId, startTime, endTime])
+}
+
+model Protocol {
+  id        String   @id @default(uuid())
+  entry     Entry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  entryId   String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sections ProtocolSection[]
+}
+
+model ProtocolSection {
+  id         String   @id @default(uuid())
+  protocol   Protocol @relation(fields: [protocolId], references: [id], onDelete: Cascade)
+  protocolId String
+  name       String
+  order      Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  steps ProtocolStep[]
+
+  @@index([protocolId, order])
+}
+
+model ProtocolStep {
+  id         String          @id @default(uuid())
+  section    ProtocolSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  sectionId  String
+  stepType   StepType        @default(STEP)
+  parentStep ProtocolStep?   @relation("ProtocolStepToSubsteps", fields: [parentStepId], references: [id], onDelete: Cascade)
+  parentStepId String?
+  substeps   ProtocolStep[]  @relation("ProtocolStepToSubsteps")
+  estimatedMinutes Int?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@index([sectionId])
+  @@index([parentStepId])
+}
+
+enum StepType {
+  STEP
+  SUBSTEP
 }
