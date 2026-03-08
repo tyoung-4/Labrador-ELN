@@ -1,6 +1,10 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import RichTextEditor from "./RichTextEditor";
+import ProtocolStepsEditor, {
+  parseStepsData as parseStepsDataV2,
+  type ProtocolStepsEditorHandle,
+} from "./ProtocolStepsEditor";
 import { TECHNIQUE_OPTIONS, type Entry, type AttachmentRecord } from "@/models/entry";
 import {
   ENTRY_TYPE_CONFIGS,
@@ -587,13 +591,8 @@ export default function Editor({
 
   const [activeTab, setActiveTab] = useState<EditorTab>("steps");
 
-  const [externalAction, setExternalAction] = useState<{
-    id: number;
-    type: "insert-section" | "insert-step" | "insert-sub-step" | "convert-to-step" | "add-step-case"
-        | "open-entry-field" | "open-timer";
-    preset?: { entryType?: string };
-  } | null>(null);
-
+  const stepsEditorRef = useRef<ProtocolStepsEditorHandle>(null);
+  const [showSectionErrors, setShowSectionErrors] = useState(false);
   const [showComponentsMenu, setShowComponentsMenu] = useState(false);
   const [showVersionPanel, setShowVersionPanel] = useState(false);
 
@@ -632,6 +631,7 @@ export default function Editor({
     setTabReferences(parsed.references);
     setTabMaterials(parsed.materials);
     setActiveTab("steps");
+    setShowSectionErrors(false);
   }, [initial.id, initial.title, initial.description, initial.technique, initial.body, initial.entryType, initial.typedData]);
 
   // In protocolShell mode the title is managed by the parent via titleValue;
@@ -660,6 +660,14 @@ export default function Editor({
     initialTypedData, initialBody,
   ]);
 
+  // Auto-clear section errors once all sections have steps again
+  useEffect(() => {
+    if (!showSectionErrors) return;
+    const stepsData = parseStepsDataV2(steps);
+    const stillEmpty = stepsData.sections.some((s) => s.steps.length === 0);
+    if (!stillEmpty) setShowSectionErrors(false);
+  }, [steps, showSectionErrors]);
+
   // When initial.id changes (new entry loaded), the internal state hasn't been
   // reset yet, so isDirty is transiently true for one render cycle.  Suppress
   // that first onDirtyChange call so the parent never sees the spurious true.
@@ -677,6 +685,15 @@ export default function Editor({
   }
 
   function handleSave() {
+    if (protocolShell) {
+      const stepsData = parseStepsDataV2(steps);
+      const hasEmptySection = stepsData.sections.some((s) => s.steps.length === 0);
+      if (hasEmptySection) {
+        setShowSectionErrors(true);
+        return; // block save
+      }
+    }
+    setShowSectionErrors(false);
     onSave({
       id: initial.id,
       title: effectiveTitle || initial.title || "",
@@ -762,19 +779,19 @@ export default function Editor({
             <aside className="lg:sticky lg:top-2 lg:h-fit rounded border border-zinc-800 bg-zinc-900 p-3">
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Insert</p>
               <div className="space-y-1 text-sm">
-                {(["insert-section","insert-step","insert-sub-step","convert-to-step","add-step-case"] as const).map((type) => {
+                {(["insert-section", "insert-step"] as const).map((type) => {
                   const labels: Record<string, string> = {
-                    "insert-section":  "Insert section",
-                    "insert-step":     "Insert step",
-                    "insert-sub-step": "Insert sub-step",
-                    "convert-to-step": "Convert to step",
-                    "add-step-case":   "Add step-case",
+                    "insert-section": "Insert section",
+                    "insert-step":    "Insert step",
                   };
                   const disabled = activeTab !== "steps";
                   return (
                     <button
                       key={type}
-                      onClick={() => setExternalAction({ id: Date.now(), type })}
+                      onClick={() => {
+                        if (type === "insert-section") stepsEditorRef.current?.insertSection();
+                        else stepsEditorRef.current?.insertStep();
+                      }}
                       disabled={disabled}
                       className={`w-full rounded border px-3 py-2 text-left text-zinc-100 transition ${
                         disabled
@@ -808,13 +825,12 @@ export default function Editor({
               </div>
 
               {activeTab === "steps" && (
-                <RichTextEditor
+                <ProtocolStepsEditor
                   key={(initial.id ?? "new-entry") + "-steps"}
+                  ref={stepsEditorRef}
                   initialContent={steps}
                   onChange={setSteps}
-                  editable={true}
-                  mode="full"
-                  externalAction={externalAction}
+                  showSectionErrors={showSectionErrors}
                 />
               )}
               {activeTab === "description" && (
@@ -919,9 +935,9 @@ export default function Editor({
                           key={item.label}
                           onClick={() => {
                             if (item.entryType === "Timer") {
-                              setExternalAction({ id: Date.now(), type: "open-timer" });
+                              stepsEditorRef.current?.openRecipes();
                             } else {
-                              setExternalAction({ id: Date.now(), type: "open-entry-field", preset: { entryType: item.entryType } });
+                              stepsEditorRef.current?.openRequiredField(item.entryType);
                             }
                             setShowComponentsMenu(false);
                           }}
