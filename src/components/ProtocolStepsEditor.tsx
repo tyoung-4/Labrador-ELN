@@ -5,12 +5,13 @@ import React, {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
   useState,
 } from "react";
-import { Undo2, Redo2 } from "lucide-react";
+import { Italic, Redo2, Underline, Undo2 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,6 +49,22 @@ export type StepsData = {
   version: 2;
   sections: Section[];
 };
+
+/** Which type of element currently has focus in the editor. Consumed by Editor sidebar. */
+export type FocusType = "section" | "step" | "substep" | null;
+
+// ─── Section color palette ─────────────────────────────────────────────────────
+
+const SECTION_COLORS = [
+  "#3B82F6", // blue
+  "#22C55E", // green
+  "#F59E0B", // amber
+  "#A855F7", // purple
+  "#EC4899", // pink
+  "#06B6D4", // cyan
+  "#F97316", // orange
+  "#EF4444", // red
+];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -109,7 +126,6 @@ export function parseStepsData(raw: string): StepsData {
   } catch {
     // not JSON
   }
-  // Legacy or unknown format — start fresh
   return emptyStepsData();
 }
 
@@ -203,6 +219,86 @@ const RECIPE_ITEMS = [
   { label: "Timer",           entryType: "Timer"         },
 ] as const;
 
+// ─── StepTextInput ─────────────────────────────────────────────────────────────
+// ContentEditable div that supports inline formatting (Italic, Underline).
+// Uses lastSyncedRef (init null) to detect external value changes vs. user edits.
+
+type StepTextInputProps = {
+  value: string;
+  onHtmlChange: (html: string) => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void;
+  onFocus: () => void;
+  placeholder: string;
+  className?: string;
+  focusId: string;
+  pendingFocusRef: React.MutableRefObject<string | null>;
+};
+
+function StepTextInput({
+  value,
+  onHtmlChange,
+  onKeyDown,
+  onFocus,
+  placeholder,
+  className = "",
+  focusId,
+  pendingFocusRef,
+}: StepTextInputProps) {
+  const divRef = useRef<HTMLDivElement>(null);
+  // null = not yet synced (mount case); otherwise tracks last innerHTML we set
+  const lastSyncedRef = useRef<string | null>(null);
+
+  // Sync innerHTML whenever value differs from what we last set.
+  // On mount: lastSyncedRef is null → always syncs initial value.
+  // On user type: onInput sets lastSyncedRef before state update, so re-render
+  //   sees value === lastSyncedRef → no sync → cursor preserved.
+  // On undo/redo: value changes → lastSyncedRef differs → syncs innerHTML.
+  useLayoutEffect(() => {
+    if (divRef.current && value !== lastSyncedRef.current) {
+      divRef.current.innerHTML = value;
+      lastSyncedRef.current = value;
+    }
+  });
+
+  // Pending focus: set by insertStep / insertSubStep before mutate().
+  // Fires on every render; condition is cheap.
+  useLayoutEffect(() => {
+    if (pendingFocusRef.current === focusId && divRef.current) {
+      divRef.current.focus();
+      const range = document.createRange();
+      const sel = window.getSelection();
+      if (sel) {
+        range.selectNodeContents(divRef.current);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      pendingFocusRef.current = null;
+    }
+  });
+
+  return (
+    <div
+      ref={divRef}
+      contentEditable
+      suppressContentEditableWarning
+      data-placeholder={placeholder}
+      className={`${className} [&:empty:before]:content-[attr(data-placeholder)] [&:empty:before]:text-gray-400 [&:empty:before]:pointer-events-none`}
+      onInput={() => {
+        if (divRef.current) {
+          let html = divRef.current.innerHTML;
+          // Normalize browser-inserted bare <br> → empty string
+          if (html === "<br>" || html === "<br/>") html = "";
+          lastSyncedRef.current = html;
+          onHtmlChange(html);
+        }
+      }}
+      onKeyDown={onKeyDown}
+      onFocus={onFocus}
+    />
+  );
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function FieldPill({
@@ -253,6 +349,10 @@ function RequiredFieldModal({
   const [fieldUnit, setFieldUnit] = useState(init.defaultUnit);
   const [fieldLabel, setFieldLabel] = useState("");
 
+  function doInsert() {
+    onInsert({ id: uid(), kind: "measurement", label: fieldLabel.trim() || fieldType, unit: fieldUnit });
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="mx-4 w-full max-w-md rounded bg-white p-6 shadow-xl">
@@ -302,31 +402,16 @@ function RequiredFieldModal({
           </div>
         </div>
         <div className="mt-6 flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="rounded border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50"
-          >
+          <button onClick={onClose} className="rounded border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50">
             Cancel
           </button>
-          <button
-            onClick={doInsert}
-            className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-          >
+          <button onClick={doInsert} className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
             Insert
           </button>
         </div>
       </div>
     </div>
   );
-
-  function doInsert() {
-    onInsert({
-      id: uid(),
-      kind: "measurement",
-      label: fieldLabel.trim() || fieldType,
-      unit: fieldUnit,
-    });
-  }
 }
 
 type TimerMode = "countdown" | "countup" | "longrange";
@@ -366,21 +451,10 @@ function RecipesModal({
     if (!chosen) return;
     if (chosen.entryType === "Timer") {
       const totalSec = timerMinutes * 60 + timerSeconds;
-      onInsert({
-        id: uid(),
-        kind: "timer",
-        label: timerLabel.trim() || "Step Timer",
-        unit: "",
-        timerSeconds: timerMode === "countdown" ? Math.max(1, totalSec) : 0,
-        timerMode,
-      });
+      onInsert({ id: uid(), kind: "timer", label: timerLabel.trim() || "Step Timer", unit: "",
+        timerSeconds: timerMode === "countdown" ? Math.max(1, totalSec) : 0, timerMode });
     } else {
-      onInsert({
-        id: uid(),
-        kind: "component",
-        label: label.trim() || chosen.label,
-        unit,
-      });
+      onInsert({ id: uid(), kind: "component", label: label.trim() || chosen.label, unit });
     }
   }
 
@@ -392,44 +466,30 @@ function RecipesModal({
             <h3 className="mb-4 text-lg font-semibold text-gray-900">Insert Recipe</h3>
             <div className="grid grid-cols-2 gap-2">
               {RECIPE_ITEMS.map((item) => (
-                <button
-                  key={item.label}
-                  onClick={() => pickItem(item)}
-                  className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-left text-sm text-gray-700 hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-800 transition-colors"
-                >
+                <button key={item.label} onClick={() => pickItem(item)}
+                  className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-left text-sm text-gray-700 hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-800 transition-colors">
                   {item.label}
                 </button>
               ))}
             </div>
             <div className="mt-6 flex justify-end">
-              <button onClick={onClose} className="rounded border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50">
-                Cancel
-              </button>
+              <button onClick={onClose} className="rounded border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50">Cancel</button>
             </div>
           </>
         ) : (
           <>
-            <h3 className="mb-4 text-lg font-semibold text-gray-900">
-              Configure: {chosen?.label}
-            </h3>
+            <h3 className="mb-4 text-lg font-semibold text-gray-900">Configure: {chosen?.label}</h3>
             {chosen?.entryType === "Timer" ? (
               <div className="space-y-4">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">Timer Label</label>
-                  <input
-                    autoFocus
-                    value={timerLabel}
-                    onChange={(e) => setTimerLabel(e.target.value)}
-                    className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
-                  />
+                  <input autoFocus value={timerLabel} onChange={(e) => setTimerLabel(e.target.value)}
+                    className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900" />
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">Timer Type</label>
-                  <select
-                    value={timerMode}
-                    onChange={(e) => setTimerMode(e.target.value as TimerMode)}
-                    className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
-                  >
+                  <select value={timerMode} onChange={(e) => setTimerMode(e.target.value as TimerMode)}
+                    className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900">
                     <option value="countdown">Countdown</option>
                     <option value="countup">Count Up</option>
                     <option value="longrange">Long-range</option>
@@ -438,21 +498,17 @@ function RecipesModal({
                 <div className={`grid grid-cols-2 gap-3 ${timerMode !== "countdown" ? "opacity-50" : ""}`}>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-gray-700">Minutes</label>
-                    <input
-                      type="number" min="0" value={timerMinutes}
+                    <input type="number" min="0" value={timerMinutes}
                       onChange={(e) => setTimerMinutes(Math.max(0, parseInt(e.target.value) || 0))}
                       disabled={timerMode !== "countdown"}
-                      className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
-                    />
+                      className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900" />
                   </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-gray-700">Seconds</label>
-                    <input
-                      type="number" min="0" max="59" value={timerSeconds}
+                    <input type="number" min="0" max="59" value={timerSeconds}
                       onChange={(e) => setTimerSeconds(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
                       disabled={timerMode !== "countdown"}
-                      className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
-                    />
+                      className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900" />
                   </div>
                 </div>
               </div>
@@ -462,23 +518,16 @@ function RecipesModal({
                   <label className="mb-1 block text-sm font-medium text-gray-700">
                     Custom Label <span className="text-gray-400 font-normal">(optional)</span>
                   </label>
-                  <input
-                    autoFocus
-                    value={label}
-                    onChange={(e) => setLabel(e.target.value)}
+                  <input autoFocus value={label} onChange={(e) => setLabel(e.target.value)}
                     placeholder={`e.g. ${chosen?.label}`}
                     className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doInsert(); onClose(); } }}
-                  />
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doInsert(); onClose(); } }} />
                 </div>
                 <div>
                   <label className="mb-1 block text-sm font-medium text-gray-700">Unit</label>
-                  <select
-                    value={unit}
-                    onChange={(e) => setUnit(e.target.value)}
+                  <select value={unit} onChange={(e) => setUnit(e.target.value)}
                     disabled={chosen?.entryType === "Undefined"}
-                    className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
-                  >
+                    className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900">
                     <option value="">No unit</option>
                     {UNIT_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
                   </select>
@@ -486,16 +535,10 @@ function RecipesModal({
               </div>
             )}
             <div className="mt-6 flex justify-between">
-              <button onClick={() => setStep("pick")} className="rounded border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50 text-sm">
-                ← Back
-              </button>
+              <button onClick={() => setStep("pick")} className="rounded border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50 text-sm">← Back</button>
               <div className="flex gap-2">
-                <button onClick={onClose} className="rounded border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50">
-                  Cancel
-                </button>
-                <button onClick={() => { doInsert(); onClose(); }} className="rounded bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700">
-                  Insert
-                </button>
+                <button onClick={onClose} className="rounded border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50">Cancel</button>
+                <button onClick={() => { doInsert(); onClose(); }} className="rounded bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700">Insert</button>
               </div>
             </div>
           </>
@@ -510,6 +553,8 @@ function RecipesModal({
 export type ProtocolStepsEditorHandle = {
   insertSection: () => void;
   insertStep: () => void;
+  insertSubStep: () => void;
+  convertFocused: () => void;
   openRequiredField: (entryType?: string) => void;
   openRecipes: () => void;
 };
@@ -520,6 +565,7 @@ type Props = {
   initialContent?: string;
   onChange?: (content: string) => void;
   showSectionErrors?: boolean;
+  onFocusTypeChange?: (type: FocusType) => void;
 };
 
 export type FocusTarget = {
@@ -529,7 +575,10 @@ export type FocusTarget = {
 };
 
 const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
-  function ProtocolStepsEditor({ initialContent = "", onChange, showSectionErrors = false }, ref) {
+  function ProtocolStepsEditor(
+    { initialContent = "", onChange, showSectionErrors = false, onFocusTypeChange },
+    ref
+  ) {
     const [history, dispatch] = useReducer(historyReducer, {
       past: [],
       present: parseStepsData(initialContent),
@@ -538,7 +587,6 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
 
     const data = history.present;
 
-    // Stable refs for use in callbacks
     const dataRef = useRef(data);
     const onChangeRef = useRef(onChange);
     useEffect(() => { dataRef.current = data; }, [data]);
@@ -546,16 +594,23 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
 
     const pendingFocusRef = useRef<string | null>(null);
     const [focusTarget, setFocusTarget] = useState<FocusTarget | null>(null);
+    const [focusType, setFocusType] = useState<FocusType>(null);
 
-    // Modal state
+    // Stable refs so imperative handle always sees latest values
+    const focusTargetRef = useRef<FocusTarget | null>(null);
+    const focusTypeRef   = useRef<FocusType>(null);
+    const onFocusTypeChangeRef = useRef(onFocusTypeChange);
+    useEffect(() => { focusTargetRef.current = focusTarget; }, [focusTarget]);
+    useEffect(() => { focusTypeRef.current = focusType; }, [focusType]);
+    useEffect(() => { onFocusTypeChangeRef.current = onFocusTypeChange; }, [onFocusTypeChange]);
+
     const [fieldModalOpen, setFieldModalOpen] = useState(false);
     const [fieldModalInitialType, setFieldModalInitialType] = useState<string | undefined>(undefined);
     const [recipesModalOpen, setRecipesModalOpen] = useState(false);
 
-    // Numbers map: id → display label
     const numbers = useMemo(() => computeNumbers(data), [data]);
 
-    // ── Core mutation helper ─────────────────────────────────────────────────
+    // ── Core mutation ─────────────────────────────────────────────────────────
 
     const mutate = useCallback((newData: StepsData) => {
       dispatch({ type: "SET", data: newData });
@@ -576,7 +631,7 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
       onChangeRef.current?.(serializeStepsData(next));
     }, [history.future]);
 
-    // ── Keyboard shortcut for undo/redo ──────────────────────────────────────
+    // ── Global keyboard: undo/redo ────────────────────────────────────────────
 
     useEffect(() => {
       function handleKeyDown(e: KeyboardEvent) {
@@ -590,23 +645,27 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
       return () => window.removeEventListener("keydown", handleKeyDown);
     }, [undo, redo]);
 
-    // ── Section operations ───────────────────────────────────────────────────
+    // ── Focus helpers ─────────────────────────────────────────────────────────
 
-    function updateSectionTitle(sectionId: string, title: string) {
-      mutate({
-        ...data,
-        sections: data.sections.map((s) => s.id === sectionId ? { ...s, title } : s),
-      });
+    function setFocusCtx(target: FocusTarget | null, type: FocusType) {
+      setFocusTarget(target);
+      setFocusType(type);
+      onFocusTypeChangeRef.current?.(type);
     }
 
-    // ── Step operations ──────────────────────────────────────────────────────
+    // ── Section operations ────────────────────────────────────────────────────
+
+    function updateSectionTitle(sectionId: string, title: string) {
+      mutate({ ...data, sections: data.sections.map((s) => s.id === sectionId ? { ...s, title } : s) });
+    }
+
+    // ── Step operations ───────────────────────────────────────────────────────
 
     function updateStep(sectionId: string, stepId: string, text: string) {
       mutate({
         ...data,
         sections: data.sections.map((s) => s.id !== sectionId ? s : {
-          ...s,
-          steps: s.steps.map((st) => st.id === stepId ? { ...st, text } : st),
+          ...s, steps: s.steps.map((st) => st.id === stepId ? { ...st, text } : st),
         }),
       });
     }
@@ -630,8 +689,7 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
       mutate({
         ...data,
         sections: data.sections.map((s) => s.id !== sectionId ? s : {
-          ...s,
-          steps: s.steps.filter((st) => st.id !== stepId),
+          ...s, steps: s.steps.filter((st) => st.id !== stepId),
         }),
       });
     }
@@ -640,11 +698,11 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
       const section = data.sections.find((s) => s.id === sectionId);
       if (!section) return;
       const idx = section.steps.findIndex((st) => st.id === stepId);
-      if (idx <= 0) return; // no previous step to nest under
+      if (idx <= 0) return;
       const prevStep = section.steps[idx - 1];
-      const curStep = section.steps[idx];
-      const newSubStep: SubStep = { id: curStep.id, text: curStep.text, fields: curStep.fields };
-      pendingFocusRef.current = newSubStep.id;
+      const curStep  = section.steps[idx];
+      const newSub: SubStep = { id: curStep.id, text: curStep.text, fields: curStep.fields };
+      pendingFocusRef.current = newSub.id;
       mutate({
         ...data,
         sections: data.sections.map((s) => {
@@ -653,25 +711,20 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
             ...s,
             steps: s.steps
               .filter((st) => st.id !== stepId)
-              .map((st) => st.id !== prevStep.id ? st : {
-                ...st,
-                subSteps: [...st.subSteps, newSubStep],
-              }),
+              .map((st) => st.id !== prevStep.id ? st : { ...st, subSteps: [...st.subSteps, newSub] }),
           };
         }),
       });
     }
 
-    // ── Sub-step operations ──────────────────────────────────────────────────
+    // ── Sub-step operations ───────────────────────────────────────────────────
 
     function updateSubStep(sectionId: string, stepId: string, subStepId: string, text: string) {
       mutate({
         ...data,
         sections: data.sections.map((s) => s.id !== sectionId ? s : {
-          ...s,
-          steps: s.steps.map((st) => st.id !== stepId ? st : {
-            ...st,
-            subSteps: st.subSteps.map((ss) => ss.id === subStepId ? { ...ss, text } : ss),
+          ...s, steps: s.steps.map((st) => st.id !== stepId ? st : {
+            ...st, subSteps: st.subSteps.map((ss) => ss.id === subStepId ? { ...ss, text } : ss),
           }),
         }),
       });
@@ -683,8 +736,7 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
       mutate({
         ...data,
         sections: data.sections.map((s) => s.id !== sectionId ? s : {
-          ...s,
-          steps: s.steps.map((st) => {
+          ...s, steps: s.steps.map((st) => {
             if (st.id !== stepId) return st;
             const idx = st.subSteps.findIndex((ss) => ss.id === subStepId);
             const subs = [...st.subSteps];
@@ -695,28 +747,39 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
       });
     }
 
+    function addSubStepToStep(sectionId: string, stepId: string) {
+      const newSub: SubStep = { id: uid(), text: "", fields: [] };
+      pendingFocusRef.current = newSub.id;
+      mutate({
+        ...data,
+        sections: data.sections.map((s) => s.id !== sectionId ? s : {
+          ...s, steps: s.steps.map((st) => st.id !== stepId ? st : {
+            ...st, subSteps: [...st.subSteps, newSub],
+          }),
+        }),
+      });
+    }
+
     function deleteSubStep(sectionId: string, stepId: string, subStepId: string) {
       mutate({
         ...data,
         sections: data.sections.map((s) => s.id !== sectionId ? s : {
-          ...s,
-          steps: s.steps.map((st) => st.id !== stepId ? st : {
-            ...st,
-            subSteps: st.subSteps.filter((ss) => ss.id !== subStepId),
+          ...s, steps: s.steps.map((st) => st.id !== stepId ? st : {
+            ...st, subSteps: st.subSteps.filter((ss) => ss.id !== subStepId),
           }),
         }),
       });
     }
 
     function promoteSubStepToStep(sectionId: string, stepId: string, subStepId: string) {
-      const section = data.sections.find((s) => s.id === sectionId);
+      const section   = data.sections.find((s) => s.id === sectionId);
       if (!section) return;
-      const parentStep = section.steps.find((st) => st.id === stepId);
-      if (!parentStep) return;
-      const subStep = parentStep.subSteps.find((ss) => ss.id === subStepId);
+      const parentSt  = section.steps.find((st) => st.id === stepId);
+      if (!parentSt) return;
+      const subStep   = parentSt.subSteps.find((ss) => ss.id === subStepId);
       if (!subStep) return;
-      const promotedStep: Step = { id: subStep.id, text: subStep.text, fields: subStep.fields, subSteps: [] };
-      pendingFocusRef.current = promotedStep.id;
+      const promoted: Step = { id: subStep.id, text: subStep.text, fields: subStep.fields, subSteps: [] };
+      pendingFocusRef.current = promoted.id;
       mutate({
         ...data,
         sections: data.sections.map((s) => {
@@ -728,14 +791,14 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
                 ? { ...st, subSteps: st.subSteps.filter((ss) => ss.id !== subStepId) }
                 : st
             );
-            if (st.id === stepId) newSteps.push(promotedStep);
+            if (st.id === stepId) newSteps.push(promoted);
           }
           return { ...s, steps: newSteps };
         }),
       });
     }
 
-    // ── Field operations ─────────────────────────────────────────────────────
+    // ── Field operations ──────────────────────────────────────────────────────
 
     function addFieldToFocused(field: RequiredField) {
       const target = focusTarget;
@@ -743,16 +806,12 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
       mutate({
         ...data,
         sections: data.sections.map((s) => s.id !== target.sectionId ? s : {
-          ...s,
-          steps: s.steps.map((st) => {
+          ...s, steps: s.steps.map((st) => {
             if (st.id !== target.stepId) return st;
             if (target.subStepId) {
-              return {
-                ...st,
-                subSteps: st.subSteps.map((ss) =>
-                  ss.id === target.subStepId ? { ...ss, fields: [...ss.fields, field] } : ss
-                ),
-              };
+              return { ...st, subSteps: st.subSteps.map((ss) =>
+                ss.id === target.subStepId ? { ...ss, fields: [...ss.fields, field] } : ss
+              )};
             }
             return { ...st, fields: [...st.fields, field] };
           }),
@@ -760,22 +819,16 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
       });
     }
 
-    function removeField(
-      sectionId: string, stepId: string, fieldId: string, subStepId?: string
-    ) {
+    function removeField(sectionId: string, stepId: string, fieldId: string, subStepId?: string) {
       mutate({
         ...data,
         sections: data.sections.map((s) => s.id !== sectionId ? s : {
-          ...s,
-          steps: s.steps.map((st) => {
+          ...s, steps: s.steps.map((st) => {
             if (st.id !== stepId) return st;
             if (subStepId) {
-              return {
-                ...st,
-                subSteps: st.subSteps.map((ss) =>
-                  ss.id === subStepId ? { ...ss, fields: ss.fields.filter((f) => f.id !== fieldId) } : ss
-                ),
-              };
+              return { ...st, subSteps: st.subSteps.map((ss) =>
+                ss.id === subStepId ? { ...ss, fields: ss.fields.filter((f) => f.id !== fieldId) } : ss
+              )};
             }
             return { ...st, fields: st.fields.filter((f) => f.id !== fieldId) };
           }),
@@ -783,13 +836,14 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
       });
     }
 
-    // ── Keyboard handlers ────────────────────────────────────────────────────
+    // ── Keyboard handlers ─────────────────────────────────────────────────────
 
     function handleStepKeyDown(
-      e: React.KeyboardEvent<HTMLInputElement>,
+      e: React.KeyboardEvent<HTMLDivElement>,
       sectionId: string,
       step: Step,
     ) {
+      const currentText = (e.currentTarget as HTMLDivElement).textContent?.trim() || "";
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         addStepAfter(sectionId, step.id);
@@ -800,7 +854,7 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
         convertStepToSubStep(sectionId, step.id);
         return;
       }
-      if (e.key === "Backspace" && step.text === "" && step.fields.length === 0) {
+      if (e.key === "Backspace" && currentText === "" && step.fields.length === 0) {
         e.preventDefault();
         if (step.subSteps.length > 0) {
           if (window.confirm("Deleting this step will also remove its sub-steps. Continue?")) {
@@ -813,11 +867,12 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
     }
 
     function handleSubStepKeyDown(
-      e: React.KeyboardEvent<HTMLInputElement>,
+      e: React.KeyboardEvent<HTMLDivElement>,
       sectionId: string,
       stepId: string,
       subStep: SubStep,
     ) {
+      const currentText = (e.currentTarget as HTMLDivElement).textContent?.trim() || "";
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         addSubStepAfter(sectionId, stepId, subStep.id);
@@ -828,26 +883,25 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
         promoteSubStepToStep(sectionId, stepId, subStep.id);
         return;
       }
-      if (e.key === "Backspace" && subStep.text === "" && subStep.fields.length === 0) {
+      if (e.key === "Backspace" && currentText === "" && subStep.fields.length === 0) {
         e.preventDefault();
         deleteSubStep(sectionId, stepId, subStep.id);
       }
     }
 
-    // ── Imperative handle ────────────────────────────────────────────────────
+    // ── Imperative handle ─────────────────────────────────────────────────────
 
     useImperativeHandle(ref, () => ({
       insertSection() {
         const cur = dataRef.current;
         const newSection = emptySection(cur.sections.length);
-        pendingFocusRef.current = newSection.id; // focus the title first
+        pendingFocusRef.current = newSection.id;
         mutate({ ...cur, sections: [...cur.sections, newSection] });
       },
       insertStep() {
         const cur = dataRef.current;
         if (cur.sections.length === 0) return;
-        const targetId =
-          focusTarget?.sectionId ?? cur.sections[cur.sections.length - 1].id;
+        const targetId = focusTargetRef.current?.sectionId ?? cur.sections[cur.sections.length - 1].id;
         const newStep = emptyStep();
         pendingFocusRef.current = newStep.id;
         mutate({
@@ -856,6 +910,33 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
             s.id === targetId ? { ...s, steps: [...s.steps, newStep] } : s
           ),
         });
+      },
+      insertSubStep() {
+        const type   = focusTypeRef.current;
+        const target = focusTargetRef.current;
+        if (type === "section") return; // disabled
+        if (type === "step" && target) {
+          addSubStepToStep(target.sectionId, target.stepId);
+        } else if (type === "substep" && target?.subStepId) {
+          addSubStepAfter(target.sectionId, target.stepId, target.subStepId);
+        } else {
+          // No focus → append to last step of last section
+          const cur = dataRef.current;
+          const lastSec = cur.sections[cur.sections.length - 1];
+          if (!lastSec || lastSec.steps.length === 0) return;
+          const lastStep = lastSec.steps[lastSec.steps.length - 1];
+          addSubStepToStep(lastSec.id, lastStep.id);
+        }
+      },
+      convertFocused() {
+        const type   = focusTypeRef.current;
+        const target = focusTargetRef.current;
+        if (!target || type === "section" || type === null) return;
+        if (type === "step") {
+          convertStepToSubStep(target.sectionId, target.stepId);
+        } else if (type === "substep" && target.subStepId) {
+          promoteSubStepToStep(target.sectionId, target.stepId, target.subStepId);
+        }
       },
       openRequiredField(entryType?: string) {
         setFieldModalInitialType(entryType);
@@ -866,7 +947,7 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
       },
     }));
 
-    // ── Render ───────────────────────────────────────────────────────────────
+    // ── Render ────────────────────────────────────────────────────────────────
 
     return (
       <div className="w-full overflow-hidden rounded border border-gray-300 bg-white">
@@ -874,7 +955,7 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-1 border-b border-gray-200 bg-gray-50 px-3 py-2">
           <button
-            title="Required fields must be filled in each time this protocol is run. Use these for data that varies between experiments but must always be collected."
+            title="Required fields must be filled in each time this protocol is run."
             onClick={() => setFieldModalOpen(true)}
             className="rounded border border-gray-300 bg-white px-2 py-1 text-sm text-gray-700 hover:bg-gray-50"
           >
@@ -886,7 +967,29 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
           >
             + Recipes
           </button>
+
           <div className="mx-1 h-5 w-px bg-gray-300" />
+
+          {/* Italic — onMouseDown prevents stealing focus from contentEditable */}
+          <button
+            title="Italic (Ctrl+I / Cmd+I)"
+            onMouseDown={(e) => { e.preventDefault(); document.execCommand("italic"); }}
+            className="inline-flex items-center justify-center rounded border border-gray-300 bg-white p-1.5 text-gray-700 hover:bg-gray-50"
+          >
+            <Italic size={14} />
+          </button>
+
+          {/* Underline */}
+          <button
+            title="Underline (Ctrl+U / Cmd+U)"
+            onMouseDown={(e) => { e.preventDefault(); document.execCommand("underline"); }}
+            className="inline-flex items-center justify-center rounded border border-gray-300 bg-white p-1.5 text-gray-700 hover:bg-gray-50"
+          >
+            <Underline size={14} />
+          </button>
+
+          <div className="mx-1 h-5 w-px bg-gray-300" />
+
           <button
             onClick={undo}
             disabled={history.past.length === 0}
@@ -909,50 +1012,55 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
         <div className="min-h-64 space-y-6 bg-white p-4">
           {data.sections.length === 0 && (
             <p className="text-sm text-gray-400">
-              No sections yet — click &quot;Insert section&quot; in the sidebar to add one.
+              No sections yet — click &quot;Add Section&quot; in the sidebar to add one.
             </p>
           )}
 
-          {data.sections.map((section) => {
-            const hasNoSteps = section.steps.length === 0;
+          {data.sections.map((section, sectionIdx) => {
+            const sectionColor = SECTION_COLORS[sectionIdx % SECTION_COLORS.length];
+            const hasNoSteps   = section.steps.length === 0;
+
             return (
               <div key={section.id}>
-                {/* Section title */}
-                <input
-                  ref={(el) => {
-                    if (pendingFocusRef.current === section.id && el) {
-                      el.focus();
-                      el.select();
-                      pendingFocusRef.current = null;
+                {/* Section title row — color bar + bold input */}
+                <div className="flex items-stretch gap-2 mb-1">
+                  <div
+                    className="w-1.5 shrink-0 rounded-sm"
+                    style={{ backgroundColor: sectionColor }}
+                  />
+                  <input
+                    ref={(el) => {
+                      if (pendingFocusRef.current === section.id && el) {
+                        el.focus(); el.select();
+                        pendingFocusRef.current = null;
+                      }
+                    }}
+                    value={section.title}
+                    onChange={(e) => updateSectionTitle(section.id, e.target.value)}
+                    onFocus={() =>
+                      setFocusCtx(
+                        { sectionId: section.id, stepId: section.steps[0]?.id ?? "" },
+                        "section"
+                      )
                     }
-                  }}
-                  value={section.title}
-                  onChange={(e) => updateSectionTitle(section.id, e.target.value)}
-                  onFocus={() =>
-                    setFocusTarget({
-                      sectionId: section.id,
-                      stepId: section.steps[0]?.id ?? "",
-                    })
-                  }
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") e.preventDefault();
-                  }}
-                  placeholder="Section title"
-                  className="w-full border-none bg-transparent text-sm font-bold text-gray-900 placeholder:font-normal placeholder:text-gray-400 focus:outline-none"
-                />
+                    onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+                    placeholder="Section title"
+                    className="flex-1 border-none bg-transparent text-sm font-bold text-gray-900 placeholder:font-normal placeholder:text-gray-400 focus:outline-none"
+                  />
+                </div>
 
                 {/* Section validation error */}
                 {showSectionErrors && hasNoSteps && (
-                  <p className="mt-0.5 text-xs text-red-500">
+                  <p className="mb-1 ml-3.5 mt-0.5 text-xs text-red-500">
                     Each section must contain at least one step before saving.
                   </p>
                 )}
 
                 {/* Steps */}
-                <div className="mt-1.5 space-y-0.5 border-l-2 border-gray-100 pl-3">
+                <div className="mt-1 space-y-0.5 pl-3">
                   {section.steps.length === 0 && !showSectionErrors && (
                     <p className="py-1 text-xs text-gray-400">
-                      No steps — press Enter in a step or use &quot;Insert step&quot; in the sidebar.
+                      No steps — use &quot;Add Step&quot; in the sidebar.
                     </p>
                   )}
 
@@ -960,38 +1068,36 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
                     const stepNum = numbers.get(step.id) ?? "";
                     return (
                       <div key={step.id} className="space-y-0.5">
+
                         {/* Step row */}
-                        <div className="flex items-start gap-1.5 py-0.5">
-                          <span className="w-7 shrink-0 select-none pt-1.5 text-right text-xs text-gray-400">
+                        <div className="flex items-center gap-1.5 py-0.5">
+                          <div
+                            className="w-1.5 self-stretch shrink-0 rounded-sm"
+                            style={{ backgroundColor: sectionColor }}
+                          />
+                          <span className="w-7 shrink-0 select-none text-right text-xs text-gray-400">
                             {stepNum}.
                           </span>
-                          <input
-                            ref={(el) => {
-                              if (pendingFocusRef.current === step.id && el) {
-                                el.focus();
-                                pendingFocusRef.current = null;
-                              }
-                            }}
+                          <StepTextInput
                             value={step.text}
-                            onChange={(e) => updateStep(section.id, step.id, e.target.value)}
+                            focusId={step.id}
+                            pendingFocusRef={pendingFocusRef}
+                            onHtmlChange={(html) => updateStep(section.id, step.id, html)}
                             onKeyDown={(e) => handleStepKeyDown(e, section.id, step)}
                             onFocus={() =>
-                              setFocusTarget({ sectionId: section.id, stepId: step.id })
+                              setFocusCtx({ sectionId: section.id, stepId: step.id }, "step")
                             }
                             placeholder="Step description"
-                            className="flex-1 border-none bg-transparent py-1 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
+                            className="flex-1 min-w-0 py-1 text-sm text-gray-900 focus:outline-none"
                           />
                         </div>
 
                         {/* Step fields */}
                         {step.fields.length > 0 && (
-                          <div className="ml-9 flex flex-wrap gap-1 pb-0.5">
+                          <div className="ml-10 flex flex-wrap gap-1 pb-0.5">
                             {step.fields.map((field) => (
-                              <FieldPill
-                                key={field.id}
-                                field={field}
-                                onRemove={() => removeField(section.id, step.id, field.id)}
-                              />
+                              <FieldPill key={field.id} field={field}
+                                onRemove={() => removeField(section.id, step.id, field.id)} />
                             ))}
                           </div>
                         )}
@@ -1001,46 +1107,41 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
                           const ssNum = numbers.get(ss.id) ?? "";
                           return (
                             <div key={ss.id} className="space-y-0.5">
-                              <div className="flex items-start gap-1.5 py-0.5 pl-6">
-                                <span className="w-8 shrink-0 select-none pt-1.5 text-right text-xs text-gray-400">
+                              {/* Sub-step row — extra left indent */}
+                              <div className="flex items-center gap-1.5 py-0.5 pl-5">
+                                <div
+                                  className="w-1.5 self-stretch shrink-0 rounded-sm"
+                                  style={{ backgroundColor: sectionColor }}
+                                />
+                                <span className="w-8 shrink-0 select-none text-right text-xs text-gray-400">
                                   {ssNum}.
                                 </span>
-                                <input
-                                  ref={(el) => {
-                                    if (pendingFocusRef.current === ss.id && el) {
-                                      el.focus();
-                                      pendingFocusRef.current = null;
-                                    }
-                                  }}
+                                <StepTextInput
                                   value={ss.text}
-                                  onChange={(e) =>
-                                    updateSubStep(section.id, step.id, ss.id, e.target.value)
+                                  focusId={ss.id}
+                                  pendingFocusRef={pendingFocusRef}
+                                  onHtmlChange={(html) =>
+                                    updateSubStep(section.id, step.id, ss.id, html)
                                   }
                                   onKeyDown={(e) =>
                                     handleSubStepKeyDown(e, section.id, step.id, ss)
                                   }
                                   onFocus={() =>
-                                    setFocusTarget({
-                                      sectionId: section.id,
-                                      stepId: step.id,
-                                      subStepId: ss.id,
-                                    })
+                                    setFocusCtx(
+                                      { sectionId: section.id, stepId: step.id, subStepId: ss.id },
+                                      "substep"
+                                    )
                                   }
                                   placeholder="Sub-step description"
-                                  className="flex-1 border-none bg-transparent py-1 text-sm text-gray-600 placeholder:text-gray-400 focus:outline-none"
+                                  className="flex-1 min-w-0 py-1 text-sm text-gray-600 focus:outline-none"
                                 />
                               </div>
                               {/* Sub-step fields */}
                               {ss.fields.length > 0 && (
-                                <div className="ml-[60px] flex flex-wrap gap-1 pb-0.5">
+                                <div className="ml-[68px] flex flex-wrap gap-1 pb-0.5">
                                   {ss.fields.map((field) => (
-                                    <FieldPill
-                                      key={field.id}
-                                      field={field}
-                                      onRemove={() =>
-                                        removeField(section.id, step.id, field.id, ss.id)
-                                      }
-                                    />
+                                    <FieldPill key={field.id} field={field}
+                                      onRemove={() => removeField(section.id, step.id, field.id, ss.id)} />
                                   ))}
                                 </div>
                               )}
@@ -1063,19 +1164,13 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
           <RequiredFieldModal
             initialType={fieldModalInitialType}
             onClose={() => setFieldModalOpen(false)}
-            onInsert={(field) => {
-              addFieldToFocused(field);
-              setFieldModalOpen(false);
-            }}
+            onInsert={(field) => { addFieldToFocused(field); setFieldModalOpen(false); }}
           />
         )}
         {recipesModalOpen && (
           <RecipesModal
             onClose={() => setRecipesModalOpen(false)}
-            onInsert={(field) => {
-              addFieldToFocused(field);
-              setRecipesModalOpen(false);
-            }}
+            onInsert={(field) => { addFieldToFocused(field); setRecipesModalOpen(false); }}
           />
         )}
       </div>

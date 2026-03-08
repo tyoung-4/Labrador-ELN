@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import RichTextEditor from "./RichTextEditor";
 import ProtocolStepsEditor, {
   parseStepsData as parseStepsDataV2,
+  type FocusType,
   type ProtocolStepsEditorHandle,
 } from "./ProtocolStepsEditor";
 import { TECHNIQUE_OPTIONS, type Entry, type AttachmentRecord } from "@/models/entry";
@@ -593,8 +594,8 @@ export default function Editor({
 
   const stepsEditorRef = useRef<ProtocolStepsEditorHandle>(null);
   const [showSectionErrors, setShowSectionErrors] = useState(false);
-  const [showComponentsMenu, setShowComponentsMenu] = useState(false);
   const [showVersionPanel, setShowVersionPanel] = useState(false);
+  const [focusType, setFocusType] = useState<FocusType>(null);
 
   // ── Version info (read-only, derived from initial.typedData) ──────────────
   const semVer = useMemo(() => {
@@ -632,7 +633,13 @@ export default function Editor({
     setTabMaterials(parsed.materials);
     setActiveTab("steps");
     setShowSectionErrors(false);
+    setFocusType(null);
   }, [initial.id, initial.title, initial.description, initial.technique, initial.body, initial.entryType, initial.typedData]);
+
+  // Clear focus context when leaving Steps tab
+  useEffect(() => {
+    if (activeTab !== "steps") setFocusType(null);
+  }, [activeTab]);
 
   // In protocolShell mode the title is managed by the parent via titleValue;
   const effectiveTitle = (protocolShell && titleValue !== undefined) ? titleValue : title;
@@ -748,7 +755,7 @@ export default function Editor({
         <>
           {/* ── Metadata row ── */}
           <div className="mb-2 rounded border border-zinc-800 bg-zinc-900 p-2">
-            <div className="grid gap-2 lg:grid-cols-[2fr_1fr_1.2fr_1fr]">
+            <div className="grid gap-2 lg:grid-cols-[2fr_1.2fr_1fr]">
               <input
                 value={description}
                 onChange={(e) => setDescription(e.target.value.slice(0, 100))}
@@ -756,7 +763,6 @@ export default function Editor({
                 maxLength={100}
                 className="w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-zinc-200 placeholder:text-zinc-500"
               />
-              <EntryTypeSelect value={entryType} onChange={setEntryType} className="w-full" />
               <select
                 value={technique}
                 onChange={(e) => setTechnique(e.target.value)}
@@ -775,34 +781,70 @@ export default function Editor({
           {/* ── 3-col layout: left sidebar | tabs+editor | right sidebar ── */}
           <div className="mb-2 grid gap-3 lg:grid-cols-[200px_minmax(0,1fr)_240px]">
 
-            {/* Left sidebar — Insert buttons (only for Steps tab) */}
+            {/* Left sidebar — 4 edit buttons */}
             <aside className="lg:sticky lg:top-2 lg:h-fit rounded border border-zinc-800 bg-zinc-900 p-3">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Insert</p>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Edit</p>
               <div className="space-y-1 text-sm">
-                {(["insert-section", "insert-step"] as const).map((type) => {
-                  const labels: Record<string, string> = {
-                    "insert-section": "Insert section",
-                    "insert-step":    "Insert step",
-                  };
-                  const disabled = activeTab !== "steps";
+                {/* Add Section */}
+                <button
+                  onClick={() => stepsEditorRef.current?.insertSection()}
+                  disabled={activeTab !== "steps"}
+                  className={`w-full rounded border px-3 py-2 text-left text-zinc-100 transition ${
+                    activeTab !== "steps"
+                      ? "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-700"
+                      : "border-zinc-700 bg-zinc-800 hover:bg-zinc-700"
+                  }`}
+                >
+                  Add Section
+                </button>
+                {/* Add Step */}
+                <button
+                  onClick={() => stepsEditorRef.current?.insertStep()}
+                  disabled={activeTab !== "steps"}
+                  className={`w-full rounded border px-3 py-2 text-left text-zinc-100 transition ${
+                    activeTab !== "steps"
+                      ? "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-700"
+                      : "border-zinc-700 bg-zinc-800 hover:bg-zinc-700"
+                  }`}
+                >
+                  Add Step
+                </button>
+                {/* Add Sub-step — disabled when on a Section title or not on Steps tab */}
+                {(() => {
+                  const subDisabled = activeTab !== "steps" || focusType === "section";
                   return (
                     <button
-                      key={type}
-                      onClick={() => {
-                        if (type === "insert-section") stepsEditorRef.current?.insertSection();
-                        else stepsEditorRef.current?.insertStep();
-                      }}
-                      disabled={disabled}
+                      onClick={() => stepsEditorRef.current?.insertSubStep()}
+                      disabled={subDisabled}
                       className={`w-full rounded border px-3 py-2 text-left text-zinc-100 transition ${
-                        disabled
+                        subDisabled
                           ? "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-700"
                           : "border-zinc-700 bg-zinc-800 hover:bg-zinc-700"
                       }`}
                     >
-                      {labels[type]}
+                      Add Sub-step
                     </button>
                   );
-                })}
+                })()}
+                {/* Convert — label changes contextually; disabled on Section or no focus */}
+                {(() => {
+                  const cvDisabled = activeTab !== "steps" || focusType === "section" || focusType === null;
+                  const cvLabel =
+                    focusType === "substep" ? "Convert to Step" : "Convert to Sub-step";
+                  return (
+                    <button
+                      onClick={() => stepsEditorRef.current?.convertFocused()}
+                      disabled={cvDisabled}
+                      className={`w-full rounded border px-3 py-2 text-left text-zinc-100 transition ${
+                        cvDisabled
+                          ? "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-700"
+                          : "border-zinc-700 bg-zinc-800 hover:bg-zinc-700"
+                      }`}
+                    >
+                      {cvLabel}
+                    </button>
+                  );
+                })()}
               </div>
             </aside>
 
@@ -831,6 +873,7 @@ export default function Editor({
                   initialContent={steps}
                   onChange={setSteps}
                   showSectionErrors={showSectionErrors}
+                  onFocusTypeChange={setFocusType}
                 />
               )}
               {activeTab === "description" && (
@@ -867,89 +910,45 @@ export default function Editor({
               )}
             </div>
 
-            {/* Right sidebar — Version + Components */}
+            {/* Right sidebar — Version only */}
             <aside className="lg:sticky lg:top-2 lg:h-fit rounded border border-zinc-800 bg-zinc-900 p-3">
 
               {/* ── Version panel (collapsible) ── */}
-              <div className="mb-3 border-b border-zinc-800 pb-3">
-                <button
-                  onClick={() => setShowVersionPanel((v) => !v)}
-                  className="flex w-full items-center justify-between text-sm font-semibold text-zinc-100"
-                >
-                  <span>Version</span>
-                  <span className="text-xs text-zinc-500">{showVersionPanel ? "▾" : "▸"}</span>
-                </button>
-                {showVersionPanel && (
-                  <div className="mt-2 space-y-2 text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="text-zinc-500">Current:</span>
-                      <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 font-semibold text-emerald-300">
-                        v{semVer}
-                      </span>
-                    </div>
-                    {versionParentId && (
-                      <div className="flex flex-wrap items-start gap-1">
-                        <span className="shrink-0 text-zinc-500">Cloned from:</span>
-                        {onOpenParent ? (
-                          <button
-                            onClick={() => onOpenParent(versionParentId)}
-                            className="text-left text-indigo-400 underline underline-offset-2 hover:text-indigo-300"
-                          >
-                            {versionParentTitle || versionParentId}
-                          </button>
-                        ) : (
-                          <span className="text-zinc-300">{versionParentTitle || versionParentId}</span>
-                        )}
-                      </div>
-                    )}
-                    {!versionParentId && (
-                      <p className="text-zinc-600">Original protocol</p>
-                    )}
+              <button
+                onClick={() => setShowVersionPanel((v) => !v)}
+                className="flex w-full items-center justify-between text-sm font-semibold text-zinc-100"
+              >
+                <span>Version</span>
+                <span className="text-xs text-zinc-500">{showVersionPanel ? "▾" : "▸"}</span>
+              </button>
+              {showVersionPanel && (
+                <div className="mt-2 space-y-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-zinc-500">Current:</span>
+                    <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 font-semibold text-emerald-300">
+                      v{semVer}
+                    </span>
                   </div>
-                )}
-              </div>
-
-              {/* ── Components ── */}
-              <p className="mb-2 text-sm font-semibold text-zinc-100">Components</p>
-              {activeTab !== "steps" && (
-                <p className="mb-2 text-[10px] text-zinc-600">Switch to Steps tab to insert components.</p>
-              )}
-              <div className="relative">
-                <button
-                  disabled={activeTab !== "steps"}
-                  onClick={() => setShowComponentsMenu(s => !s)}
-                  className={`w-full rounded border px-3 py-2 text-left text-sm transition ${
-                    activeTab !== "steps"
-                      ? "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-700"
-                      : "border-zinc-700 bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
-                  }`}
-                >
-                  ＋ Components ▾
-                </button>
-                {showComponentsMenu && activeTab === "steps" && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setShowComponentsMenu(false)} />
-                    <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded border border-zinc-700 bg-zinc-950 shadow-xl">
-                      {COMPONENT_ITEMS.map(item => (
+                  {versionParentId && (
+                    <div className="flex flex-wrap items-start gap-1">
+                      <span className="shrink-0 text-zinc-500">Cloned from:</span>
+                      {onOpenParent ? (
                         <button
-                          key={item.label}
-                          onClick={() => {
-                            if (item.entryType === "Timer") {
-                              stepsEditorRef.current?.openRecipes();
-                            } else {
-                              stepsEditorRef.current?.openRequiredField(item.entryType);
-                            }
-                            setShowComponentsMenu(false);
-                          }}
-                          className="flex w-full items-center px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-800"
+                          onClick={() => onOpenParent(versionParentId)}
+                          className="text-left text-indigo-400 underline underline-offset-2 hover:text-indigo-300"
                         >
-                          {item.label}
+                          {versionParentTitle || versionParentId}
                         </button>
-                      ))}
+                      ) : (
+                        <span className="text-zinc-300">{versionParentTitle || versionParentId}</span>
+                      )}
                     </div>
-                  </>
-                )}
-              </div>
+                  )}
+                  {!versionParentId && (
+                    <p className="text-zinc-600">Original protocol</p>
+                  )}
+                </div>
+              )}
             </aside>
           </div>
 
