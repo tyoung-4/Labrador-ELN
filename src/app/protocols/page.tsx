@@ -256,6 +256,10 @@ export default function ProtocolsPage() {
   // Pending payload waiting for version bump decision
   const [pendingPayload, setPendingPayload] = useState<Partial<Entry> | null>(null);
 
+  // Run Protocol modal
+  const [showRunModal, setShowRunModal] = useState(false);
+  const [operatorName, setOperatorName] = useState("");
+
   // ── Filters ────────────────────────────────────────────────────────────────
   const [keyword,         setKeyword]         = useState("");
   const [techniqueFilter, setTechniqueFilter] = useState<(typeof TECHNIQUE_TABS)[number]["id"]>("ALL");
@@ -494,19 +498,26 @@ export default function ProtocolsPage() {
     }
   }
 
-  async function handleRunProtocol() {
+  function handleRunProtocol() {
     if (!selected) return;
-    if (!window.confirm(`Run Protocol: ${selected.title}?`)) return;
+    // Pre-fill operator name from current user
+    setOperatorName(currentUser.name || "");
+    setShowRunModal(true);
+  }
+
+  async function confirmStartRun() {
+    if (!selected) return;
+    setShowRunModal(false);
     setLoading(true);
     try {
       const res = await fetch("/api/protocol-runs", {
         method: "POST",
         headers: jsonHeaders,
-        body: JSON.stringify({ sourceEntryId: selected.id }),
+        body: JSON.stringify({ sourceEntryId: selected.id, operatorName: operatorName.trim() }),
       });
       if (!res.ok) { console.error("Failed to create run:", res.status); return; }
       const run = (await res.json()) as { id: string };
-      router.push(`/runs?runId=${run.id}&sourceEntryId=${selected.id}`);
+      router.push(`/runs/${run.id}`);
     } finally {
       setLoading(false);
     }
@@ -760,6 +771,41 @@ export default function ProtocolsPage() {
           onDecide={(type) => void doSave(pendingPayload, type)}
           onCancel={() => setPendingPayload(null)}
         />
+      )}
+
+      {/* ── Start Run Modal ── */}
+      {showRunModal && selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm rounded-lg border border-zinc-700 bg-zinc-900 p-6 shadow-2xl">
+            <h2 className="mb-1 text-base font-semibold text-zinc-100">Start Protocol Run</h2>
+            <p className="mb-4 text-sm text-zinc-400">{selected.title}</p>
+            <label className="mb-1 block text-xs font-medium text-zinc-300">Operator Name</label>
+            <input
+              type="text"
+              value={operatorName}
+              onChange={(e) => setOperatorName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void confirmStartRun(); if (e.key === "Escape") setShowRunModal(false); }}
+              autoFocus
+              placeholder="Your name"
+              className="mb-5 w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => void confirmStartRun()}
+                disabled={loading}
+                className="flex-1 rounded bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+              >
+                ▶ Start Run
+              </button>
+              <button
+                onClick={() => setShowRunModal(false)}
+                className="rounded border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-700"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

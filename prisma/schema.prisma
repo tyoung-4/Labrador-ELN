@@ -68,20 +68,37 @@ model Tag {
 }
 
 model ProtocolRun {
-  id               String   @id @default(uuid())
+  id               String    @id @default(uuid())
   title            String
-  status           String   @default("IN_PROGRESS")
-  locked           Boolean  @default(true)
+  status           String    @default("IN_PROGRESS")
+  locked           Boolean   @default(true)
   runBody          String
-  notes            String   @default("")
-  interactionState String   @default("{}")
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  notes            String    @default("")
+  interactionState String    @default("{}")
+  operatorName     String    @default("")
+  completedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
   sourceEntry    Entry     @relation("RunSource", fields: [sourceEntryId], references: [id])
   sourceEntryId  String
   runner         User?     @relation(fields: [runnerId], references: [id])
   runnerId       String?
   linkedEntries  Entry[]   @relation("RunLink")
+  stepResults    StepResult[]
+}
+
+model StepResult {
+  id          String      @id @default(uuid())
+  run         ProtocolRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  runId       String
+  stepId      String      // synthetic "step-{idx}" matching interactionState keys
+  result      String      // "PASSED" | "FAILED" | "SKIPPED"
+  notes       String      @default("")
+  fieldValues String      @default("{}") // JSON of field key→value
+  completedAt DateTime    @default(now())
+
+  @@unique([runId, stepId])
+  @@index([runId])
 }
 
 model TodoHistory {

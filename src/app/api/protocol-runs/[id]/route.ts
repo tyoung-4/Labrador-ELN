@@ -110,6 +110,7 @@ export async function PUT(request: Request, context: RouteContext) {
         interactionState: typeof payload.interactionState === "string" ? payload.interactionState : undefined,
         status: nextStatus,
         locked: nextStatus === "COMPLETED" ? true : undefined,
+        completedAt: nextStatus === "COMPLETED" ? new Date() : undefined,
         notes: typeof payload.notes === "string" ? payload.notes : undefined,
       },
       include: {

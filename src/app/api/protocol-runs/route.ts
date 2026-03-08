@@ -89,6 +89,7 @@ export async function POST(request: Request) {
 
     const payload = await request.json().catch(() => ({}));
     const sourceEntryId = String(payload.sourceEntryId ?? "").trim();
+    const operatorName = typeof payload.operatorName === "string" ? payload.operatorName.trim() : "";
     if (!sourceEntryId) {
       return NextResponse.json({ error: "sourceEntryId is required" }, { status: 400 });
     }
@@ -96,16 +97,9 @@ export async function POST(request: Request) {
     const source = await prisma.entry.findUnique({ where: { id: sourceEntryId } });
     if (!source) return new NextResponse(null, { status: 404 });
 
-    // Extract just the "steps" HTML from body if stored as JSON-encoded protocol body
-    let runBodyContent = source.body;
-    try {
-      const parsed = JSON.parse(source.body) as Record<string, unknown>;
-      if (parsed && typeof parsed === "object" && "steps" in parsed && typeof parsed.steps === "string") {
-        runBodyContent = parsed.steps;
-      }
-    } catch {
-      // Legacy plain HTML body — use as-is
-    }
+    // Store the full body as runBody so the new run page can parse it
+    // (new ProtocolStepsEditor stores JSON; legacy stores HTML)
+    const runBodyContent = source.body;
 
     const runCount = await prisma.protocolRun.count({ where: { sourceEntryId } });
     const created = await prisma.protocolRun.create({
@@ -122,7 +116,9 @@ export async function POST(request: Request) {
           componentAmounts: {},
           entryFields: {},
           timers: {},
+          currentStepIdx: 0,
         }),
+        operatorName,
         runnerId: actor.id,
       },
       include: {

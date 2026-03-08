@@ -1,3 +1,13 @@
+export type StepResult = {
+  id: string;
+  runId: string;
+  stepId: string;
+  result: "PASSED" | "FAILED" | "SKIPPED";
+  notes: string;
+  fieldValues: string; // JSON string
+  completedAt: string;
+};
+
 export type ProtocolRun = {
   id: string;
   title: string;
@@ -6,6 +16,8 @@ export type ProtocolRun = {
   runBody: string;
   notes: string;
   interactionState: string;
+  operatorName: string;
+  completedAt: string | null;
   createdAt: string;
   updatedAt: string;
   sourceEntryId: string;
@@ -26,4 +38,5 @@ export type ProtocolRun = {
     name: string | null;
     role: string;
   } | null;
+  stepResults?: StepResult[];
 };
