@@ -1,4 +1,4 @@
-# myfirst-eln
+# Labrador ELN
 
 A lightweight Electronic Lab Notebook (ELN) built with Next.js, Prisma, and TipTap.
 

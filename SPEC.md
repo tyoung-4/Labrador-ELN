@@ -407,8 +407,8 @@ For structural data, the ELN entry should contain **processing notes, parameters
 
 ```bash
 # Clone the repo
-git clone https://github.com/tyoung-4/myfirst-eln.git
-cd myfirst-eln
+git clone https://github.com/tyoung-4/Labrador-ELN.git
+cd Labrador-ELN
 
 # Install dependencies
 pnpm install
