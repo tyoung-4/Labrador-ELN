@@ -31,6 +31,7 @@ model Entry {
   tags         Tag[]         @relation("EntryTags")
   attachments  Attachment[]
   protocolRuns ProtocolRun[]
+  protocol     Protocol?
 }
 
 model Attachment {
@@ -65,4 +66,49 @@ model ProtocolRun {
   sourceEntryId    String
   runner           User?    @relation(fields: [runnerId], references: [id])
   runnerId         String?
+}
+
+model Protocol {
+  id        String   @id @default(uuid())
+  entry     Entry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  entryId   String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sections ProtocolSection[]
+}
+
+model ProtocolSection {
+  id         String   @id @default(uuid())
+  protocol   Protocol @relation(fields: [protocolId], references: [id], onDelete: Cascade)
+  protocolId String
+  name       String
+  order      Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  steps ProtocolStep[]
+
+  @@index([protocolId, order])
+}
+
+model ProtocolStep {
+  id         String          @id @default(uuid())
+  section    ProtocolSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  sectionId  String
+  stepType   StepType        @default(STEP)
+  parentStep ProtocolStep?   @relation("ProtocolStepToSubsteps", fields: [parentStepId], references: [id], onDelete: Cascade)
+  parentStepId String?
+  substeps   ProtocolStep[]  @relation("ProtocolStepToSubsteps")
+  estimatedMinutes Int?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@index([sectionId])
+  @@index([parentStepId])
+}
+
+enum StepType {
+  STEP
+  SUBSTEP
 }
