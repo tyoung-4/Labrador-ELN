@@ -61,6 +61,33 @@ export const TECHNIQUE_OPTIONS = [
   "Other",
 ] as const;
 
+// ─── Protocol-specific technique catalogue (17+ options) ──────────────────────
+export const PROTOCOL_TECHNIQUES = [
+  "General",
+  "Cloning & Assembly",
+  "PCR / Amplification",
+  "Sequencing",
+  "Cell Culture",
+  "Transfection",
+  "Bacterial Expression",
+  "Mammalian Expression",
+  "Viral Transduction",
+  "Protein Purification",
+  "Chromatography",
+  "Flow Cytometry",
+  "Microscopy & Imaging",
+  "Western Blot / SDS-PAGE",
+  "ELISA",
+  "Mass Spectrometry",
+  "Enzyme Kinetics",
+  "Binding Assay",
+  "Sample Prep & QC",
+  "Animal Work",
+  "Other",
+] as const;
+
+export type ProtocolTechnique = (typeof PROTOCOL_TECHNIQUES)[number];
+
 export function newEntry(data: Partial<Entry> = {}): Entry {
   const now = new Date().toISOString();
   return {

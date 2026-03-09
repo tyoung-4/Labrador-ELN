@@ -607,13 +607,17 @@ export default function Editor({
   const versionParentId = useMemo(() => {
     const td = initial.typedData;
     if (!td || typeof td !== "object") return undefined;
-    return (td as { typed?: Record<string, string> }).typed?._parentId || undefined;
+    const typed = (td as { typed?: Record<string, string> }).typed;
+    // Prefer _clonedFromId (new field); fall back to legacy _parentId
+    return typed?._clonedFromId || typed?._parentId || undefined;
   }, [initial.typedData]);
 
   const versionParentTitle = useMemo(() => {
     const td = initial.typedData;
     if (!td || typeof td !== "object") return undefined;
-    return (td as { typed?: Record<string, string> }).typed?._parentTitle || undefined;
+    const typed = (td as { typed?: Record<string, string> }).typed;
+    // Prefer _clonedFromTitle (new field); fall back to legacy _parentTitle
+    return typed?._clonedFromTitle || typed?._parentTitle || undefined;
   }, [initial.typedData]);
 
   // Reset all when entry changes

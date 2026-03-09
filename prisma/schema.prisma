@@ -125,13 +125,18 @@ model EquipmentBooking {
 }
 
 model Protocol {
-  id        String   @id @default(uuid())
-  entry     Entry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  entryId   String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               String   @id @default(uuid())
+  entry            Entry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  entryId          String   @unique
+  name             String?
+  technique        String?
+  shortDescription String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   sections ProtocolSection[]
+
+  @@unique([name])
 }
 
 model ProtocolSection {

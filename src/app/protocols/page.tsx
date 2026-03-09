@@ -5,7 +5,7 @@ import Editor from "@/components/Editor";
 import AppTopNav from "@/components/AppTopNav";
 import { USER_STORAGE_KEY } from "@/components/AppTopNav";
 import { Q5_TEMPLATE_ENTRY_ID } from "@/lib/defaultTemplates";
-import { TECHNIQUE_OPTIONS, type Entry } from "@/models/entry";
+import { TECHNIQUE_OPTIONS, PROTOCOL_TECHNIQUES, type Entry } from "@/models/entry";
 import { parseTypedData } from "@/lib/entryTypes";
 
 type CurrentUser = {
@@ -148,6 +148,168 @@ function VersionBumpModal({
   );
 }
 
+// ─── New Protocol Creation Modal ─────────────────────────────────────────────
+
+function NewProtocolModal({
+  onClose,
+  onCreated,
+  jsonHeaders,
+}: {
+  onClose:    () => void;
+  onCreated:  (entry: Entry) => void;
+  jsonHeaders: Record<string, string>;
+}) {
+  const [name,       setName]       = useState("");
+  const [technique,  setTechnique]  = useState("");
+  const [shortDesc,  setShortDesc]  = useState("");
+  const [nameStatus, setNameStatus] = useState<"idle" | "checking" | "available" | "taken">("idle");
+  const [creating,   setCreating]   = useState(false);
+  const [error,      setError]      = useState<string | null>(null);
+
+  // Debounced uniqueness check — fires 500 ms after the user stops typing
+  useEffect(() => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setNameStatus("idle");
+      return;
+    }
+    setNameStatus("checking");
+    const timer = setTimeout(async () => {
+      try {
+        const res  = await fetch(`/api/protocols/check-name?name=${encodeURIComponent(trimmed)}`);
+        const data = (await res.json()) as { available: boolean };
+        setNameStatus(data.available ? "available" : "taken");
+      } catch {
+        setNameStatus("idle");
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [name]);
+
+  const canCreate = Boolean(
+    name.trim() && technique && nameStatus === "available" && !creating
+  );
+
+  async function handleCreate() {
+    if (!canCreate) return;
+    setCreating(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/protocols", {
+        method:  "POST",
+        headers: jsonHeaders,
+        body:    JSON.stringify({
+          name:             name.trim(),
+          technique,
+          shortDescription: shortDesc.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        setError(data.error ?? `Failed to create protocol (${res.status}).`);
+        return;
+      }
+      const entry = (await res.json()) as Entry;
+      onCreated(entry);
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl shadow-black/80">
+        <h2 className="mb-5 text-base font-semibold text-zinc-100">New Protocol</h2>
+
+        {/* Protocol Name */}
+        <div className="mb-4">
+          <label className="mb-1 block text-xs font-medium text-zinc-300">
+            Protocol Name <span className="text-red-400">*</span>
+          </label>
+          <input
+            autoFocus
+            type="text"
+            value={name}
+            onChange={(e) => { setName(e.target.value); setError(null); }}
+            onKeyDown={(e) => { if (e.key === "Enter") void handleCreate(); if (e.key === "Escape") onClose(); }}
+            placeholder="e.g. Q5 Site-Directed Mutagenesis"
+            className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
+          />
+          <div className="mt-1 h-4 text-xs">
+            {nameStatus === "checking"  && <span className="text-zinc-500">Checking…</span>}
+            {nameStatus === "available" && name.trim() && <span className="text-emerald-400">✓ Name available</span>}
+            {nameStatus === "taken"     && <span className="text-red-400">✗ Name already in use</span>}
+          </div>
+        </div>
+
+        {/* Technique */}
+        <div className="mb-4">
+          <label className="mb-1 block text-xs font-medium text-zinc-300">
+            Technique <span className="text-red-400">*</span>
+          </label>
+          <select
+            value={technique}
+            onChange={(e) => setTechnique(e.target.value)}
+            className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none"
+          >
+            <option value="">Select a technique…</option>
+            {PROTOCOL_TECHNIQUES.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Short Description */}
+        <div className="mb-5">
+          <label className="mb-1 flex items-center justify-between text-xs font-medium text-zinc-300">
+            <span>Short Description</span>
+            <span className={`font-normal ${shortDesc.length > 90 ? "text-orange-400" : "text-zinc-500"}`}>
+              {shortDesc.length}/100
+            </span>
+          </label>
+          <textarea
+            value={shortDesc}
+            onChange={(e) => setShortDesc(e.target.value.slice(0, 100))}
+            rows={2}
+            placeholder="Brief one-liner describing this protocol (optional)"
+            className="w-full resize-none rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
+          />
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div className="mb-4 rounded border border-red-500/40 bg-red-950/50 px-3 py-2 text-sm text-red-200">
+            {error}
+          </div>
+        )}
+
+        {/* Buttons */}
+        <div className="flex gap-3">
+          <button
+            onClick={() => void handleCreate()}
+            disabled={!canCreate}
+            className="flex-1 rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {creating ? "Creating…" : "Create Protocol"}
+          </button>
+          <button
+            onClick={onClose}
+            disabled={creating}
+            className="rounded border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-700 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Technique tabs ───────────────────────────────────────────────────────────
 
 const TECHNIQUE_TABS = [
@@ -259,6 +421,9 @@ export default function ProtocolsPage() {
   // Run Protocol modal
   const [showRunModal, setShowRunModal] = useState(false);
   const [operatorName, setOperatorName] = useState("");
+
+  // New Protocol creation modal
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   // ── Filters ────────────────────────────────────────────────────────────────
   const [keyword,         setKeyword]         = useState("");
@@ -528,6 +693,19 @@ export default function ProtocolsPage() {
     await handleSelect(parentId);
   }
 
+  // ── Called when NewProtocolModal successfully creates a protocol ────────────
+  function handleProtocolCreated(entry: Entry) {
+    setEntries((s) => [entry, ...s]);
+    setSelected(entry);
+    setEditorMode("edit");
+    setEditorTitle(entry.title || "");
+    setIsDirty(false);
+    setSaveError(null);
+    setPendingPayload(null);
+    setEditorOpen(true);
+    setShowCreateModal(false);
+  }
+
   // ── Filter / sort ──────────────────────────────────────────────────────────
   const authorOptions = useMemo(() => {
     const names = Array.from(new Set(entries.map((e) => e.author?.name || "Unknown")));
@@ -569,18 +747,10 @@ export default function ProtocolsPage() {
       {/* Action bar */}
       <div className="flex items-center gap-2">
         <button
-          onClick={() => {
-            setEditorMode("create");
-            setSelected(null);
-            setEditorTitle("");
-            setIsDirty(false);
-            setSaveError(null);
-            setPendingPayload(null);
-            setEditorOpen(true);
-          }}
+          onClick={() => setShowCreateModal(true)}
           className="ml-auto rounded bg-emerald-600 px-3 py-1.5 text-sm text-white hover:bg-emerald-500"
         >
-          Generate New Protocol
+          + New Protocol
         </button>
       </div>
 
@@ -770,6 +940,15 @@ export default function ProtocolsPage() {
           currentSemVer={getSemVer(selected)}
           onDecide={(type) => void doSave(pendingPayload, type)}
           onCancel={() => setPendingPayload(null)}
+        />
+      )}
+
+      {/* ── New Protocol Creation Modal ── */}
+      {showCreateModal && (
+        <NewProtocolModal
+          onClose={() => setShowCreateModal(false)}
+          onCreated={handleProtocolCreated}
+          jsonHeaders={jsonHeaders}
         />
       )}
 
