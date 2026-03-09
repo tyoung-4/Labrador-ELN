@@ -160,7 +160,7 @@ function NewProtocolModal({
   jsonHeaders: Record<string, string>;
 }) {
   const [name,       setName]       = useState("");
-  const [technique,  setTechnique]  = useState("");
+  const [technique,  setTechnique]  = useState("General");
   const [shortDesc,  setShortDesc]  = useState("");
   const [nameStatus, setNameStatus] = useState<"idle" | "checking" | "available" | "taken">("idle");
   const [creating,   setCreating]   = useState(false);
@@ -257,7 +257,6 @@ function NewProtocolModal({
             onChange={(e) => setTechnique(e.target.value)}
             className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none"
           >
-            <option value="">Select a technique…</option>
             {PROTOCOL_TECHNIQUES.map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
@@ -410,7 +409,6 @@ export default function ProtocolsPage() {
   const [selected, setSelected]     = useState<Entry | null>(null);
   const [editorMode, setEditorMode] = useState<"create" | "edit">("create");
   const [editorOpen, setEditorOpen] = useState(false);
-  const [editorTitle, setEditorTitle] = useState("");
   const [loading, setLoading]       = useState(false);
   const [saveError, setSaveError]   = useState<string | null>(null);
   const [isDirty, setIsDirty]       = useState(false);
@@ -586,7 +584,6 @@ export default function ProtocolsPage() {
     setIsDirty(false);
     setEditorOpen(false);
     setSaveError(null);
-    setEditorTitle("");
     setPendingPayload(null);
   }
 
@@ -606,7 +603,6 @@ export default function ProtocolsPage() {
       if (!data || Array.isArray(data) || !("id" in data)) return false;
       setEditorMode("edit");
       setSelected(data);
-      setEditorTitle(data.title || "");
       setIsDirty(false);
       setEditorOpen(true);
       return true;
@@ -652,7 +648,6 @@ export default function ProtocolsPage() {
       setEntries((s) => [cloned, ...s]);
       setSelected(cloned);
       setEditorMode("edit");
-      setEditorTitle(cloned.title || "");
       setIsDirty(false);
       setEditorOpen(true);
     } catch (e) {
@@ -698,7 +693,6 @@ export default function ProtocolsPage() {
     setEntries((s) => [entry, ...s]);
     setSelected(entry);
     setEditorMode("edit");
-    setEditorTitle(entry.title || "");
     setIsDirty(false);
     setSaveError(null);
     setPendingPayload(null);
@@ -736,6 +730,15 @@ export default function ProtocolsPage() {
 
   // ── Group into families ────────────────────────────────────────────────────
   const groupedFamilies = useMemo(() => buildFamilies(filteredEntries), [filteredEntries]);
+
+  // ── Version family for the currently open entry (passed to Editor) ──────────
+  const selectedVersionFamily = useMemo(() => {
+    if (!selected) return undefined;
+    const fam = groupedFamilies.find((f) => f.allVersions.some((e) => e.id === selected.id));
+    const versions = fam?.allVersions ?? [selected];
+    if (versions.length <= 1) return undefined; // no dropdown needed for single-entry families
+    return versions.map((e) => ({ id: e.id, title: e.title || "", semVer: getSemVer(e) }));
+  }, [selected, groupedFamilies]);
 
   const canRunProtocol = editorOpen && editorMode === "edit" && Boolean(selected) && !isDirty;
 
@@ -880,12 +883,9 @@ export default function ProtocolsPage() {
             {/* Modal header */}
             <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-3">
               <div className="flex min-w-0 flex-1 items-center gap-3">
-                <input
-                  value={editorTitle}
-                  onChange={e => setEditorTitle(e.target.value)}
-                  placeholder={editorMode === "create" ? "New Protocol" : "Protocol name"}
-                  className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-zinc-100 outline-none placeholder:text-zinc-500 border-b border-transparent focus:border-zinc-600 transition"
-                />
+                <span className="min-w-0 truncate text-sm font-semibold text-zinc-300">
+                  {selected?.title || (editorMode === "create" ? "New Protocol" : "Protocol")}
+                </span>
                 {canRunProtocol && (
                   <button
                     onClick={handleRunProtocol}
@@ -925,8 +925,8 @@ export default function ProtocolsPage() {
                 onDirtyChange={setIsDirty}
                 saving={loading}
                 protocolShell={true}
-                titleValue={editorTitle}
                 onOpenParent={handleOpenParent}
+                versionFamily={selectedVersionFamily}
               />
             </div>
           </div>

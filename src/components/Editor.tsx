@@ -6,7 +6,7 @@ import ProtocolStepsEditor, {
   type FocusType,
   type ProtocolStepsEditorHandle,
 } from "./ProtocolStepsEditor";
-import { TECHNIQUE_OPTIONS, type Entry, type AttachmentRecord } from "@/models/entry";
+import { TECHNIQUE_OPTIONS, PROTOCOL_TECHNIQUES, type Entry, type AttachmentRecord } from "@/models/entry";
 import {
   ENTRY_TYPE_CONFIGS,
   ENTRY_TYPE_KEYS,
@@ -26,10 +26,10 @@ type Props = {
   onCancel?: () => void;
   saving?: boolean;
   protocolShell?: boolean;
-  /** Controlled title for protocolShell mode — managed by the parent modal header */
-  titleValue?: string;
-  /** Called when the user clicks the parent-protocol link in the Version panel */
+  /** Called when the user clicks a version in the Version panel */
   onOpenParent?: (parentId: string) => void;
+  /** Other entries in this protocol's version family — shown in Version panel dropdown */
+  versionFamily?: Array<{ id: string; title: string; semVer: string }>;
 };
 
 // Component items shown in the right-sidebar dropdown.
@@ -569,8 +569,8 @@ export default function Editor({
   onCancel,
   saving = false,
   protocolShell = false,
-  titleValue,
   onOpenParent,
+  versionFamily,
 }: Props) {
   const [title, setTitle]           = useState(initial.title ?? "");
   const [description, setDescription] = useState(initial.description ?? "");
@@ -645,8 +645,8 @@ export default function Editor({
     if (activeTab !== "steps") setFocusType(null);
   }, [activeTab]);
 
-  // In protocolShell mode the title is managed by the parent via titleValue;
-  const effectiveTitle = (protocolShell && titleValue !== undefined) ? titleValue : title;
+  // Title is always managed internally (the metadata row renders a title input in protocolShell mode)
+  const effectiveTitle = title;
 
   const isDirty = useMemo(() => {
     const typedDataChanged =
@@ -729,7 +729,7 @@ export default function Editor({
             onChange={setTypedFields}
           />
         )}
-        <CustomFieldsPanel fields={customFields} onChange={setCustomFields} />
+        {!protocolShell && <CustomFieldsPanel fields={customFields} onChange={setCustomFields} />}
         {initial.id && (
           <AttachmentsPanel
             entryId={initial.id}
@@ -750,16 +750,22 @@ export default function Editor({
     { id: "description", label: "Description" },
     { id: "guidelines",  label: "Guidelines & Warnings" },
     { id: "references",  label: "References" },
-    { id: "materials",   label: "Materials" },
+    { id: "materials",   label: "Inventory" },
   ];
 
   return (
     <div className="w-full">
       {protocolShell ? (
         <>
-          {/* ── Metadata row ── */}
+          {/* ── Metadata row: Title | Short Description | Technique ── */}
           <div className="mb-2 rounded border border-zinc-800 bg-zinc-900 p-2">
-            <div className="grid gap-2 lg:grid-cols-[2fr_1.2fr_1fr]">
+            <div className="grid gap-2 lg:grid-cols-[1.5fr_1.5fr_1fr]">
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Protocol name"
+                className="w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm font-semibold text-zinc-100 placeholder:text-zinc-500"
+              />
               <input
                 value={description}
                 onChange={(e) => setDescription(e.target.value.slice(0, 100))}
@@ -772,13 +778,10 @@ export default function Editor({
                 onChange={(e) => setTechnique(e.target.value)}
                 className="w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-zinc-100"
               >
-                {TECHNIQUE_OPTIONS.map((option) => (
+                {PROTOCOL_TECHNIQUES.map((option) => (
                   <option key={option} value={option}>{option}</option>
                 ))}
               </select>
-              <div className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-sm text-zinc-200">
-                {initial.author?.name || currentAuthorName || "Unknown"}
-              </div>
             </div>
           </div>
 
@@ -909,7 +912,7 @@ export default function Editor({
                 <LinkedItemsPanel
                   items={tabMaterials}
                   onChange={setTabMaterials}
-                  placeholder="Add material (buffer, enzyme, cell line)…"
+                  placeholder="Link to inventory item…"
                 />
               )}
             </div>
@@ -933,6 +936,36 @@ export default function Editor({
                       v{semVer}
                     </span>
                   </div>
+
+                  {/* Version history dropdown — shown when the family has multiple entries */}
+                  {versionFamily && versionFamily.length > 1 && onOpenParent && (
+                    <div>
+                      <label className="mb-1 block text-zinc-500">Version history</label>
+                      <select
+                        value={initial.id ?? ""}
+                        onChange={(e) => {
+                          if (e.target.value && e.target.value !== initial.id) {
+                            onOpenParent(e.target.value);
+                          }
+                        }}
+                        className="w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-100"
+                      >
+                        {[...versionFamily]
+                          .sort((a, b) => {
+                            // Descending semver sort
+                            const [aMaj = 0, aMin = 0] = a.semVer.split(".").map(Number);
+                            const [bMaj = 0, bMin = 0] = b.semVer.split(".").map(Number);
+                            return bMaj !== aMaj ? bMaj - aMaj : bMin - aMin;
+                          })
+                          .map((v) => (
+                            <option key={v.id} value={v.id}>
+                              v{v.semVer} — {v.title}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
+
                   {versionParentId && (
                     <div className="flex flex-wrap items-start gap-1">
                       <span className="shrink-0 text-zinc-500">Cloned from:</span>
