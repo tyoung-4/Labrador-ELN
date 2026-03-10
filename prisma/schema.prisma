@@ -82,6 +82,8 @@ model ProtocolRun {
   updatedAt        DateTime  @updatedAt
   sourceEntry    Entry     @relation("RunSource", fields: [sourceEntryId], references: [id])
   sourceEntryId  String
+  protocol       Protocol? @relation(fields: [protocolId], references: [id])
+  protocolId     String?
   runner         User?     @relation(fields: [runnerId], references: [id])
   runnerId       String?
   linkedEntries  Entry[]   @relation("RunLink")
@@ -136,6 +138,7 @@ model Protocol {
   updatedAt        DateTime @updatedAt
 
   sections ProtocolSection[]
+  runs     ProtocolRun[]
 
   @@unique([name])
 }

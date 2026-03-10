@@ -243,6 +243,16 @@ export default function ActiveRunPage() {
         setRun(runData);
         setStepResults(srData);
 
+        // [Prompt 3A] Log protocol data shape for verification
+        console.log("[Prompt 3A] run.protocol:", runData.protocol);
+        console.log("[Prompt 3A] sections:", runData.protocol?.sections?.length ?? 0);
+        if (runData.protocol?.sections) {
+          for (const sec of runData.protocol.sections) {
+            console.log(`[Prompt 3A]   section "${sec.name}" (order ${sec.order}): ${sec.steps.length} steps`);
+          }
+        }
+        console.log("[Prompt 3A] parsed steps from runBody:", parseStepsFromBody(runData.runBody).length);
+
         // Restore active step from interactionState
         try {
           const state = JSON.parse(runData.interactionState || "{}") as { currentStepIdx?: number };

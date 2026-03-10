@@ -8,6 +8,28 @@ export type StepResult = {
   completedAt: string;
 };
 
+export type RunProtocolStep = {
+  id: string;
+  stepType: string;
+  parentStepId: string | null;
+  estimatedMinutes: number | null;
+};
+
+export type RunProtocolSection = {
+  id: string;
+  name: string;
+  order: number;
+  steps: RunProtocolStep[];
+};
+
+export type RunProtocol = {
+  id: string;
+  name: string | null;
+  technique: string | null;
+  shortDescription: string | null;
+  sections: RunProtocolSection[];
+};
+
 export type ProtocolRun = {
   id: string;
   runId?: string | null;
@@ -22,6 +44,7 @@ export type ProtocolRun = {
   createdAt: string;
   updatedAt: string;
   sourceEntryId: string;
+  protocolId?: string | null;
   runnerId?: string | null;
   sourceEntry?: {
     id: string;
@@ -39,5 +62,6 @@ export type ProtocolRun = {
     name: string | null;
     role: string;
   } | null;
+  protocol?: RunProtocol | null;
   stepResults?: StepResult[];
 };

@@ -72,6 +72,31 @@ export async function GET(request: Request, context: RouteContext) {
           },
         },
         runner: { select: { id: true, name: true, role: true } },
+        protocol: {
+          select: {
+            id: true,
+            name: true,
+            technique: true,
+            shortDescription: true,
+            sections: {
+              orderBy: { order: "asc" },
+              select: {
+                id: true,
+                name: true,
+                order: true,
+                steps: {
+                  orderBy: { createdAt: "asc" },
+                  select: {
+                    id: true,
+                    stepType: true,
+                    parentStepId: true,
+                    estimatedMinutes: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
     if (!found) return new NextResponse(null, { status: 404 });
@@ -124,6 +149,31 @@ export async function PUT(request: Request, context: RouteContext) {
           },
         },
         runner: { select: { id: true, name: true, role: true } },
+        protocol: {
+          select: {
+            id: true,
+            name: true,
+            technique: true,
+            shortDescription: true,
+            sections: {
+              orderBy: { order: "asc" },
+              select: {
+                id: true,
+                name: true,
+                order: true,
+                steps: {
+                  orderBy: { createdAt: "asc" },
+                  select: {
+                    id: true,
+                    stepType: true,
+                    parentStepId: true,
+                    estimatedMinutes: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
 

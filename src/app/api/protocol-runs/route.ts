@@ -109,7 +109,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "sourceEntryId is required" }, { status: 400 });
     }
 
-    const source = await prisma.entry.findUnique({ where: { id: sourceEntryId } });
+    const [source, sourceProtocol] = await Promise.all([
+      prisma.entry.findUnique({ where: { id: sourceEntryId } }),
+      prisma.protocol.findUnique({ where: { entryId: sourceEntryId } }),
+    ]);
     if (!source) return new NextResponse(null, { status: 404 });
 
     // Store the full body as runBody so the new run page can parse it
@@ -124,6 +127,7 @@ export async function POST(request: Request) {
       data: {
         runId,
         sourceEntryId,
+        protocolId: sourceProtocol?.id ?? null,
         title: `${source.title} - Run ${runCount + 1}`,
         status: "IN_PROGRESS",
         locked: true,
