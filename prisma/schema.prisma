@@ -69,6 +69,7 @@ model Tag {
 
 model ProtocolRun {
   id               String    @id @default(uuid())
+  runId            String?   @unique
   title            String
   status           String    @default("IN_PROGRESS")
   locked           Boolean   @default(true)

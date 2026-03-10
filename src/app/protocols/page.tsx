@@ -416,7 +416,8 @@ export default function ProtocolsPage() {
   // Pending payload waiting for version bump decision
   const [pendingPayload, setPendingPayload] = useState<Partial<Entry> | null>(null);
 
-  // (no run modal state — operator is auto-assigned from logged-in user)
+  // Run confirmation dialog
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   // New Protocol creation modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -656,8 +657,14 @@ export default function ProtocolsPage() {
     }
   }
 
-  async function handleRunProtocol() {
+  function handleRunProtocol() {
     if (!selected) return;
+    setShowConfirmModal(true);
+  }
+
+  async function confirmStartRun() {
+    if (!selected) return;
+    setShowConfirmModal(false);
     setLoading(true);
     try {
       // operatorName is derived server-side from x-user-name header (currentUser.name)
@@ -879,7 +886,7 @@ export default function ProtocolsPage() {
                 </span>
                 {canRunProtocol && (
                   <button
-                    onClick={() => void handleRunProtocol()}
+                    onClick={handleRunProtocol}
                     disabled={loading}
                     className="shrink-0 rounded bg-indigo-600 px-3 py-1 text-xs text-white hover:bg-indigo-500 disabled:opacity-50"
                   >
@@ -941,6 +948,33 @@ export default function ProtocolsPage() {
           onCreated={handleProtocolCreated}
           jsonHeaders={jsonHeaders}
         />
+      )}
+
+      {/* ── Run Confirmation Dialog ── */}
+      {showConfirmModal && selected && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm rounded-lg border border-zinc-700 bg-zinc-900 p-6 shadow-2xl">
+            <p className="mb-6 text-sm text-zinc-200">
+              Are you sure you want to start{" "}
+              <span className="font-semibold text-zinc-100">{selected.title}</span>?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => void confirmStartRun()}
+                disabled={loading}
+                className="flex-1 rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+              >
+                ▶ Start Run
+              </button>
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                className="rounded border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-700"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

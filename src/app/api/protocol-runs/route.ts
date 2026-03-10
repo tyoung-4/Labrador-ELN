@@ -82,6 +82,20 @@ export async function GET(request: Request) {
   }
 }
 
+/** Generates a unique 10-character alphanumeric Run ID (A–Z, 0–9). */
+async function generateRunId(): Promise<string> {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  for (let attempt = 0; attempt < 20; attempt++) {
+    let id = "";
+    for (let i = 0; i < 10; i++) {
+      id += chars[Math.floor(Math.random() * chars.length)];
+    }
+    const existing = await prisma.protocolRun.findUnique({ where: { runId: id } });
+    if (!existing) return id;
+  }
+  throw new Error("Failed to generate unique Run ID after 20 attempts");
+}
+
 export async function POST(request: Request) {
   try {
     const actor = getActorFromRequest(request);
@@ -102,9 +116,13 @@ export async function POST(request: Request) {
     // (new ProtocolStepsEditor stores JSON; legacy stores HTML)
     const runBodyContent = source.body;
 
-    const runCount = await prisma.protocolRun.count({ where: { sourceEntryId } });
+    const [runCount, runId] = await Promise.all([
+      prisma.protocolRun.count({ where: { sourceEntryId } }),
+      generateRunId(),
+    ]);
     const created = await prisma.protocolRun.create({
       data: {
+        runId,
         sourceEntryId,
         title: `${source.title} - Run ${runCount + 1}`,
         status: "IN_PROGRESS",

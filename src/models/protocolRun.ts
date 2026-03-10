@@ -10,6 +10,7 @@ export type StepResult = {
 
 export type ProtocolRun = {
   id: string;
+  runId?: string | null;
   title: string;
   status: string;
   locked: boolean;

@@ -430,6 +430,7 @@ export default function ActiveRunPage() {
           <p className="text-xs text-zinc-500">
             Started {new Date(run.createdAt).toLocaleString()}
             {run.completedAt ? ` · Completed ${new Date(run.completedAt).toLocaleString()}` : ""}
+            {run.runId ? ` · ID: ${run.runId}` : ""}
           </p>
         </div>
 
