@@ -89,7 +89,8 @@ export async function POST(request: Request) {
 
     const payload = await request.json().catch(() => ({}));
     const sourceEntryId = String(payload.sourceEntryId ?? "").trim();
-    const operatorName = typeof payload.operatorName === "string" ? payload.operatorName.trim() : "";
+    // Operator is always the logged-in user (actor derived from x-user-name header)
+    const operatorName = actor.name;
     if (!sourceEntryId) {
       return NextResponse.json({ error: "sourceEntryId is required" }, { status: 400 });
     }
