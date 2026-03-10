@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import AppTopNav from "@/components/AppTopNav";
@@ -164,6 +164,264 @@ function ProgressDog({ progress }: { progress: number }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// RunProtocolScrollView — Left panel: sections + step rows
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ACCENT_BORDERS = [
+  "border-indigo-500",
+  "border-violet-500",
+  "border-cyan-500",
+  "border-emerald-500",
+  "border-amber-500",
+];
+const ACCENT_TEXTS = [
+  "text-indigo-300",
+  "text-violet-300",
+  "text-cyan-300",
+  "text-emerald-300",
+  "text-amber-300",
+];
+
+function RunProtocolScrollView({
+  steps,
+  resultMap,
+  activeStepIdx,
+  pendingNotes,
+  pendingFields,
+  onNoteChange,
+  onFieldChange,
+  isRunComplete,
+}: {
+  steps: ParsedStep[];
+  resultMap: Record<string, StepResult>;
+  activeStepIdx: number;
+  pendingNotes: Record<string, string>;
+  pendingFields: Record<string, Record<string, string>>;
+  onNoteChange: (stepId: string, note: string) => void;
+  onFieldChange: (stepId: string, fieldKey: string, value: string) => void;
+  isRunComplete: boolean;
+}) {
+  const stepRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // Start with notes expanded for any step that already has saved notes
+  const [expandedNotes, setExpandedNotes] = useState<Set<string>>(() => {
+    const set = new Set<string>();
+    for (const [stepId, result] of Object.entries(resultMap)) {
+      if (result.notes) set.add(stepId);
+    }
+    return set;
+  });
+
+  // Auto-expand when a completed step with notes arrives after initial load
+  useEffect(() => {
+    setExpandedNotes((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const [stepId, result] of Object.entries(resultMap)) {
+        if (result.notes && !next.has(stepId)) {
+          next.add(stepId);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [resultMap]);
+
+  // Auto-scroll active step into view (smooth)
+  useEffect(() => {
+    const active = steps[activeStepIdx];
+    if (!active) return;
+    stepRefs.current[active.id]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [activeStepIdx, steps]);
+
+  if (steps.length === 0) {
+    return (
+      <div className="py-12 text-center text-sm text-zinc-500">
+        No steps found in this protocol.
+      </div>
+    );
+  }
+
+  // Build per-step display labels in a single pass
+  let mainNum = 0;
+  let subNum = 0;
+  const displaySteps = steps.map((step, globalIdx) => {
+    let numLabel: string;
+    if (!step.isSubstep) {
+      mainNum++;
+      subNum = 0;
+      numLabel = String(mainNum);
+    } else {
+      const subLetter = "abcdefghijklmnopqrstuvwxyz"[subNum] ?? String(subNum + 1);
+      subNum++;
+      numLabel = `${mainNum}${subLetter}`;
+    }
+    return { step, globalIdx, numLabel };
+  });
+
+  // Group by contiguous sectionTitle
+  type SectionGroup = { title: string; items: typeof displaySteps };
+  const sections: SectionGroup[] = [];
+  for (const item of displaySteps) {
+    const title = item.step.sectionTitle ?? "";
+    const last = sections[sections.length - 1];
+    if (!last || last.title !== title) sections.push({ title, items: [item] });
+    else last.items.push(item);
+  }
+
+  return (
+    <div className="space-y-8">
+      {sections.map((section, si) => (
+        <div key={`${section.title}-${si}`}>
+          {/* Section header bar */}
+          {section.title && (
+            <div
+              className={`mb-3 flex items-center border-l-4 ${ACCENT_BORDERS[si % ACCENT_BORDERS.length]} rounded-r bg-zinc-900/80 px-3 py-2.5`}
+            >
+              <span className={`text-xs font-bold uppercase tracking-widest ${ACCENT_TEXTS[si % ACCENT_TEXTS.length]}`}>
+                {section.title}
+              </span>
+            </div>
+          )}
+
+          {/* Step rows */}
+          <div className="space-y-2">
+            {section.items.map(({ step, globalIdx, numLabel }) => {
+              const result = resultMap[step.id];
+              const isActive = globalIdx === activeStepIdx;
+
+              let stripeBorder: string;
+              let rowBg: string;
+              if (result?.result === "PASSED")       { stripeBorder = "border-emerald-500"; rowBg = "bg-emerald-950/20"; }
+              else if (result?.result === "FAILED")  { stripeBorder = "border-red-500";     rowBg = "bg-red-950/20"; }
+              else if (result?.result === "SKIPPED") { stripeBorder = "border-amber-500";   rowBg = "bg-amber-950/20"; }
+              else if (isActive)                     { stripeBorder = "border-indigo-400";  rowBg = "bg-zinc-800/70"; }
+              else                                   { stripeBorder = "border-zinc-700";    rowBg = ""; }
+
+              const notesOpen   = expandedNotes.has(step.id);
+              const savedNote   = result?.notes ?? "";
+              const pendingNote = pendingNotes[step.id] ?? "";
+
+              return (
+                <div
+                  key={step.id}
+                  ref={(el) => { stepRefs.current[step.id] = el; }}
+                  className={`border-l-4 ${stripeBorder} ${rowBg} rounded-r transition-colors duration-150${step.isSubstep ? " ml-8" : ""}`}
+                >
+                  <div className="px-4 py-3">
+                    <div className="flex gap-3">
+                      {/* Step number */}
+                      <span
+                        className={`mt-0.5 shrink-0 font-mono text-xs font-bold ${
+                          isActive && !result ? "text-indigo-400" : result ? "text-zinc-500" : "text-zinc-400"
+                        }`}
+                      >
+                        {numLabel}.
+                      </span>
+
+                      {/* Step body */}
+                      <div className="min-w-0 flex-1">
+                        {/* Step HTML content */}
+                        <div
+                          className="text-sm leading-relaxed text-zinc-200 [&_p]:my-0"
+                          dangerouslySetInnerHTML={{ __html: step.html || step.label }}
+                        />
+
+                        {/* Result badge */}
+                        {result && (
+                          <div className="mt-1.5">
+                            <ResultBadge result={result.result} small />
+                          </div>
+                        )}
+
+                        {/* Required field chips */}
+                        {step.requiredFields.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {step.requiredFields.map((field) => {
+                              if (result) {
+                                let savedVal = "";
+                                try {
+                                  savedVal =
+                                    (JSON.parse(result.fieldValues) as Record<string, string>)[
+                                      field.key
+                                    ] ?? "";
+                                } catch { /* */ }
+                                return (
+                                  <span
+                                    key={field.key}
+                                    className="flex items-center gap-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs"
+                                  >
+                                    <span className="text-zinc-500">{field.label}:</span>
+                                    <span className="text-zinc-200">{savedVal || "—"}</span>
+                                  </span>
+                                );
+                              }
+                              const val = (pendingFields[step.id] ?? {})[field.key] ?? "";
+                              return (
+                                <label
+                                  key={field.key}
+                                  className="flex cursor-text items-center gap-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs"
+                                >
+                                  <span className="text-zinc-400">{field.label}:</span>
+                                  <input
+                                    type="text"
+                                    value={val}
+                                    onChange={(e) => onFieldChange(step.id, field.key, e.target.value)}
+                                    disabled={isRunComplete}
+                                    placeholder="…"
+                                    className="w-20 border-none bg-transparent text-zinc-100 outline-none placeholder:text-zinc-600 disabled:cursor-not-allowed"
+                                  />
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Inline notes toggle */}
+                        <div className="mt-2">
+                          <button
+                            className="text-xs text-zinc-500 hover:text-zinc-300"
+                            onClick={() =>
+                              setExpandedNotes((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(step.id)) next.delete(step.id);
+                                else next.add(step.id);
+                                return next;
+                              })
+                            }
+                          >
+                            {notesOpen ? "▾ Hide notes" : `▸ ${savedNote ? "View notes" : "Add notes"}`}
+                          </button>
+                          {notesOpen && (
+                            <div className="mt-1.5">
+                              {result || isRunComplete ? (
+                                <p className="text-xs italic text-zinc-400">{savedNote || "No notes."}</p>
+                              ) : (
+                                <textarea
+                                  rows={2}
+                                  value={pendingNote}
+                                  onChange={(e) => onNoteChange(step.id, e.target.value)}
+                                  placeholder="Notes for this step…"
+                                  className="w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
+                                />
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -292,6 +550,17 @@ export default function ActiveRunPage() {
     },
     [run, runId, authHeaders]
   );
+
+  const handleNoteChange = useCallback((stepId: string, note: string) => {
+    setPendingNotes((prev) => ({ ...prev, [stepId]: note }));
+  }, []);
+
+  const handleFieldChange = useCallback((stepId: string, fieldKey: string, value: string) => {
+    setPendingFields((prev) => ({
+      ...prev,
+      [stepId]: { ...(prev[stepId] ?? {}), [fieldKey]: value },
+    }));
+  }, []);
 
   // ── Submit a step result ───────────────────────────────────────────────────
   async function handleResult(step: ParsedStep, kind: ResultKind) {
@@ -483,8 +752,17 @@ export default function ActiveRunPage() {
       {/* ── Two-column body ──────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left panel — scrollable */}
-        <div className="flex-1 overflow-y-auto border-r border-zinc-800 p-8">
-          <p className="text-sm text-zinc-600">[Protocol scroll view — Prompt 3]</p>
+        <div className="flex-1 overflow-y-auto border-r border-zinc-800 p-6">
+          <RunProtocolScrollView
+            steps={steps}
+            resultMap={resultMap}
+            activeStepIdx={activeStepIdx}
+            pendingNotes={pendingNotes}
+            pendingFields={pendingFields}
+            onNoteChange={handleNoteChange}
+            onFieldChange={handleFieldChange}
+            isRunComplete={isRunComplete}
+          />
         </div>
 
         {/* Right sidebar — fixed height, does not scroll with left panel */}
