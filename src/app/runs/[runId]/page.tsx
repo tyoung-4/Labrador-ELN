@@ -379,11 +379,13 @@ export default function ActiveRunPage() {
 
   // ── Render helpers ─────────────────────────────────────────────────────────
 
+  // Kept in scope for Prompts 3 & 4 — do not remove
   const activeStep = steps[activeStepIdx] ?? null;
+  void activeStep; // referenced by handleResult indirectly via activeStepIdx
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-zinc-950 p-6 text-zinc-100">
+      <div className="flex h-screen flex-col overflow-hidden bg-zinc-950 text-zinc-100">
         <AppTopNav />
         <p className="mt-10 text-center text-sm text-zinc-400">Loading run…</p>
       </div>
@@ -392,7 +394,7 @@ export default function ActiveRunPage() {
 
   if (error || !run) {
     return (
-      <div className="min-h-screen bg-zinc-950 p-6 text-zinc-100">
+      <div className="flex h-screen flex-col overflow-hidden bg-zinc-950 text-zinc-100">
         <AppTopNav />
         <div className="mx-auto mt-10 max-w-md rounded border border-red-500/40 bg-red-500/10 p-4 text-center text-sm text-red-200">
           {error ?? "Run not found."}
@@ -405,249 +407,81 @@ export default function ActiveRunPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-950 p-6 text-zinc-100">
+    <div className="flex h-screen flex-col overflow-hidden bg-zinc-950 text-zinc-100">
       <AppTopNav />
 
-      {/* Header */}
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="mb-1 flex items-center gap-2">
-            <Link href="/runs" className="text-xs text-zinc-500 hover:text-zinc-400">
-              ← Active Runs
-            </Link>
-            {run.status === "COMPLETED" && (
-              <span className="rounded bg-emerald-700 px-2 py-0.5 text-xs font-semibold text-emerald-100">COMPLETED</span>
-            )}
-            {run.status === "IN_PROGRESS" && (
-              <span className="rounded bg-indigo-700 px-2 py-0.5 text-xs font-semibold text-indigo-100">IN PROGRESS</span>
+      {/* ── Header ──────────────────────────────────────────────────────── */}
+      <div className="shrink-0 border-b border-zinc-800 px-6 py-3">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="mb-1.5 flex flex-wrap items-center gap-2">
+              <Link href="/runs" className="text-xs text-zinc-500 hover:text-zinc-400">
+                ← Active Runs
+              </Link>
+              {run.status === "IN_PROGRESS" && (
+                <span className="rounded bg-indigo-700 px-2 py-0.5 text-xs font-semibold text-indigo-100">
+                  IN PROGRESS
+                </span>
+              )}
+              {run.status === "COMPLETED" && (
+                <span className="rounded bg-emerald-700 px-2 py-0.5 text-xs font-semibold text-emerald-100">
+                  COMPLETED
+                </span>
+              )}
+            </div>
+            <h1 className="text-lg font-bold leading-tight text-zinc-100">{run.title}</h1>
+            {run.runId && (
+              <p className="mt-0.5 text-xs text-zinc-500">ID: {run.runId}</p>
             )}
           </div>
-          <h1 className="text-xl font-bold text-zinc-100">{run.title}</h1>
-          <p className="text-sm text-zinc-400">
-            {run.sourceEntry?.title ?? run.sourceEntryId}
-            {run.operatorName ? ` · Operator: ${run.operatorName}` : run.runner?.name ? ` · ${run.runner.name}` : ""}
-          </p>
-          <p className="text-xs text-zinc-500">
-            Started {new Date(run.createdAt).toLocaleString()}
-            {run.completedAt ? ` · Completed ${new Date(run.completedAt).toLocaleString()}` : ""}
-            {run.runId ? ` · ID: ${run.runId}` : ""}
-          </p>
+          <div className="shrink-0 text-right">
+            <p className="text-sm text-zinc-400">
+              Started: {new Date(run.createdAt).toLocaleString()}
+            </p>
+            {run.completedAt && (
+              <p className="mt-0.5 text-xs text-zinc-500">
+                Completed: {new Date(run.completedAt).toLocaleString()}
+              </p>
+            )}
+            {isRunComplete && (
+              <Link
+                href={`/runs/${runId}/summary`}
+                className="mt-2 inline-block rounded bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600"
+              >
+                View Summary →
+              </Link>
+            )}
+          </div>
         </div>
-
-        {isRunComplete && (
-          <Link
-            href={`/runs/${runId}/summary`}
-            className="rounded bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600"
-          >
-            View Summary →
-          </Link>
-        )}
       </div>
 
-      {/* Completion banner */}
+      {/* ── Completion banner ────────────────────────────────────────────── */}
       {showCompleteBanner && (
-        <div className="mb-4 flex items-center justify-between rounded border border-emerald-500 bg-emerald-500/20 px-4 py-3">
-          <span className="font-semibold text-emerald-200">🎉 All steps resolved — run completed and locked!</span>
+        <div className="shrink-0 flex items-center justify-between border-b border-emerald-500/50 bg-emerald-500/10 px-6 py-2">
+          <span className="text-sm font-semibold text-emerald-200">
+            🎉 All steps resolved — run completed and locked!
+          </span>
           <Link
             href={`/runs/${runId}/summary`}
-            className="ml-4 rounded bg-emerald-700 px-3 py-1 text-sm font-semibold text-white hover:bg-emerald-600"
+            className="ml-4 rounded bg-emerald-700 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-600"
           >
             View Summary
           </Link>
         </div>
       )}
 
-      {/* Progress dog */}
-      <ProgressDog progress={progress} />
-
-      {steps.length === 0 ? (
-        <div className="rounded border border-zinc-800 bg-zinc-900 p-6 text-center text-sm text-zinc-400">
-          No steps found in this protocol run. The protocol body may be empty.
+      {/* ── Two-column body ──────────────────────────────────────────────── */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left panel — scrollable */}
+        <div className="flex-1 overflow-y-auto border-r border-zinc-800 p-8">
+          <p className="text-sm text-zinc-600">[Protocol scroll view — Prompt 3]</p>
         </div>
-      ) : (
-        <div className="grid flex-1 gap-5 lg:grid-cols-[1fr_320px]">
-          {/* ── Main panel ─────────────────────────────────────────────────── */}
-          <main className="space-y-4">
-            {isRunComplete ? (
-              <div className="rounded border border-emerald-700/50 bg-emerald-900/20 p-6 text-center">
-                <p className="text-2xl mb-2">🎉</p>
-                <p className="text-lg font-semibold text-emerald-300">Run Complete</p>
-                <p className="mt-1 text-sm text-zinc-400">All {steps.length} steps have been resolved.</p>
-                <Link
-                  href={`/runs/${runId}/summary`}
-                  className="mt-4 inline-block rounded bg-emerald-700 px-6 py-2 text-sm font-semibold text-white hover:bg-emerald-600"
-                >
-                  View Run Summary →
-                </Link>
-              </div>
-            ) : activeStep ? (
-              <div className="rounded border border-zinc-800 bg-zinc-900 p-5">
-                {/* Step counter + section label */}
-                <div className="mb-1 flex items-center gap-2 text-xs text-zinc-500">
-                  <span>Step {activeStepIdx + 1} of {steps.length}</span>
-                  {activeStep.sectionTitle && (
-                    <>
-                      <span>·</span>
-                      <span className="rounded bg-zinc-800 px-1.5 py-0.5">{activeStep.sectionTitle}</span>
-                    </>
-                  )}
-                  {activeStep.isSubstep && (
-                    <span className="rounded bg-zinc-700 px-1.5 py-0.5 text-zinc-400">sub-step</span>
-                  )}
-                </div>
 
-                {/* Step content */}
-                <div
-                  className="prose prose-invert max-w-none text-lg leading-relaxed"
-                  dangerouslySetInnerHTML={{ __html: activeStep.html || `<p>${activeStep.label}</p>` }}
-                />
-
-                {/* Required fields */}
-                {activeStep.requiredFields.length > 0 && (
-                  <div className="mt-5 space-y-3 rounded border border-blue-700/40 bg-blue-900/20 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-blue-300">Required Fields</p>
-                    {activeStep.requiredFields.map((field) => (
-                      <div key={field.key} className="flex items-center gap-3">
-                        <label className="min-w-[120px] text-sm text-zinc-300">{field.label}</label>
-                        <input
-                          type="text"
-                          value={(pendingFields[activeStep.id] ?? {})[field.key] ?? ""}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setPendingFields((prev) => ({
-                              ...prev,
-                              [activeStep.id]: { ...(prev[activeStep.id] ?? {}), [field.key]: val },
-                            }));
-                          }}
-                          placeholder="Enter value…"
-                          className="flex-1 rounded border border-blue-700 bg-blue-900/40 px-3 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-blue-500 focus:outline-none"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Notes for this step */}
-                <div className="mt-4">
-                  <label className="mb-1 block text-xs text-zinc-500">Step notes (optional)</label>
-                  <textarea
-                    rows={2}
-                    value={pendingNotes[activeStep.id] ?? ""}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setPendingNotes((prev) => ({ ...prev, [activeStep.id]: val }));
-                    }}
-                    placeholder="Add notes for this step…"
-                    className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
-                  />
-                </div>
-
-                {/* Already resolved? show badge */}
-                {resultMap[activeStep.id] && (
-                  <div className="mt-3 flex items-center gap-2">
-                    <ResultBadge result={resultMap[activeStep.id].result} />
-                    <span className="text-xs text-zinc-500">
-                      Recorded {new Date(resultMap[activeStep.id].completedAt).toLocaleTimeString()}
-                    </span>
-                    <span className="text-xs text-zinc-500">(click Pass/Fail/Skip to override)</span>
-                  </div>
-                )}
-
-                {/* Action buttons */}
-                <div className="mt-5 flex flex-wrap gap-3">
-                  <button
-                    onClick={() => handleResult(activeStep, "PASSED")}
-                    disabled={submitting}
-                    className="flex-1 rounded border border-emerald-600 bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
-                  >
-                    ✓ Pass
-                  </button>
-                  <button
-                    onClick={() => handleResult(activeStep, "FAILED")}
-                    disabled={submitting}
-                    className="flex-1 rounded border border-red-600 bg-red-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50"
-                  >
-                    ✗ Fail
-                  </button>
-                  <button
-                    onClick={() => handleResult(activeStep, "SKIPPED")}
-                    disabled={submitting}
-                    className="flex-1 rounded border border-zinc-600 bg-zinc-700 px-4 py-2.5 text-sm font-semibold text-zinc-200 hover:bg-zinc-600 disabled:opacity-50"
-                  >
-                    → Skip
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            {/* Run notes (global) */}
-            {!isRunComplete && (
-              <RunNotes runId={runId} initialNotes={run.notes} authHeaders={authHeaders} />
-            )}
-          </main>
-
-          {/* ── Sidebar: step list ──────────────────────────────────────────── */}
-          <aside className="space-y-3">
-            <div className="rounded border border-zinc-800 bg-zinc-900 p-3">
-              <h2 className="mb-3 text-sm font-semibold text-zinc-200">
-                Steps ({resolvedCount}/{steps.length})
-              </h2>
-              <ul className="space-y-1.5 max-h-[70vh] overflow-y-auto pr-1">
-                {steps.map((step, idx) => {
-                  const resolved = resultMap[step.id];
-                  const isActive = idx === activeStepIdx && !isRunComplete;
-                  const isFuture = !resolved && idx > activeStepIdx && !isRunComplete;
-
-                  return (
-                    <li key={step.id}>
-                      <button
-                        onClick={() => {
-                          if (!isFuture || isRunComplete) {
-                            setActiveStepIdx(idx);
-                            persistActiveStep(idx);
-                          }
-                        }}
-                        disabled={false}
-                        className={[
-                          "w-full rounded border px-2.5 py-2 text-left text-xs transition",
-                          isActive
-                            ? "border-indigo-500 bg-indigo-500/20 text-indigo-100"
-                            : resolved
-                            ? "border-zinc-700 bg-zinc-800/50 text-zinc-400"
-                            : isFuture
-                            ? "border-zinc-800 bg-zinc-900 text-zinc-600"
-                            : "border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700",
-                        ].join(" ")}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <span className={`flex-1 leading-snug ${step.isSubstep ? "pl-2" : ""}`}>
-                            {step.isSubstep && <span className="mr-1 text-zinc-600">↳</span>}
-                            <span className="mr-1 text-zinc-600">{idx + 1}.</span>
-                            {step.label.length > 60 ? step.label.slice(0, 57) + "…" : step.label}
-                          </span>
-                          {resolved ? (
-                            <ResultBadge result={resolved.result} small />
-                          ) : isFuture ? (
-                            <span className="text-zinc-700">🔒</span>
-                          ) : null}
-                        </div>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-
-            {/* Run notes (sidebar compact view when complete) */}
-            {isRunComplete && run.notes && (
-              <div className="rounded border border-zinc-800 bg-zinc-900 p-3">
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">Run Notes</p>
-                <p className="whitespace-pre-wrap text-xs text-zinc-400">{run.notes}</p>
-              </div>
-            )}
-          </aside>
+        {/* Right sidebar — fixed height, does not scroll with left panel */}
+        <div className="w-80 shrink-0 overflow-hidden p-6">
+          <p className="text-sm text-zinc-600">[Progress bar + actions — Prompt 4]</p>
         </div>
-      )}
+      </div>
     </div>
   );
 }
