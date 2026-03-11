@@ -29,49 +29,55 @@ type ResultKind = "PASSED" | "FAILED" | "SKIPPED";
 function parseStepsFromBody(runBody: string): ParsedStep[] {
   const steps: ParsedStep[] = [];
 
-  // Try new JSON format first (from ProtocolStepsEditor)
+  // Try JSON format (from ProtocolStepsEditor)
+  // Handles two variants:
+  //   A) ProtocolBodyJSON wrapper: { steps: "JSON-stringified StepsData" }
+  //   B) Raw StepsData:            { version, sections: [...] }
   try {
-    const parsed = JSON.parse(runBody) as {
-      version?: number;
-      sections?: Array<{
-        id: string;
-        title: string;
-        steps?: Array<{
-          id: string;
-          html: string;
-          substeps?: Array<{ id: string; html: string; requiredFields?: Array<{ id: string; label: string }> }>;
-          requiredFields?: Array<{ id: string; label: string }>;
-        }>;
-      }>;
-    };
+    type RawField  = { id: string; label: string; [k: string]: unknown };
+    type RawSub    = { id: string; html?: string; text?: string; requiredFields?: RawField[]; fields?: RawField[] };
+    type RawStep   = { id: string; html?: string; text?: string; requiredFields?: RawField[]; fields?: RawField[]; substeps?: RawSub[]; subSteps?: RawSub[] };
+    type RawSection = { id: string; title: string; steps?: RawStep[] };
+    type RawData    = { version?: number; sections?: RawSection[]; steps?: unknown };
+
+    let parsed = JSON.parse(runBody) as RawData;
+
+    // Unwrap ProtocolBodyJSON: { steps: "JSON string" }
+    if (typeof parsed.steps === "string" && !Array.isArray((parsed as RawData).sections)) {
+      parsed = JSON.parse(parsed.steps) as RawData;
+    }
 
     if (parsed.sections && Array.isArray(parsed.sections)) {
       let globalIdx = 0;
       for (const section of parsed.sections) {
         for (const step of section.steps ?? []) {
-          const stepId = `step-${globalIdx++}`;
-          const label = stripHtml(step.html || "");
+          const stepId  = `step-${globalIdx++}`;
+          const content = step.html ?? step.text ?? "";
+          const label   = step.html ? stripHtml(content) : content;
+          const rawFields = step.requiredFields ?? step.fields ?? [];
           steps.push({
             id: stepId,
             label: label || `Step ${steps.length + 1}`,
-            html: step.html || "",
+            html: content,
             sectionTitle: section.title,
             isSubstep: false,
-            requiredFields: (step.requiredFields ?? []).map((f, fi) => ({
+            requiredFields: rawFields.map((f, fi) => ({
               key: `field-${globalIdx - 1}-${fi}`,
               label: f.label,
             })),
           });
-          for (const sub of step.substeps ?? []) {
-            const subId = `step-${globalIdx++}`;
-            const subLabel = stripHtml(sub.html || "");
+          for (const sub of step.substeps ?? step.subSteps ?? []) {
+            const subId      = `step-${globalIdx++}`;
+            const subContent = sub.html ?? sub.text ?? "";
+            const subLabel   = sub.html ? stripHtml(subContent) : subContent;
+            const subFields  = sub.requiredFields ?? sub.fields ?? [];
             steps.push({
               id: subId,
               label: subLabel || `Sub-step ${steps.length + 1}`,
-              html: sub.html || "",
+              html: subContent,
               sectionTitle: section.title,
               isSubstep: true,
-              requiredFields: (sub.requiredFields ?? []).map((f, fi) => ({
+              requiredFields: subFields.map((f, fi) => ({
                 key: `field-${globalIdx - 1}-${fi}`,
                 label: f.label,
               })),
