@@ -298,11 +298,11 @@ function RunProtocolScrollView({
 
               let stripeBorder: string;
               let rowBg: string;
-              if (result?.result === "PASSED")       { stripeBorder = "border-emerald-500"; rowBg = "bg-emerald-950/20"; }
-              else if (result?.result === "FAILED")  { stripeBorder = "border-red-500";     rowBg = "bg-red-950/20"; }
-              else if (result?.result === "SKIPPED") { stripeBorder = "border-amber-500";   rowBg = "bg-amber-950/20"; }
-              else if (isActive)                     { stripeBorder = "border-indigo-400";  rowBg = "bg-zinc-800/70"; }
-              else                                   { stripeBorder = "border-zinc-700";    rowBg = ""; }
+              if (result?.result === "PASSED")       { stripeBorder = "border-emerald-500"; rowBg = "bg-emerald-50"; }
+              else if (result?.result === "FAILED")  { stripeBorder = "border-red-500";     rowBg = "bg-red-50"; }
+              else if (result?.result === "SKIPPED") { stripeBorder = "border-amber-500";   rowBg = "bg-amber-50"; }
+              else if (isActive)                     { stripeBorder = "border-indigo-400";  rowBg = ""; }
+              else                                   { stripeBorder = "border-zinc-300";    rowBg = ""; }
 
               const notesOpen   = expandedNotes.has(step.id);
               const savedNote   = result?.notes ?? "";
@@ -312,14 +312,14 @@ function RunProtocolScrollView({
                 <div
                   key={step.id}
                   ref={(el) => { stepRefs.current[step.id] = el; }}
-                  className={`border-l-4 ${stripeBorder} ${rowBg} rounded-r transition-colors duration-150${step.isSubstep ? " ml-8" : ""}`}
+                  className={`border-l-4 ${stripeBorder} ${rowBg} rounded-r transition-colors duration-150${step.isSubstep ? " ml-8" : ""}${isActive && !result ? " outline-2 outline-dashed outline-indigo-400" : ""}`}
                 >
                   <div className="px-4 py-3">
                     <div className="flex gap-3">
                       {/* Step number */}
                       <span
                         className={`mt-0.5 shrink-0 font-mono text-xs font-bold ${
-                          isActive && !result ? "text-indigo-400" : result ? "text-zinc-500" : "text-zinc-400"
+                          isActive && !result ? "text-indigo-600" : result ? "text-zinc-400" : "text-zinc-500"
                         }`}
                       >
                         {numLabel}.
@@ -329,7 +329,7 @@ function RunProtocolScrollView({
                       <div className="min-w-0 flex-1">
                         {/* Step HTML content */}
                         <div
-                          className="text-sm leading-relaxed text-zinc-200 [&_p]:my-0"
+                          className="text-sm leading-relaxed text-zinc-800 [&_p]:my-0"
                           dangerouslySetInnerHTML={{ __html: step.html || step.label }}
                         />
 
@@ -355,10 +355,10 @@ function RunProtocolScrollView({
                                 return (
                                   <span
                                     key={field.key}
-                                    className="flex items-center gap-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs"
+                                    className="flex items-center gap-1 rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs"
                                   >
                                     <span className="text-zinc-500">{field.label}:</span>
-                                    <span className="text-zinc-200">{savedVal || "—"}</span>
+                                    <span className="text-zinc-700">{savedVal || "—"}</span>
                                   </span>
                                 );
                               }
@@ -366,16 +366,16 @@ function RunProtocolScrollView({
                               return (
                                 <label
                                   key={field.key}
-                                  className="flex cursor-text items-center gap-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs"
+                                  className="flex cursor-text items-center gap-1 rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs"
                                 >
-                                  <span className="text-zinc-400">{field.label}:</span>
+                                  <span className="text-zinc-500">{field.label}:</span>
                                   <input
                                     type="text"
                                     value={val}
                                     onChange={(e) => onFieldChange(step.id, field.key, e.target.value)}
                                     disabled={isRunComplete}
                                     placeholder="…"
-                                    className="w-20 border-none bg-transparent text-zinc-100 outline-none placeholder:text-zinc-600 disabled:cursor-not-allowed"
+                                    className="w-20 border-none bg-white text-zinc-800 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed"
                                   />
                                 </label>
                               );
@@ -386,7 +386,7 @@ function RunProtocolScrollView({
                         {/* Inline notes toggle */}
                         <div className="mt-2">
                           <button
-                            className="text-xs text-zinc-500 hover:text-zinc-300"
+                            className="text-xs text-zinc-500 hover:text-zinc-700"
                             onClick={() =>
                               setExpandedNotes((prev) => {
                                 const next = new Set(prev);
@@ -401,14 +401,14 @@ function RunProtocolScrollView({
                           {notesOpen && (
                             <div className="mt-1.5">
                               {result || isRunComplete ? (
-                                <p className="text-xs italic text-zinc-400">{savedNote || "No notes."}</p>
+                                <p className="text-xs italic text-zinc-600">{savedNote || "No notes."}</p>
                               ) : (
                                 <textarea
                                   rows={2}
                                   value={pendingNote}
                                   onChange={(e) => onNoteChange(step.id, e.target.value)}
                                   placeholder="Notes for this step…"
-                                  className="w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
+                                  className="w-full rounded border border-zinc-300 bg-white px-2 py-1.5 text-xs text-zinc-800 placeholder:text-zinc-400 focus:border-indigo-400 focus:outline-none"
                                 />
                               )}
                             </div>
@@ -664,9 +664,7 @@ export default function ActiveRunPage() {
 
   // ── Render helpers ─────────────────────────────────────────────────────────
 
-  // Kept in scope for Prompts 3 & 4 — do not remove
   const activeStep = steps[activeStepIdx] ?? null;
-  void activeStep; // referenced by handleResult indirectly via activeStepIdx
 
   if (loading) {
     return (
@@ -758,7 +756,7 @@ export default function ActiveRunPage() {
       {/* ── Two-column body ──────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left panel — scrollable */}
-        <div className="flex-1 overflow-y-auto border-r border-zinc-800 p-6">
+        <div className="flex-1 overflow-y-auto border-r border-zinc-800 bg-white p-6">
           <RunProtocolScrollView
             steps={steps}
             resultMap={resultMap}
@@ -771,9 +769,23 @@ export default function ActiveRunPage() {
           />
         </div>
 
-        {/* Right sidebar — fixed height, does not scroll with left panel */}
-        <div className="w-80 shrink-0 overflow-hidden p-6">
-          <p className="text-sm text-zinc-600">[Progress bar + actions — Prompt 4]</p>
+        {/* Right sidebar */}
+        <div className="w-80 shrink-0 overflow-y-auto p-6">
+          <RunSidebar
+            steps={steps}
+            resolvedCount={resolvedCount}
+            progress={progress}
+            activeStep={activeStep}
+            submitting={submitting}
+            completingRun={completingRun}
+            isRunComplete={isRunComplete}
+            allResolved={allResolved}
+            onResult={handleResult}
+            onCompleteRun={completeRun}
+            runId={runId}
+            runNotes={run.notes}
+            authHeaders={authHeaders}
+          />
         </div>
       </div>
     </div>
@@ -789,6 +801,127 @@ function ResultBadge({ result, small = false }: { result: string; small?: boolea
   if (result === "PASSED") return <span className={`${base} bg-emerald-800 text-emerald-200`}>PASS</span>;
   if (result === "FAILED") return <span className={`${base} bg-red-800 text-red-200`}>FAIL</span>;
   return <span className={`${base} bg-zinc-700 text-zinc-300`}>SKIP</span>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RunSidebar — Right panel: progress bar, Pass/Fail/Skip, run notes
+// ─────────────────────────────────────────────────────────────────────────────
+
+function RunSidebar({
+  steps,
+  resolvedCount,
+  progress,
+  activeStep,
+  submitting,
+  completingRun,
+  isRunComplete,
+  allResolved,
+  onResult,
+  onCompleteRun,
+  runId,
+  runNotes,
+  authHeaders,
+}: {
+  steps: ParsedStep[];
+  resolvedCount: number;
+  progress: number;
+  activeStep: ParsedStep | null;
+  submitting: boolean;
+  completingRun: boolean;
+  isRunComplete: boolean;
+  allResolved: boolean;
+  onResult: (step: ParsedStep, kind: ResultKind) => Promise<void>;
+  onCompleteRun: () => Promise<void>;
+  runId: string;
+  runNotes: string;
+  authHeaders: Record<string, string>;
+}) {
+  const [notesOpen, setNotesOpen] = useState(false);
+
+  // Auto-expand run notes when run completes
+  useEffect(() => {
+    if (isRunComplete) setNotesOpen(true);
+  }, [isRunComplete]);
+
+  const done = allResolved || isRunComplete;
+
+  return (
+    <div className="flex h-full flex-col gap-5 overflow-y-auto pb-4">
+      {/* Progress */}
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+          Run Progress: {resolvedCount} / {steps.length} steps
+        </p>
+        <ProgressDog progress={progress} />
+      </div>
+
+      {/* Actions */}
+      {done ? (
+        <div className="space-y-3">
+          <div className="rounded border border-emerald-500/30 bg-emerald-500/10 p-3">
+            <p className="text-sm font-semibold text-emerald-300">All steps resolved!</p>
+            <p className="mt-0.5 text-xs text-zinc-400">Add final run notes before finishing.</p>
+          </div>
+          {!isRunComplete ? (
+            <button
+              onClick={onCompleteRun}
+              disabled={completingRun}
+              className="w-full rounded bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {completingRun ? "Finishing…" : "Finish Run"}
+            </button>
+          ) : (
+            <Link
+              href={`/runs/${runId}/summary`}
+              className="block w-full rounded bg-emerald-600 px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-emerald-700"
+            >
+              View Summary →
+            </Link>
+          )}
+        </div>
+      ) : activeStep ? (
+        <div className="space-y-2">
+          <button
+            onClick={() => onResult(activeStep, "PASSED")}
+            disabled={submitting}
+            className="w-full rounded bg-green-600 px-4 py-3 text-base font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {submitting ? "Saving…" : "✓  Pass"}
+          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => onResult(activeStep, "FAILED")}
+              disabled={submitting}
+              className="flex-1 rounded bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              ✗  Fail
+            </button>
+            <button
+              onClick={() => onResult(activeStep, "SKIPPED")}
+              disabled={submitting}
+              className="flex-1 rounded bg-zinc-600 px-3 py-2 text-sm font-semibold text-white hover:bg-zinc-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              →  Skip
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Run Notes — collapsed during run, auto-expands on completion */}
+      <div className="mt-auto border-t border-zinc-800 pt-4">
+        {notesOpen ? (
+          <RunNotes runId={runId} initialNotes={runNotes} authHeaders={authHeaders} />
+        ) : (
+          <button
+            className="text-xs text-zinc-500 hover:text-zinc-300"
+            onClick={() => setNotesOpen(true)}
+          >
+            ▸ Run notes
+          </button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
