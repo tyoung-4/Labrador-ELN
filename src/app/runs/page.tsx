@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import AppTopNav from "@/components/AppTopNav";
 import { getCurrentUser } from "@/components/AppTopNav";
 import type { ProtocolRun } from "@/models/protocolRun";
@@ -36,6 +37,7 @@ function formatDuration(start: string, end: string | null | undefined): string {
 }
 
 export default function RunsPage() {
+  const router = useRouter();
   const currentUser = useMemo(() => {
     if (typeof window === "undefined") return { id: "finn-user", name: "Finn", role: "MEMBER" as const };
     return getCurrentUser();
@@ -178,9 +180,12 @@ export default function RunsPage() {
         <ul className="space-y-3">
           {filtered.map((run) => (
             <li key={run.id}>
-              <Link
-                href={`/runs/${run.id}`}
-                className="block rounded border border-zinc-800 bg-zinc-900 p-4 transition hover:border-zinc-600 hover:bg-zinc-800"
+              <div
+                role="link"
+                tabIndex={0}
+                onClick={() => router.push(`/runs/${run.id}`)}
+                onKeyDown={(e) => e.key === "Enter" && router.push(`/runs/${run.id}`)}
+                className="block cursor-pointer rounded border border-zinc-800 bg-zinc-900 p-4 transition hover:border-zinc-600 hover:bg-zinc-800"
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="flex-1">
@@ -217,7 +222,7 @@ export default function RunsPage() {
                     </span>
                   </div>
                 </div>
-              </Link>
+              </div>
             </li>
           ))}
         </ul>
