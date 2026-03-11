@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { TECHNIQUE_OPTIONS, PROTOCOL_TECHNIQUES } from "@/models/entry";
-import { Q5_TEMPLATE_ENTRY, Q5_TEMPLATE_ENTRY_ID } from "@/lib/defaultTemplates";
 import { ENTRY_TYPE_CONFIGS } from "@/lib/entryTypes";
 import type { EntryType } from "@prisma/client";
 
@@ -85,25 +84,6 @@ async function ensureTemplateEntry() {
     },
   });
 
-  await prisma.entry.upsert({
-    where: { id: Q5_TEMPLATE_ENTRY_ID },
-    create: {
-      id: Q5_TEMPLATE_ENTRY.id,
-      title: Q5_TEMPLATE_ENTRY.title,
-      description: Q5_TEMPLATE_ENTRY.description,
-      technique: Q5_TEMPLATE_ENTRY.technique,
-      body: Q5_TEMPLATE_ENTRY.body,
-      authorId: "admin-user",
-      version: 1,
-    },
-    update: {
-      title: Q5_TEMPLATE_ENTRY.title,
-      description: Q5_TEMPLATE_ENTRY.description,
-      technique: Q5_TEMPLATE_ENTRY.technique,
-      body: Q5_TEMPLATE_ENTRY.body,
-      authorId: "admin-user",
-    },
-  });
 }
 
 export async function GET(request: Request) {
