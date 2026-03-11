@@ -7,6 +7,8 @@ import { USER_STORAGE_KEY } from "@/components/AppTopNav";
 import { Q5_TEMPLATE_ENTRY_ID } from "@/lib/defaultTemplates";
 import { TECHNIQUE_OPTIONS, PROTOCOL_TECHNIQUES, type Entry } from "@/models/entry";
 import { parseTypedData } from "@/lib/entryTypes";
+import { printProtocol } from "@/utils/printProtocol";
+import { parseProtocolBody } from "@/utils/parseProtocolBody";
 
 type CurrentUser = {
   id: string;
@@ -840,7 +842,7 @@ export default function ProtocolsPage() {
                   <p className="mt-1 text-[11px] text-zinc-400">Author: {author}</p>
                   <p className="text-[11px] text-zinc-400">Technique: {technique}</p>
                 </button>
-                <div className="mt-2 grid grid-cols-3 gap-1">
+                <div className="mt-2 grid grid-cols-4 gap-1">
                   <button
                     onClick={() => handleEdit(e.id)}
                     disabled={!editable}
@@ -853,6 +855,21 @@ export default function ProtocolsPage() {
                     className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-200"
                   >
                     Clone
+                  </button>
+                  <button
+                    onClick={() => {
+                      printProtocol(
+                        parseProtocolBody(
+                          e.body ?? "",
+                          e.title || "Protocol",
+                          getSemVer(e),
+                          e.author?.name ?? "Unknown",
+                        ),
+                      );
+                    }}
+                    className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-200"
+                  >
+                    Print
                   </button>
                   <button
                     onClick={() => handleDelete(e.id)}
@@ -891,6 +908,24 @@ export default function ProtocolsPage() {
                     className="shrink-0 rounded bg-indigo-600 px-3 py-1 text-xs text-white hover:bg-indigo-500 disabled:opacity-50"
                   >
                     ▶ Run Protocol
+                  </button>
+                )}
+                {canRunProtocol && (
+                  <button
+                    onClick={() => {
+                      if (!selected) return;
+                      printProtocol(
+                        parseProtocolBody(
+                          selected.body ?? "",
+                          editorTitle || selected.title || "Protocol",
+                          getSemVer(selected),
+                          selected.author?.name ?? "Unknown",
+                        ),
+                      );
+                    }}
+                    className="shrink-0 rounded border border-zinc-600 px-3 py-1 text-xs text-zinc-200 hover:bg-zinc-800"
+                  >
+                    🖨 Print
                   </button>
                 )}
                 {isDirty && (

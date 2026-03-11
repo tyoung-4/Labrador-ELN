@@ -245,3 +245,29 @@ table td {
 .tiptap-root .ProseMirror {
   min-height: 22rem;
 }
+
+/* ── Print styles ─────────────────────────────────────────────────────────── */
+@media print {
+  /* Hide everything except the print root injected by printProtocol() */
+  body > *:not(#print-root) {
+    display: none !important;
+  }
+
+  /* Also hide any portals or fixed overlays */
+  [data-radix-portal],
+  [data-overlay],
+  nav,
+  header,
+  footer {
+    display: none !important;
+  }
+
+  #print-root {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    background: white !important;
+    color: black !important;
+  }
+}
+
