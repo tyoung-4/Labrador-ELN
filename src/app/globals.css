@@ -245,3 +245,45 @@ table td {
 .tiptap-root .ProseMirror {
   min-height: 22rem;
 }
+
+/* ── Print styles ─────────────────────────────────────────────────────────── */
+@media print {
+  /* Hide everything except the print root injected by printProtocol() */
+  body > *:not(#print-root) {
+    display: none !important;
+  }
+
+  /* Also hide any portals or fixed overlays */
+  [data-radix-portal],
+  [data-overlay],
+  nav,
+  header,
+  footer {
+    display: none !important;
+  }
+
+  /* Hide TipTap editor chrome */
+  [contenteditable="true"],
+  .tiptap-toolbar,
+  .ProseMirror-menubar,
+  [data-tippy-content],
+  .protocol-editor-toolbar {
+    display: none !important;
+  }
+
+  /* Suppress fixed-position overlays (modals, drawers) that may escape
+     the parent hide rule in some print implementations */
+  body *[style*="position: fixed"]:not(#print-root),
+  body *[class*="fixed"]:not(#print-root) {
+    display: none !important;
+  }
+
+  #print-root {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    background: white !important;
+    color: black !important;
+  }
+}
+
