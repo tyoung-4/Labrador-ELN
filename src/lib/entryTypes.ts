@@ -67,14 +67,7 @@ export const ENTRY_TYPE_CONFIGS: Record<string, EntryTypeConfig> = {
     label: "Protocol",
     icon: "📋",
     description: "Standard operating procedure or reproducible method.",
-    fields: [
-      { key: "version",           label: "Version",            type: "text",
-        placeholder: "e.g. v1.2" },
-      { key: "estimatedDuration", label: "Estimated Duration", type: "text",
-        placeholder: "e.g. 3 hours" },
-      { key: "materialsList",     label: "Materials List",     type: "textarea",
-        placeholder: "Key materials, one per line" },
-    ],
+    fields: [],
   },
 
   NOTE: {

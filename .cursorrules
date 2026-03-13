@@ -1,0 +1,78 @@
+# Labrador ELN — Cursor Rules
+
+## Project Identity
+- Product name: Labrador ELN
+- Repo: github.com/tyoung-4/myfirst-eln (repo name unchanged)
+- Local path: ~/labrador-eln
+- Deployed on: Railway
+
+## Stack
+- Next.js 16 (App Router) + TypeScript
+- Tailwind CSS (utility classes only, no custom CSS)
+- Prisma ORM + PostgreSQL
+- pnpm (never npm or yarn)
+- Docker for PostgreSQL in dev only
+
+## Dev Setup
+- PostgreSQL runs in Docker: `docker-compose -f docker-compose.dev.yml up -d`
+- Next.js runs locally: `pnpm dev`
+- Full Docker build is production only
+
+## Naming & Branding
+- App name: Labrador ELN
+- Search feature is called: Fetch (Cmd+K)
+- Dog-themed Easter eggs are intentional — do not remove them
+- Turtle progress bar in Active Run is intentional
+
+## Database Rules
+- Prisma migrations are ALWAYS additive — never reset, never drop tables
+- Always run: `npx prisma migrate dev --name [name]` then `npx prisma generate`
+- Never use `prisma migrate reset` without explicit user confirmation
+- PostgreSQL only — never revert to SQLite
+
+## Git Conventions
+- Always branch before every feature: `git checkout -b feature/[name]`
+- No parallel feature branches on the same working tree
+- Merge branches sequentially into main
+- Commit messages: conventional commits format (feat:, fix:, chore:, etc.)
+
+## Code Conventions
+- TypeScript strict mode — no `any` types
+- Tailwind utility classes only
+- Time format everywhere: 9:00 am / 9:30 am — 30-minute granularity
+- Desktop-first UI — mobile deferred to Phase 2
+- Dark theme throughout
+- Operator is free-text — no auth system yet
+- Local file storage only (/uploads) — cloud migration later
+
+## Architecture
+- Entry types config: src/config/entryTypes.ts
+- Equipment defaults: src/config/equipmentDefaults.ts
+- Search config: src/config/searchConfig.ts
+- Spec file: spec.md in repo root
+
+## Protocol Data Model (as of migration: protocol-schema-restructure)
+- Every step must belong to a section — no orphan steps
+- ProtocolSection: has name (required), order, belongs to Protocol
+- ProtocolStep: belongs to a section, has stepType (STEP | SUBSTEP)
+- Sub-steps point to parent via parentStepId
+- estimatedMinutes is nullable Int on each step
+- StepType enum: STEP | SUBSTEP
+
+## Navigation
+- Top nav: Home, Equipment, Ingestion, Active Runs only
+- Protocols, Inventory, Knowledge Hub accessible from Dashboard boxes only
+
+## Out of Scope
+- cryo-EM raw data (.mrc files) — lives in cryoSPARC
+- Mobile/iPad UI — Phase 2
+- Authentication — planned (NextAuth.js), not yet built
+- Cloud file storage — planned, not yet built
+
+## On the Horizon
+- .eln export format (ELN Consortium standard, RO-Crate-based)
+- Run Mode with Pass/Fail/Skip per step
+- Reagent library + auto-generated materials lists
+- Authentication (NextAuth.js)
+- Protocol print/PDF preview mode
+- MS proximity labeling data RAG tool

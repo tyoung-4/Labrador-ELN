@@ -82,6 +82,20 @@ export async function GET(request: Request) {
   }
 }
 
+/** Generates a unique 10-character alphanumeric Run ID (A–Z, 0–9). */
+async function generateRunId(): Promise<string> {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  for (let attempt = 0; attempt < 20; attempt++) {
+    let id = "";
+    for (let i = 0; i < 10; i++) {
+      id += chars[Math.floor(Math.random() * chars.length)];
+    }
+    const existing = await prisma.protocolRun.findUnique({ where: { runId: id } });
+    if (!existing) return id;
+  }
+  throw new Error("Failed to generate unique Run ID after 20 attempts");
+}
+
 export async function POST(request: Request) {
   try {
     const actor = getActorFromRequest(request);
@@ -89,28 +103,31 @@ export async function POST(request: Request) {
 
     const payload = await request.json().catch(() => ({}));
     const sourceEntryId = String(payload.sourceEntryId ?? "").trim();
+    // Operator is always the logged-in user (actor derived from x-user-name header)
+    const operatorName = actor.name;
     if (!sourceEntryId) {
       return NextResponse.json({ error: "sourceEntryId is required" }, { status: 400 });
     }
 
-    const source = await prisma.entry.findUnique({ where: { id: sourceEntryId } });
+    const [source, sourceProtocol] = await Promise.all([
+      prisma.entry.findUnique({ where: { id: sourceEntryId } }),
+      prisma.protocol.findUnique({ where: { entryId: sourceEntryId } }),
+    ]);
     if (!source) return new NextResponse(null, { status: 404 });
 
-    // Extract just the "steps" HTML from body if stored as JSON-encoded protocol body
-    let runBodyContent = source.body;
-    try {
-      const parsed = JSON.parse(source.body) as Record<string, unknown>;
-      if (parsed && typeof parsed === "object" && "steps" in parsed && typeof parsed.steps === "string") {
-        runBodyContent = parsed.steps;
-      }
-    } catch {
-      // Legacy plain HTML body — use as-is
-    }
+    // Store the full body as runBody so the new run page can parse it
+    // (new ProtocolStepsEditor stores JSON; legacy stores HTML)
+    const runBodyContent = source.body;
 
-    const runCount = await prisma.protocolRun.count({ where: { sourceEntryId } });
+    const [runCount, runId] = await Promise.all([
+      prisma.protocolRun.count({ where: { sourceEntryId } }),
+      generateRunId(),
+    ]);
     const created = await prisma.protocolRun.create({
       data: {
+        runId,
         sourceEntryId,
+        protocolId: sourceProtocol?.id ?? null,
         title: `${source.title} - Run ${runCount + 1}`,
         status: "IN_PROGRESS",
         locked: true,
@@ -122,7 +139,9 @@ export async function POST(request: Request) {
           componentAmounts: {},
           entryFields: {},
           timers: {},
+          currentStepIdx: 0,
         }),
+        operatorName,
         runnerId: actor.id,
       },
       include: {

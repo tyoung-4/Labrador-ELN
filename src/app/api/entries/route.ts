@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { TECHNIQUE_OPTIONS } from "@/models/entry";
+import { TECHNIQUE_OPTIONS, PROTOCOL_TECHNIQUES } from "@/models/entry";
 import { Q5_TEMPLATE_ENTRY, Q5_TEMPLATE_ENTRY_ID } from "@/lib/defaultTemplates";
 import { ENTRY_TYPE_CONFIGS } from "@/lib/entryTypes";
 import type { EntryType } from "@prisma/client";
@@ -19,7 +19,12 @@ function normalizeDescription(value: unknown): string {
 function normalizeTechnique(value: unknown): string {
   const raw = String(value ?? "").trim();
   if (!raw) return "General";
-  return TECHNIQUE_OPTIONS.includes(raw as (typeof TECHNIQUE_OPTIONS)[number]) ? raw : "Other";
+  // Accept both the legacy TECHNIQUE_OPTIONS (7 values) and the full
+  // PROTOCOL_TECHNIQUES catalogue (21 values) so protocols created via
+  // the creation modal keep their technique through subsequent saves.
+  if (TECHNIQUE_OPTIONS.includes(raw as (typeof TECHNIQUE_OPTIONS)[number])) return raw;
+  if (PROTOCOL_TECHNIQUES.includes(raw as (typeof PROTOCOL_TECHNIQUES)[number])) return raw;
+  return "Other";
 }
 
 function normalizeEntryType(value: unknown): EntryType {

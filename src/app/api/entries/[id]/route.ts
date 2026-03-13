@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { TECHNIQUE_OPTIONS } from "@/models/entry";
+import { TECHNIQUE_OPTIONS, PROTOCOL_TECHNIQUES } from "@/models/entry";
 import { Q5_TEMPLATE_ENTRY_ID } from "@/lib/defaultTemplates";
 import { ENTRY_TYPE_CONFIGS } from "@/lib/entryTypes";
 import type { EntryType } from "@prisma/client";
@@ -20,7 +20,12 @@ function normalizeDescription(value: unknown): string {
 function normalizeTechnique(value: unknown): string {
   const raw = String(value ?? "").trim();
   if (!raw) return "General";
-  return TECHNIQUE_OPTIONS.includes(raw as (typeof TECHNIQUE_OPTIONS)[number]) ? raw : "Other";
+  // Accept both the legacy TECHNIQUE_OPTIONS (7 values) and the full
+  // PROTOCOL_TECHNIQUES catalogue (21 values) so protocols created via
+  // the creation modal keep their technique through subsequent saves.
+  if (TECHNIQUE_OPTIONS.includes(raw as (typeof TECHNIQUE_OPTIONS)[number])) return raw;
+  if (PROTOCOL_TECHNIQUES.includes(raw as (typeof PROTOCOL_TECHNIQUES)[number])) return raw;
+  return "Other";
 }
 
 function normalizeEntryType(value: unknown): EntryType {
@@ -215,13 +220,23 @@ export async function POST(request: Request, context: RouteContext) {
       source.typedData && typeof source.typedData === "object"
         ? (source.typedData as { typed?: Record<string, string>; custom?: string[] })
         : { typed: {}, custom: [] as string[] };
+    // Build the typed fields for the clone: start from source, strip any
+    // parent/clone provenance, then add fresh _clonedFromId metadata.
+    // Using _clonedFromId (NOT _parentId) prevents buildFamilies() from
+    // treating the clone as a version-child of the source.
+    const baseTyped: Record<string, string> = { ...(sourceTypedData.typed ?? {}) };
+    delete baseTyped._parentId;
+    delete baseTyped._parentTitle;
+    delete baseTyped._clonedFromId;
+    delete baseTyped._clonedFromTitle;
+
     const cloneTypedData: Record<string, unknown> = {
       ...sourceTypedData,
       typed: {
-        ...(sourceTypedData.typed ?? {}),
+        ...baseTyped,
         _semVer: "1.0",
-        _parentId: source.id,
-        _parentTitle: source.title,
+        _clonedFromId: source.id,
+        _clonedFromTitle: source.title,
       },
     };
 
