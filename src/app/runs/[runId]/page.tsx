@@ -22,6 +22,28 @@ type ParsedStep = {
 
 type ResultKind = "PASSED" | "FAILED" | "SKIPPED";
 
+// Typed shape of the interactionState JSON blob persisted on ProtocolRun.
+// stepFailures and stepSkips are stored here for type-safety even though
+// PASS/FAIL/SKIP truth-of-record lives in StepResult rows.
+type RunInteractionState = {
+  currentStepIdx:   number;
+  stepFailures:     Record<string, boolean>;  // key: "step-N"
+  stepSkips:        Record<string, boolean>;  // key: "step-N"
+};
+
+function parseInteractionState(raw: string): RunInteractionState {
+  try {
+    const parsed = JSON.parse(raw || "{}") as Partial<RunInteractionState>;
+    return {
+      currentStepIdx: typeof parsed.currentStepIdx === "number" ? parsed.currentStepIdx : 0,
+      stepFailures:   typeof parsed.stepFailures   === "object" && parsed.stepFailures   !== null ? parsed.stepFailures   : {},
+      stepSkips:      typeof parsed.stepSkips      === "object" && parsed.stepSkips      !== null ? parsed.stepSkips      : {},
+    };
+  } catch {
+    return { currentStepIdx: 0, stepFailures: {}, stepSkips: {} };
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Step parsing — handles both the new JSON (ProtocolStepsEditor) and legacy HTML
 // ─────────────────────────────────────────────────────────────────────────────
@@ -507,25 +529,9 @@ export default function ActiveRunPage() {
         setRun(runData);
         setStepResults(srData);
 
-        // [Prompt 3A] Log protocol data shape for verification
-        console.log("[Prompt 3A] run.protocol:", runData.protocol);
-        console.log("[Prompt 3A] sections:", runData.protocol?.sections?.length ?? 0);
-        if (runData.protocol?.sections) {
-          for (const sec of runData.protocol.sections) {
-            console.log(`[Prompt 3A]   section "${sec.name}" (order ${sec.order}): ${sec.steps.length} steps`);
-          }
-        }
-        console.log("[Prompt 3A] parsed steps from runBody:", parseStepsFromBody(runData.runBody).length);
-
         // Restore active step from interactionState
-        try {
-          const state = JSON.parse(runData.interactionState || "{}") as { currentStepIdx?: number };
-          if (typeof state.currentStepIdx === "number") {
-            setActiveStepIdx(state.currentStepIdx);
-          }
-        } catch {
-          // ignore
-        }
+        const iState = parseInteractionState(runData.interactionState);
+        setActiveStepIdx(iState.currentStepIdx);
 
         if (runData.status === "COMPLETED") setShowCompleteBanner(true);
       } catch (e) {
@@ -544,11 +550,12 @@ export default function ActiveRunPage() {
     async (idx: number) => {
       if (!run || run.status === "COMPLETED") return;
       try {
-        const existing = JSON.parse(run.interactionState || "{}") as Record<string, unknown>;
+        const existing = parseInteractionState(run.interactionState);
+        const next: RunInteractionState = { ...existing, currentStepIdx: idx };
         await fetch(`/api/protocol-runs/${runId}`, {
           method: "PUT",
           headers: { ...authHeaders, "Content-Type": "application/json" },
-          body: JSON.stringify({ interactionState: JSON.stringify({ ...existing, currentStepIdx: idx }) }),
+          body: JSON.stringify({ interactionState: JSON.stringify(next) }),
         });
       } catch {
         // non-critical — step position is best-effort

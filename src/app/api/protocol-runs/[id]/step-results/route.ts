@@ -103,3 +103,36 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Failed to record step result" }, { status: 500 });
   }
 }
+
+/** DELETE /api/protocol-runs/[id]/step-results — undo a step result (idempotent) */
+export async function DELETE(request: Request, context: RouteContext) {
+  const runId = await getRunId(context);
+  try {
+    const actor = getActorFromRequest(request);
+    await ensureActor(actor);
+
+    const run = await prisma.protocolRun.findUnique({
+      where: { id: runId },
+      select: { runnerId: true, status: true },
+    });
+    if (!run) return new NextResponse(null, { status: 404 });
+    if (run.status === "COMPLETED") {
+      return NextResponse.json({ error: "Run is already completed and locked." }, { status: 409 });
+    }
+    if (actor.role !== "ADMIN" && run.runnerId !== actor.id) {
+      return NextResponse.json({ error: "Not allowed" }, { status: 403 });
+    }
+
+    const payload = await request.json().catch(() => ({}));
+    const stepId = String(payload.stepId ?? "").trim();
+    if (!stepId) return NextResponse.json({ error: "stepId is required" }, { status: 400 });
+
+    // Idempotent — no error if row doesn't exist
+    await prisma.stepResult.deleteMany({ where: { runId, stepId } });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("DELETE step-results failed:", error);
+    return NextResponse.json({ error: "Failed to delete step result" }, { status: 500 });
+  }
+}
