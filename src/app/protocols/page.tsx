@@ -864,6 +864,7 @@ export default function ProtocolsPage() {
                           e.title || "Protocol",
                           getSemVer(e),
                           e.author?.name ?? "Unknown",
+                          currentUser.name,
                         ),
                       );
                     }}
@@ -917,9 +918,10 @@ export default function ProtocolsPage() {
                       printProtocol(
                         parseProtocolBody(
                           selected.body ?? "",
-                          editorTitle || selected.title || "Protocol",
+                          selected.title || "Protocol",
                           getSemVer(selected),
                           selected.author?.name ?? "Unknown",
+                          currentUser.name,
                         ),
                       );
                     }}

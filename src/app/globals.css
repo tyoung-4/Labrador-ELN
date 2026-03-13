@@ -262,6 +262,22 @@ table td {
     display: none !important;
   }
 
+  /* Hide TipTap editor chrome */
+  [contenteditable="true"],
+  .tiptap-toolbar,
+  .ProseMirror-menubar,
+  [data-tippy-content],
+  .protocol-editor-toolbar {
+    display: none !important;
+  }
+
+  /* Suppress fixed-position overlays (modals, drawers) that may escape
+     the parent hide rule in some print implementations */
+  body *[style*="position: fixed"]:not(#print-root),
+  body *[class*="fixed"]:not(#print-root) {
+    display: none !important;
+  }
+
   #print-root {
     display: block !important;
     position: static !important;

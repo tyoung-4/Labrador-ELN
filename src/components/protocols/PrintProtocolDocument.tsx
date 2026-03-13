@@ -1,9 +1,13 @@
 /**
  * PrintProtocolDocument
  *
- * Renders a print-ready protocol document. Never visible in the normal app UI —
- * only rendered inside #print-root at print time. Uses inline styles exclusively;
- * no Tailwind classes (they won't apply in the print context).
+ * Print-ready protocol document rendered into #print-root by printProtocol().
+ * Never visible in the live app UI.
+ *
+ * Rules:
+ *  - Inline styles ONLY — no Tailwind, no CSS classes
+ *  - @page / body rules live in document.head (injected by printProtocol.ts)
+ *  - This component is purely presentational — no hooks, no effects
  */
 
 import React from "react";
@@ -16,9 +20,11 @@ export type PrintRequiredField = {
 };
 
 export type PrintStep = {
-  index: number;          // 1-based flat index across all steps
+  /** Sequential step number for STEP type (1, 2, 3…); unique key for SUBSTEP */
+  index: number;
   text: string;
   stepType: "STEP" | "SUBSTEP";
+  /** For SUBSTEP: the sequential step number of the parent STEP */
   parentIndex: number | null;
   requiredFields: PrintRequiredField[];
 };
@@ -32,123 +38,59 @@ export type PrintProtocolProps = {
   protocolName: string;
   version: string;
   author: string;
+  operator: string;
   sections: PrintSection[];
 };
+
+// ── Shared style constants ────────────────────────────────────────────────────
+
+const S = {
+  page: {
+    fontFamily: "Georgia, 'Times New Roman', serif",
+    fontSize: "11pt",
+    color: "#000",
+    background: "#fff",
+    lineHeight: "1.5",
+  } as React.CSSProperties,
+
+  /** Large square checkbox */
+  checkbox: {
+    flexShrink: 0,
+    width: "18pt",
+    height: "18pt",
+    border: "1.5px solid #000",
+    display: "inline-block",
+    marginRight: "8pt",
+    marginTop: "2pt",
+    verticalAlign: "top",
+  } as React.CSSProperties,
+
+  /** Step / substep row */
+  stepRow: (indented: boolean): React.CSSProperties => ({
+    display: "flex",
+    alignItems: "flex-start",
+    marginLeft: indented ? "24pt" : "0",
+    marginBottom: "2pt",
+    pageBreakInside: "avoid" as const,
+  }),
+
+  /** Required-field inline row (indented past checkbox) */
+  fieldRow: (indented: boolean): React.CSSProperties => ({
+    display: "flex",
+    flexWrap: "wrap" as const,
+    gap: "16pt",
+    marginLeft: indented ? `${24 + 26}pt` : "26pt",
+    marginBottom: "6pt",
+    fontSize: "10pt",
+  }),
+} as const;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function todayFormatted(): string {
   const d = new Date();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const yyyy = d.getFullYear();
-  return `${mm}/${dd}/${yyyy}`;
+  return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
 }
-
-/** Render sub-step label: 1a, 1b, 1c ... given parent index and position */
-function substepLabel(parentIndex: number, position: number): string {
-  return `${parentIndex}${String.fromCharCode(96 + position)}`; // 96 + 1 = 'a'
-}
-
-// ── Styles ────────────────────────────────────────────────────────────────────
-
-const PAGE_STYLE = `
-  @page {
-    size: letter;
-    margin: 1.5cm 2cm;
-  }
-  @media print {
-    body > *:not(#print-root) { display: none !important; }
-    #print-root { display: block !important; }
-    nav, header, button, [role="navigation"] { display: none !important; }
-  }
-  #print-root {
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 11pt;
-    color: #000;
-    background: #fff;
-    line-height: 1.5;
-  }
-  .print-section-header {
-    font-size: 14pt;
-    font-weight: bold;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    margin: 20pt 0 4pt 0;
-    padding-bottom: 3pt;
-    border-bottom: 1px solid #000;
-  }
-  .print-step-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 8pt;
-    margin: 6pt 0;
-    page-break-inside: avoid;
-  }
-  .print-step-row.substep {
-    margin-left: 2rem;
-  }
-  .print-checkbox {
-    flex-shrink: 0;
-    width: 12pt;
-    height: 12pt;
-    border: 1.5px solid #000;
-    margin-top: 2pt;
-    display: inline-block;
-  }
-  .print-step-number {
-    flex-shrink: 0;
-    font-weight: bold;
-    min-width: 2rem;
-  }
-  .print-step-text {
-    flex: 1;
-  }
-  .print-field-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 8pt;
-    margin: 4pt 0 4pt 2rem;
-    page-break-inside: avoid;
-  }
-  .print-field-label {
-    flex-shrink: 0;
-    min-width: 8rem;
-    font-size: 10pt;
-  }
-  .print-field-box {
-    flex: 1;
-    min-height: 2.5cm;
-    border: 1.5px solid #000;
-    border-radius: 2pt;
-  }
-  .print-hr {
-    border: none;
-    border-top: 1px solid #000;
-    margin: 6pt 0;
-  }
-  .print-header-block {
-    margin-bottom: 8pt;
-  }
-  .print-header-line1 {
-    font-size: 13pt;
-    font-weight: bold;
-    margin-bottom: 3pt;
-  }
-  .print-header-line2 {
-    font-size: 10pt;
-    color: #333;
-  }
-  /* Footer via CSS counters */
-  @media print {
-    body { counter-reset: page; }
-    #print-root::after {
-      content: "";
-      display: table;
-      clear: both;
-    }
-  }
-`;
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -156,135 +98,118 @@ export default function PrintProtocolDocument({
   protocolName,
   version,
   author,
+  operator,
   sections,
 }: PrintProtocolProps) {
   const today = todayFormatted();
 
   return (
-    <div id="print-root" style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: "11pt", color: "#000", background: "#fff", lineHeight: 1.5 }}>
-      {/* Inject page + print CSS */}
-      <style dangerouslySetInnerHTML={{ __html: PAGE_STYLE }} />
+    <div style={S.page}>
 
-      {/* ── Page Header ── */}
-      <div className="print-header-block" style={{ marginBottom: "8pt" }}>
-        <div className="print-header-line1" style={{ fontSize: "13pt", fontWeight: "bold", marginBottom: "3pt" }}>
-          {protocolName} — v{version} — Author: {author}
-        </div>
-        <div className="print-header-line2" style={{ fontSize: "10pt", color: "#333" }}>
-          Date retrieved: {today}
-          <span style={{ display: "inline-block", width: "5rem" }} />
-          Experiment date: ___________
-        </div>
-        <hr className="print-hr" style={{ border: "none", borderTop: "1px solid #000", margin: "6pt 0" }} />
+      {/* ══════════════════════════════════════════════════════════
+          PAGE HEADER
+          ══════════════════════════════════════════════════════════ */}
+
+      {/* Line 1: protocol name / version / author  |  branding */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "3pt" }}>
+        <span style={{ fontSize: "13pt", fontWeight: "bold" }}>
+          {protocolName}&nbsp;&nbsp;v{version}&nbsp;&nbsp;Author: {author}
+        </span>
+        <span style={{ fontSize: "9pt", color: "#888" }}>Labrador ELN 🎾</span>
       </div>
 
-      {/* ── Protocol Body ── */}
+      {/* Line 2: operator / date retrieved / experiment date */}
+      <div style={{ fontSize: "10pt", color: "#333", marginBottom: "3pt" }}>
+        {operator || "Unknown Operator"}
+        &nbsp;&nbsp;&nbsp;
+        Date Retrieved: {today}
+        &nbsp;&nbsp;&nbsp;
+        Experiment Date: __________
+      </div>
+
+      {/* Line 3: start / end times */}
+      <div style={{ fontSize: "10pt", color: "#333" }}>
+        Start time: __________&nbsp;&nbsp;&nbsp;&nbsp;End time: __________
+      </div>
+
+      {/* Thin rule */}
+      <hr style={{ border: "none", borderTop: "1px solid #000", margin: "8pt 0" }} />
+
+      {/* ══════════════════════════════════════════════════════════
+          PROTOCOL BODY
+          ══════════════════════════════════════════════════════════ */}
+
       {sections.map((section, sIdx) => {
-        // Track substep position within each parent step
+        // Track a./b./c. position per parent step index
         const substepCounters: Record<number, number> = {};
 
         return (
           <div key={sIdx}>
-            {/* Section header */}
-            <div
-              className="print-section-header"
-              style={{
-                fontSize: "14pt",
-                fontWeight: "bold",
-                textTransform: "uppercase",
-                letterSpacing: "0.03em",
-                margin: "20pt 0 4pt 0",
-                paddingBottom: "3pt",
-                borderBottom: "1px solid #000",
-              }}
-            >
+
+            {/* Section name — bold, no checkbox */}
+            <div style={{
+              fontWeight: "bold",
+              fontSize: "12pt",
+              marginTop: sIdx === 0 ? "8pt" : "16pt",
+              marginBottom: "6pt",
+            }}>
               {section.name}
             </div>
 
-            {/* Steps */}
             {section.steps.map((step) => {
               const isSubstep = step.stepType === "SUBSTEP";
 
-              // Compute substep label position
-              let stepLabel: string;
+              // Compute display label
+              let label: string;
               if (isSubstep && step.parentIndex !== null) {
                 substepCounters[step.parentIndex] = (substepCounters[step.parentIndex] ?? 0) + 1;
-                stepLabel = substepLabel(step.parentIndex, substepCounters[step.parentIndex]);
+                // a., b., c. — not 1a, 1b
+                label = String.fromCharCode(96 + substepCounters[step.parentIndex]) + ".";
               } else {
-                stepLabel = String(step.index);
+                label = `${step.index}.`;
               }
 
+              const hasFields = step.requiredFields.length > 0;
+
               return (
-                <div key={step.index}>
-                  {/* Step row */}
-                  <div
-                    className={`print-step-row${isSubstep ? " substep" : ""}`}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: "8pt",
-                      margin: "6pt 0",
-                      marginLeft: isSubstep ? "2rem" : 0,
-                      pageBreakInside: "avoid",
-                    }}
-                  >
-                    {/* Checkbox */}
-                    <span
-                      className="print-checkbox"
-                      style={{
-                        flexShrink: 0,
-                        width: "12pt",
-                        height: "12pt",
-                        border: "1.5px solid #000",
-                        marginTop: "2pt",
-                        display: "inline-block",
-                      }}
-                    />
-                    {/* Step number */}
-                    <span
-                      className="print-step-number"
-                      style={{ flexShrink: 0, fontWeight: "bold", minWidth: "2rem" }}
-                    >
-                      {stepLabel}.
-                    </span>
-                    {/* Step text */}
-                    <span className="print-step-text" style={{ flex: 1 }}>
-                      {step.text}
+                <div key={step.index} style={{ pageBreakInside: "avoid" }}>
+
+                  {/* Step row: checkbox + number + text */}
+                  <div style={S.stepRow(isSubstep)}>
+                    <span style={S.checkbox} />
+                    <span style={{ flex: 1 }}>
+                      <span style={{ fontWeight: "bold", marginRight: "4pt" }}>{label}</span>
+                      {step.text || <em style={{ color: "#999" }}>(no text)</em>}
                     </span>
                   </div>
 
-                  {/* Required fields */}
-                  {step.requiredFields.map((field, fIdx) => (
-                    <div
-                      key={fIdx}
-                      className="print-field-row"
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: "8pt",
-                        margin: "4pt 0 4pt 2rem",
-                        marginLeft: isSubstep ? "4rem" : "2rem",
-                        pageBreakInside: "avoid",
-                      }}
-                    >
-                      <span
-                        className="print-field-label"
-                        style={{ flexShrink: 0, minWidth: "8rem", fontSize: "10pt" }}
-                      >
-                        {field.label}{field.unit ? ` (${field.unit})` : ""}:
-                      </span>
-                      <span
-                        className="print-field-box"
-                        style={{
-                          flex: 1,
-                          minHeight: "2.5cm",
-                          border: "1.5px solid #000",
-                          borderRadius: "2pt",
-                          display: "block",
-                        }}
-                      />
+                  {/* Required fields — all on one row, inline, indented past checkbox */}
+                  {hasFields && (
+                    <div style={S.fieldRow(isSubstep)}>
+                      {step.requiredFields.map((field, fIdx) => (
+                        <span
+                          key={fIdx}
+                          style={{ display: "inline-flex", alignItems: "baseline", gap: "4pt", whiteSpace: "nowrap" }}
+                        >
+                          <span>{field.label}:</span>
+                          <span style={{
+                            borderBottom: "1px solid #000",
+                            minWidth: "60pt",
+                            display: "inline-block",
+                          }}>
+                            &nbsp;
+                          </span>
+                          {field.unit && (
+                            <span style={{ color: "#555", fontSize: "9pt" }}>{field.unit}</span>
+                          )}
+                        </span>
+                      ))}
                     </div>
-                  ))}
+                  )}
+
+                  {/* Bottom margin when no fields */}
+                  {!hasFields && <div style={{ marginBottom: "4pt" }} />}
+
                 </div>
               );
             })}
@@ -292,15 +217,45 @@ export default function PrintProtocolDocument({
         );
       })}
 
-      {/* ── Page Footer (CSS-rendered on every page) ── */}
-      <style dangerouslySetInnerHTML={{
-        __html: `
-          @media print {
-            @page { @bottom-left { content: "Page " counter(page) " of " counter(pages); font-family: Georgia, serif; font-size: 9pt; color: #888; } }
-            @page { @bottom-right { content: "Labrador ELN"; font-family: Georgia, serif; font-size: 9pt; color: #888; } }
-          }
-        `
-      }} />
+      {/* ══════════════════════════════════════════════════════════
+          NOTES SECTION
+          ══════════════════════════════════════════════════════════ */}
+
+      <div style={{ marginTop: "24pt" }}>
+        <div style={{ fontWeight: "bold", fontSize: "11pt", marginBottom: "8pt" }}>
+          Notes:
+        </div>
+        {[0, 1, 2, 3].map((i) => (
+          <div
+            key={i}
+            style={{
+              borderBottom: "1px solid #000",
+              width: "100%",
+              height: "20pt",
+              marginBottom: "8pt",
+            }}
+          />
+        ))}
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════
+          FOOTER — fallback div (CSS @page margin boxes in head style
+          handle multi-page; this div covers single-page output)
+          ══════════════════════════════════════════════════════════ */}
+
+      <div style={{
+        marginTop: "24pt",
+        paddingTop: "6pt",
+        borderTop: "1px solid #ccc",
+        display: "flex",
+        justifyContent: "space-between",
+        fontSize: "8pt",
+        color: "#888",
+      }}>
+        <span>Page 1</span>
+        <span>Labrador ELN 🎾</span>
+      </div>
+
     </div>
   );
 }
