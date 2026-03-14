@@ -61,10 +61,34 @@ model Attachment {
   createdAt DateTime @default(now())
 }
 
+enum TagType {
+  PROJECT
+  GENERAL
+}
+
 model Tag {
-  id      String  @id @default(uuid())
-  name    String  @unique
-  entries Entry[] @relation("EntryTags")
+  id          String          @id @default(uuid())
+  name        String          @unique
+  type        TagType         @default(GENERAL)
+  color       String          @default("#6366f1")
+  createdBy   String          @default("Admin")
+  createdAt   DateTime        @default(now())
+  assignments TagAssignment[]
+  entries     Entry[]         @relation("EntryTags")
+}
+
+model TagAssignment {
+  id         String   @id @default(cuid())
+  tagId      String
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  entityType String   // "RUN" | "ENTRY" | "INVENTORY" | "KNOWLEDGE_HUB"
+  entityId   String
+  assignedBy String
+  assignedAt DateTime @default(now())
+
+  @@unique([tagId, entityType, entityId])
+  @@index([entityType, entityId])
+  @@index([tagId])
 }
 
 model ProtocolRun {
