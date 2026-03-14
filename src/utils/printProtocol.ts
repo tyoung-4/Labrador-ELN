@@ -50,15 +50,22 @@ export function printProtocol(protocolData: PrintProtocolProps): void {
       window.print();
 
       // ── Cleanup on dialog close ─────────────────────────────────────────
-      window.addEventListener(
-        "afterprint",
-        () => {
-          root.unmount();
-          container.remove();
-          document.getElementById(PRINT_STYLE_ID)?.remove();
-        },
-        { once: true },
-      );
+      // Cleanup immediately after print() returns (macOS fires afterprint early)
+      // Use both afterprint AND a short timeout as dual guarantee
+      const cleanup = () => {
+        root.unmount();
+        container.remove();
+        document.getElementById(PRINT_STYLE_ID)?.remove();
+      };
+
+      window.addEventListener("afterprint", cleanup, { once: true });
+
+      // Fallback: if afterprint already fired or never fires, clean up after 1s
+      setTimeout(() => {
+        if (document.getElementById("print-root")) {
+          cleanup();
+        }
+      }, 1000);
     });
   });
 }
