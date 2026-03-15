@@ -6,6 +6,7 @@ import Link from "next/link";
 import AppTopNav from "@/components/AppTopNav";
 import { getCurrentUser } from "@/components/AppTopNav";
 import type { ProtocolRun, StepResult } from "@/models/protocolRun";
+import TagInput from "@/components/tags/TagInput";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -482,6 +483,9 @@ export default function ActiveRunPage() {
   const [submitting, setSubmitting] = useState(false);
   const [completingRun, setCompletingRun] = useState(false);
   const [showCompleteBanner, setShowCompleteBanner] = useState(false);
+  const [runTagAssignments, setRunTagAssignments] = useState<NonNullable<ProtocolRun["tagAssignments"]>>([]);
+  const [showTagNudge, setShowTagNudge] = useState(false);
+  const [tagNudgeDismissed, setTagNudgeDismissed] = useState(false);
 
   // Parse steps — only after run is loaded and we're client-side
   const steps = useMemo<ParsedStep[]>(() => {
@@ -528,6 +532,14 @@ export default function ActiveRunPage() {
         if (cancelled) return;
         setRun(runData);
         setStepResults(srData);
+
+        // Initialise tag state
+        const tags = runData.tagAssignments ?? [];
+        setRunTagAssignments(tags);
+        if (runData.status === "COMPLETED") {
+          const hasProjectTag = tags.some((a) => a.tag.type === "PROJECT");
+          if (!hasProjectTag) setShowTagNudge(true);
+        }
 
         // Restore active step from interactionState
         const iState = parseInteractionState(runData.interactionState);
@@ -663,6 +675,8 @@ export default function ActiveRunPage() {
         const updated = (await res.json()) as ProtocolRun;
         setRun(updated);
         setShowCompleteBanner(true);
+        const hasProjectTag = runTagAssignments.some((a) => a.tag.type === "PROJECT");
+        if (!hasProjectTag && !tagNudgeDismissed) setShowTagNudge(true);
       }
     } finally {
       setCompletingRun(false);
@@ -792,6 +806,16 @@ export default function ActiveRunPage() {
             runId={runId}
             runNotes={run.notes}
             authHeaders={authHeaders}
+            runTagAssignments={runTagAssignments}
+            onTagAssignmentsChange={(updated) => {
+              setRunTagAssignments(updated);
+              const hasProject = updated.some((a) => a.tag.type === "PROJECT");
+              if (hasProject) setShowTagNudge(false);
+            }}
+            showTagNudge={showTagNudge}
+            onDismissTagNudge={() => { setShowTagNudge(false); setTagNudgeDismissed(true); }}
+            currentUserName={currentUser.name}
+            runnerName={run.runner?.name ?? "Admin"}
           />
         </div>
       </div>
@@ -828,6 +852,12 @@ function RunSidebar({
   runId,
   runNotes,
   authHeaders,
+  runTagAssignments,
+  onTagAssignmentsChange,
+  showTagNudge,
+  onDismissTagNudge,
+  currentUserName,
+  runnerName,
 }: {
   steps: ParsedStep[];
   resolvedCount: number;
@@ -842,6 +872,12 @@ function RunSidebar({
   runId: string;
   runNotes: string;
   authHeaders: Record<string, string>;
+  runTagAssignments: NonNullable<ProtocolRun["tagAssignments"]>;
+  onTagAssignmentsChange: (updated: NonNullable<ProtocolRun["tagAssignments"]>) => void;
+  showTagNudge: boolean;
+  onDismissTagNudge: () => void;
+  currentUserName: string;
+  runnerName: string;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
 
@@ -914,10 +950,38 @@ function RunSidebar({
         </div>
       ) : null}
 
+      {/* Tags */}
+      <div className="border-t border-zinc-800 pt-4">
+        {showTagNudge && (
+          <div className="mb-2 flex items-start gap-2 rounded border border-amber-500 bg-amber-500/20 p-2">
+            <span className="shrink-0 text-sm">⚠️</span>
+            <span className="flex-1 text-xs text-amber-400">
+              <strong className="font-semibold">No Project tag added</strong> — tag this run with a Project to keep your work organised.
+            </span>
+            <button
+              onClick={onDismissTagNudge}
+              className="shrink-0 text-amber-400/60 hover:text-amber-400 transition-colors"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">Tags</p>
+        <TagInput
+          entityType="RUN"
+          entityId={runId}
+          currentUser={currentUserName}
+          entityOwner={runnerName}
+          existingAssignments={runTagAssignments}
+          onAssignmentsChange={onTagAssignmentsChange}
+        />
+      </div>
+
       {/* Run Notes — collapsed during run, auto-expands on completion */}
       <div className="mt-auto border-t border-zinc-800 pt-4">
         {notesOpen ? (
-          <RunNotes runId={runId} initialNotes={runNotes} authHeaders={authHeaders} />
+          <RunNotes runId={runId} initialNotes={runNotes} authHeaders={authHeaders} readonly={isRunComplete} />
         ) : (
           <button
             className="text-xs text-zinc-500 hover:text-zinc-300"
@@ -939,10 +1003,12 @@ function RunNotes({
   runId,
   initialNotes,
   authHeaders,
+  readonly = false,
 }: {
   runId: string;
   initialNotes: string;
   authHeaders: Record<string, string>;
+  readonly?: boolean;
 }) {
   const [notes, setNotes] = useState(initialNotes);
   const [saving, setSaving] = useState(false);
@@ -968,21 +1034,27 @@ function RunNotes({
     <div className="rounded border border-zinc-800 bg-zinc-900 p-4">
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-zinc-200">Run Notes</h3>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="rounded border border-zinc-700 bg-zinc-800 px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-700 disabled:opacity-50"
-        >
-          {saving ? "Saving…" : saved ? "Saved ✓" : "Save"}
-        </button>
+        {!readonly && (
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="rounded border border-zinc-700 bg-zinc-800 px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-700 disabled:opacity-50"
+          >
+            {saving ? "Saving…" : saved ? "Saved ✓" : "Save"}
+          </button>
+        )}
       </div>
-      <textarea
-        rows={4}
-        value={notes}
-        onChange={(e) => { setNotes(e.target.value); setSaved(false); }}
-        placeholder="General notes for this run…"
-        className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
-      />
+      {readonly ? (
+        <p className="whitespace-pre-wrap text-sm text-zinc-400">{notes || <span className="italic text-zinc-600">No notes recorded.</span>}</p>
+      ) : (
+        <textarea
+          rows={4}
+          value={notes}
+          onChange={(e) => { setNotes(e.target.value); setSaved(false); }}
+          placeholder="General notes for this run…"
+          className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
+        />
+      )}
     </div>
   );
 }

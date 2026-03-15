@@ -6,6 +6,7 @@ import Link from "next/link";
 import AppTopNav from "@/components/AppTopNav";
 import { getCurrentUser } from "@/components/AppTopNav";
 import type { ProtocolRun, StepResult } from "@/models/protocolRun";
+import TagInput from "@/components/tags/TagInput";
 
 type ParsedStep = {
   id: string;
@@ -117,6 +118,8 @@ export default function RunSummaryPage() {
   const [stepResults, setStepResults] = useState<StepResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [runTagAssignments, setRunTagAssignments] = useState<NonNullable<ProtocolRun["tagAssignments"]>>([]);
+  const [showTagNudge, setShowTagNudge] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,7 +133,14 @@ export default function RunSummaryPage() {
         if (!runRes.ok) { setError(`Failed to load run (${runRes.status}).`); return; }
         const runData = (await runRes.json()) as ProtocolRun;
         const srData: StepResult[] = srRes.ok ? ((await srRes.json()) as StepResult[]) : [];
-        if (!cancelled) { setRun(runData); setStepResults(srData); }
+        if (!cancelled) {
+          setRun(runData);
+          setStepResults(srData);
+          const tags = runData.tagAssignments ?? [];
+          setRunTagAssignments(tags);
+          const hasProjectTag = tags.some((a) => a.tag.type === "PROJECT");
+          setShowTagNudge(!hasProjectTag);
+        }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load.");
       } finally {
@@ -304,6 +314,38 @@ export default function RunSummaryPage() {
             <p className="whitespace-pre-wrap text-sm text-zinc-400">{run.notes}</p>
           </div>
         )}
+
+        {/* Tags */}
+        <div className="rounded border border-zinc-800 bg-zinc-900 p-4">
+          <p className="mb-3 text-sm font-semibold text-zinc-200">Tags</p>
+          {showTagNudge && (
+            <div className="mb-3 flex items-start gap-2 rounded border border-amber-500 bg-amber-500/20 p-3">
+              <span className="shrink-0">⚠️</span>
+              <span className="flex-1 text-sm text-amber-400">
+                <strong className="font-semibold">No Project tag added</strong> — consider tagging this run with a Project tag to keep your work organised.
+              </span>
+              <button
+                onClick={() => setShowTagNudge(false)}
+                className="shrink-0 text-amber-400/60 hover:text-amber-400 transition-colors"
+                aria-label="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          <TagInput
+            entityType="RUN"
+            entityId={runId}
+            currentUser={currentUser.name}
+            entityOwner={run.runner?.name ?? "Admin"}
+            existingAssignments={runTagAssignments}
+            onAssignmentsChange={(updated) => {
+              setRunTagAssignments(updated);
+              const hasProject = updated.some((a) => a.tag.type === "PROJECT");
+              if (hasProject) setShowTagNudge(false);
+            }}
+          />
+        </div>
 
         {/* PDF export placeholder */}
         <div className="rounded border border-zinc-700 bg-zinc-800/50 p-4 text-center text-sm text-zinc-500">
