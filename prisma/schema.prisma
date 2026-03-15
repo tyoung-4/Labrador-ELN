@@ -41,7 +41,6 @@ model Entry {
   version      Int           @default(1)
   author       User?         @relation(fields: [authorId], references: [id])
   authorId     String?
-  tags          Tag[]          @relation("EntryTags")
   attachments   Attachment[]
   protocolRuns  ProtocolRun[]  @relation("RunSource")
   linkedRun     ProtocolRun?   @relation("RunLink", fields: [linkedRunId], references: [id])
@@ -74,7 +73,6 @@ model Tag {
   createdBy   String          @default("Admin")
   createdAt   DateTime        @default(now())
   assignments TagAssignment[]
-  entries     Entry[]         @relation("EntryTags")
 }
 
 model TagAssignment {

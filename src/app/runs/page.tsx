@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import AppTopNav from "@/components/AppTopNav";
 import { getCurrentUser } from "@/components/AppTopNav";
 import type { ProtocolRun } from "@/models/protocolRun";
@@ -39,6 +39,7 @@ function formatDuration(start: string, end: string | null | undefined): string {
 
 export default function RunsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const currentUser = useMemo(() => {
     if (typeof window === "undefined") return { id: "finn-user", name: "Finn", role: "MEMBER" as const };
     return getCurrentUser();
@@ -57,6 +58,7 @@ export default function RunsPage() {
   const [runs, setRuns] = useState<ProtocolRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [showUntaggedOnly, setShowUntaggedOnly] = useState(() => searchParams.get("filter") === "untagged");
 
   useEffect(() => {
     let cancelled = false;
@@ -93,14 +95,15 @@ export default function RunsPage() {
           (r.sourceEntry?.title ?? "").toLowerCase().includes(q) ||
           (r.operatorName ?? "").toLowerCase().includes(q) ||
           (r.runner?.name ?? "").toLowerCase().includes(q);
-        return match && search;
+        const untaggedOk = !showUntaggedOnly || !r.tagAssignments?.some((a) => a.tag.type === "PROJECT");
+        return match && search && untaggedOk;
       })
       .sort((a, b) =>
         viewMode === "active"
           ? a.createdAt.localeCompare(b.createdAt) // oldest first for active (urgency)
           : b.createdAt.localeCompare(a.createdAt) // newest first for history
       );
-  }, [runs, viewMode, query]);
+  }, [runs, viewMode, query, showUntaggedOnly]);
 
   const activeCount = useMemo(() => runs.filter((r) => r.status === "IN_PROGRESS").length, [runs]);
 
@@ -149,8 +152,8 @@ export default function RunsPage() {
         </div>
       </div>
 
-      {/* Search */}
-      <div className="mb-4">
+      {/* Search + untagged filter */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <input
           type="text"
           value={query}
@@ -158,7 +161,30 @@ export default function RunsPage() {
           placeholder={viewMode === "active" ? "Search active runs…" : "Search run history…"}
           className="w-full max-w-sm rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
         />
+        <button
+          onClick={() => setShowUntaggedOnly((v) => !v)}
+          className={`rounded border px-3 py-1.5 text-sm transition-colors ${
+            showUntaggedOnly
+              ? "border-amber-500 bg-amber-500/20 text-amber-400"
+              : "border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10"
+          }`}
+        >
+          ⚠️ Untagged only
+        </button>
       </div>
+
+      {/* Untagged filter banner */}
+      {showUntaggedOnly && (
+        <div className="mb-4 flex items-center justify-between rounded border border-amber-500 bg-amber-500/20 p-3">
+          <span className="text-sm text-amber-400">Showing only runs without a Project tag</span>
+          <button
+            onClick={() => setShowUntaggedOnly(false)}
+            className="text-sm text-amber-400 hover:text-amber-300"
+          >
+            Clear filter
+          </button>
+        </div>
+      )}
 
       {/* List */}
       {loading ? (

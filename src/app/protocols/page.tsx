@@ -434,6 +434,7 @@ export default function ProtocolsPage() {
   const [techniqueFilter, setTechniqueFilter] = useState<(typeof TECHNIQUE_TABS)[number]["id"]>("ALL");
   const [authorFilter,    setAuthorFilter]    = useState("ALL");
   const [sortBy,          setSortBy]          = useState<"newest" | "oldest" | "technique" | "author">("newest");
+  const [showUntaggedOnly, setShowUntaggedOnly] = useState(() => searchParams.get("filter") === "untagged");
 
   const authHeaders = useMemo(() => ({
     "x-user-id":   currentUser.id,
@@ -724,10 +725,12 @@ export default function ProtocolsPage() {
     const filtered = entries.filter((entry) => {
       const author = entry.author?.name || "Unknown";
       const bucket = normalizeTechniqueBucket(entry.technique || "General");
+      const untaggedOk = !showUntaggedOnly || !entry.tagAssignments?.some((a) => a.tag.type === "PROJECT");
       return (
         (techniqueFilter === "ALL" || bucket === techniqueFilter) &&
         (authorFilter === "ALL" || author === authorFilter) &&
-        (!q || `${entry.title} ${entry.description} ${entry.technique} ${author} ${entry.body}`.toLowerCase().includes(q))
+        (!q || `${entry.title} ${entry.description} ${entry.technique} ${author} ${entry.body}`.toLowerCase().includes(q)) &&
+        untaggedOk
       );
     });
     filtered.sort((a, b) => {
@@ -739,7 +742,7 @@ export default function ProtocolsPage() {
       return b.createdAt.localeCompare(a.createdAt);
     });
     return filtered;
-  }, [entries, keyword, techniqueFilter, authorFilter, sortBy]);
+  }, [entries, keyword, techniqueFilter, authorFilter, sortBy, showUntaggedOnly]);
 
   // ── Group into families ────────────────────────────────────────────────────
   const groupedFamilies = useMemo(() => buildFamilies(filteredEntries), [filteredEntries]);
@@ -796,7 +799,7 @@ export default function ProtocolsPage() {
         </div>
 
         {/* Search + sort */}
-        <div className="mb-3 grid gap-2 md:grid-cols-3">
+        <div className="mb-2 grid gap-2 md:grid-cols-3">
           <input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
@@ -824,6 +827,33 @@ export default function ProtocolsPage() {
             <option value="author">Sort: Author</option>
           </select>
         </div>
+
+        {/* Untagged filter toggle */}
+        <div className="mb-3 flex items-center gap-2">
+          <button
+            onClick={() => setShowUntaggedOnly((v) => !v)}
+            className={`rounded border px-3 py-1 text-xs transition-colors ${
+              showUntaggedOnly
+                ? "border-amber-500 bg-amber-500/20 text-amber-400"
+                : "border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10"
+            }`}
+          >
+            ⚠️ Untagged only
+          </button>
+        </div>
+
+        {/* Untagged filter banner */}
+        {showUntaggedOnly && (
+          <div className="mb-3 flex items-center justify-between rounded border border-amber-500 bg-amber-500/20 p-3">
+            <span className="text-sm text-amber-400">Showing only protocols without a Project tag</span>
+            <button
+              onClick={() => setShowUntaggedOnly(false)}
+              className="text-sm text-amber-400 hover:text-amber-300"
+            >
+              Clear filter
+            </button>
+          </div>
+        )}
 
         {/* Grouped protocol list */}
         <ul className="space-y-2">
