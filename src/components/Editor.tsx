@@ -30,6 +30,8 @@ type Props = {
   onOpenParent?: (parentId: string) => void;
   /** Other entries in this protocol's version family — shown in Version panel dropdown */
   versionFamily?: Array<{ id: string; title: string; semVer: string }>;
+  /** Content rendered between the main editor area and the Save/Cancel buttons */
+  beforeButtons?: React.ReactNode;
 };
 
 // Component items shown in the right-sidebar dropdown.
@@ -571,6 +573,7 @@ export default function Editor({
   protocolShell = false,
   onOpenParent,
   versionFamily,
+  beforeButtons,
 }: Props) {
   const [title, setTitle]           = useState(initial.title ?? "");
   const [description, setDescription] = useState(initial.description ?? "");
@@ -1049,6 +1052,8 @@ export default function Editor({
           <BottomPanels />
         </>
       )}
+
+      {beforeButtons}
 
       <div className="mt-4 flex gap-2">
         <button
