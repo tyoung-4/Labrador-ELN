@@ -87,6 +87,7 @@ async function getEntryId(context: RouteContext): Promise<string> {
 }
 
 // Standard include for single-entry queries (includes attachments and linked run)
+// Note: tagAssignments are polymorphic and fetched separately — see enrichWithTags()
 const ENTRY_INCLUDE = {
   author: {
     select: { id: true, name: true, role: true },
@@ -98,6 +99,15 @@ const ENTRY_INCLUDE = {
     select: { id: true, title: true, status: true, createdAt: true },
   },
 };
+
+/** Attach tagAssignments to a single entry via a separate polymorphic query */
+async function enrichWithTags<T extends { id: string }>(entry: T) {
+  const tagAssignments = await prisma.tagAssignment.findMany({
+    where: { entityType: "ENTRY", entityId: entry.id },
+    include: { tag: { select: { id: true, name: true, type: true, color: true } } },
+  });
+  return { ...entry, tagAssignments };
+}
 
 export async function GET(request: Request, context: RouteContext) {
   const id = await getEntryId(context);
@@ -111,7 +121,7 @@ export async function GET(request: Request, context: RouteContext) {
     });
 
     if (!found) return new NextResponse(null, { status: 404 });
-    return NextResponse.json(found);
+    return NextResponse.json(await enrichWithTags(found));
   } catch (error) {
     console.error(`GET /api/entries/${id} failed:`, error);
     const detail = process.env.NODE_ENV === "development" && error instanceof Error ? error.message : undefined;
@@ -154,7 +164,7 @@ export async function PUT(request: Request, context: RouteContext) {
       data,
       include: ENTRY_INCLUDE,
     });
-    return NextResponse.json(updated);
+    return NextResponse.json(await enrichWithTags(updated));
   } catch (error) {
     const isMissing = typeof error === "object" && error !== null && "code" in error && error.code === "P2025";
     if (isMissing) return new NextResponse(null, { status: 404 });
@@ -254,7 +264,7 @@ export async function POST(request: Request, context: RouteContext) {
       include: ENTRY_INCLUDE,
     });
 
-    return NextResponse.json(cloned, { status: 201 });
+    return NextResponse.json(await enrichWithTags(cloned), { status: 201 });
   } catch (error) {
     console.error(`POST /api/entries/${id} clone failed:`, error);
     const detail = process.env.NODE_ENV === "development" && error instanceof Error ? error.message : undefined;

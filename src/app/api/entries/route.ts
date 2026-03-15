@@ -124,7 +124,25 @@ export async function GET(request: Request) {
       },
     });
 
-    return NextResponse.json(entries);
+    // TagAssignment is polymorphic — fetch separately and merge
+    const entryIds = entries.map((e) => e.id);
+    const tagAssignments = await prisma.tagAssignment.findMany({
+      where: { entityType: "ENTRY", entityId: { in: entryIds } },
+      include: { tag: { select: { id: true, name: true, type: true, color: true } } },
+    });
+    const tagMap = new Map<string, typeof tagAssignments>();
+    for (const a of tagAssignments) {
+      const list = tagMap.get(a.entityId) ?? [];
+      list.push(a);
+      tagMap.set(a.entityId, list);
+    }
+
+    const enriched = entries.map((e) => ({
+      ...e,
+      tagAssignments: tagMap.get(e.id) ?? [],
+    }));
+
+    return NextResponse.json(enriched);
   } catch (error) {
     console.error("GET /api/entries failed:", error);
     const detail = process.env.NODE_ENV === "development" && error instanceof Error ? error.message : undefined;

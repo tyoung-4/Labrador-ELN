@@ -49,6 +49,11 @@ export type Entry = {
   /** Nullable FK to ProtocolRun — set when this entry is linked to a run */
   linkedRunId?: string | null;
   linkedRun?: LinkedRun | null;
+  /** Tag assignments — populated from TagAssignment where entityType = "ENTRY" */
+  tagAssignments?: Array<{
+    tagId: string;
+    tag: { id: string; name: string; type: "PROJECT" | "GENERAL"; color: string };
+  }>;
 };
 
 export const TECHNIQUE_OPTIONS = [

@@ -9,6 +9,8 @@ import { TECHNIQUE_OPTIONS, PROTOCOL_TECHNIQUES, type Entry } from "@/models/ent
 import { parseTypedData } from "@/lib/entryTypes";
 import { printProtocol } from "@/utils/printProtocol";
 import { parseProtocolBody } from "@/utils/parseProtocolBody";
+import TagInput from "@/components/tags/TagInput";
+import TagDisplay from "@/components/tags/TagDisplay";
 
 type CurrentUser = {
   id: string;
@@ -424,6 +426,9 @@ export default function ProtocolsPage() {
   // New Protocol creation modal
   const [showCreateModal, setShowCreateModal] = useState(false);
 
+  // Amber nudge banner — shown after save if protocol has no PROJECT tag
+  const [showTagNudge, setShowTagNudge] = useState(false);
+
   // ── Filters ────────────────────────────────────────────────────────────────
   const [keyword,         setKeyword]         = useState("");
   const [techniqueFilter, setTechniqueFilter] = useState<(typeof TECHNIQUE_TABS)[number]["id"]>("ALL");
@@ -522,10 +527,16 @@ export default function ProtocolsPage() {
         return;
       }
       const saved = (await res.json()) as Entry;
-      setEntries((s) => isUpdate ? s.map((e) => e.id === saved.id ? saved : e) : [saved, ...s]);
+      // Preserve tagAssignments — they are managed via /api/tags/assign, not the entry save
+      const existingTagAssignments = selected?.tagAssignments ?? [];
+      const mergedSaved: Entry = { ...saved, tagAssignments: existingTagAssignments };
+      setEntries((s) => isUpdate ? s.map((e) => e.id === saved.id ? mergedSaved : e) : [mergedSaved, ...s]);
       setEditorMode("edit");
-      setSelected(saved);
+      setSelected(mergedSaved);
       setIsDirty(false);
+      // Show nudge banner if protocol has no PROJECT tag
+      const hasProjectTag = existingTagAssignments.some((a) => a.tag.type === "PROJECT");
+      setShowTagNudge(!hasProjectTag);
     } finally {
       setLoading(false);
     }
@@ -586,6 +597,7 @@ export default function ProtocolsPage() {
     setEditorOpen(false);
     setSaveError(null);
     setPendingPayload(null);
+    setShowTagNudge(false);
   }
 
   async function handleSelect(id: string) {
@@ -606,6 +618,7 @@ export default function ProtocolsPage() {
       setSelected(data);
       setIsDirty(false);
       setEditorOpen(true);
+      setShowTagNudge(false);
       return true;
     }
 
@@ -841,6 +854,14 @@ export default function ProtocolsPage() {
                   <p className="mt-1 text-xs text-zinc-300">{summary || "No description"}</p>
                   <p className="mt-1 text-[11px] text-zinc-400">Author: {author}</p>
                   <p className="text-[11px] text-zinc-400">Technique: {technique}</p>
+                  {(e.tagAssignments?.length ?? 0) > 0 && (
+                    <div className="mt-1.5">
+                      <TagDisplay
+                        tags={(e.tagAssignments ?? []).map((a) => a.tag)}
+                        maxVisible={3}
+                      />
+                    </div>
+                  )}
                 </button>
                 <div className="mt-2 grid grid-cols-4 gap-1">
                   <button
@@ -962,6 +983,46 @@ export default function ProtocolsPage() {
                 protocolShell={true}
                 onOpenParent={handleOpenParent}
                 versionFamily={selectedVersionFamily}
+                beforeButtons={
+                  <div className="mt-4 space-y-2">
+                    {/* Tags section */}
+                    <div className="rounded border border-zinc-800 bg-zinc-900 p-3">
+                      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">Tags</p>
+                      {editorMode === "edit" && selected?.id ? (
+                        <TagInput
+                          entityType="ENTRY"
+                          entityId={selected.id}
+                          currentUser={currentUser.name}
+                          entityOwner={selected.author?.name ?? "Admin"}
+                          existingAssignments={selected.tagAssignments ?? []}
+                          onAssignmentsChange={(updated) => {
+                            setSelected((prev) => prev ? { ...prev, tagAssignments: updated } : prev);
+                            setShowTagNudge(false);
+                          }}
+                        />
+                      ) : (
+                        <p className="text-xs italic text-zinc-500">Save the protocol before adding tags</p>
+                      )}
+                    </div>
+
+                    {/* Amber nudge banner */}
+                    {showTagNudge && (
+                      <div className="flex items-start gap-2 rounded border border-amber-500 bg-amber-500/20 p-3">
+                        <span className="shrink-0">⚠️</span>
+                        <span className="flex-1 text-sm text-amber-400">
+                          <strong className="font-semibold">No Project tag added</strong> — consider tagging this protocol with a Project tag to keep your work organized.
+                        </span>
+                        <button
+                          onClick={() => setShowTagNudge(false)}
+                          className="shrink-0 text-amber-400/60 hover:text-amber-400 transition-colors"
+                          aria-label="Dismiss"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                }
               />
             </div>
           </div>
