@@ -7,6 +7,7 @@ import AppTopNav from "@/components/AppTopNav";
 import { getCurrentUser } from "@/components/AppTopNav";
 import type { ProtocolRun, StepResult } from "@/models/protocolRun";
 import TagInput from "@/components/tags/TagInput";
+import { assembleRunExport } from "@/utils/assembleRunExport";
 
 type ParsedStep = {
   id: string;
@@ -140,6 +141,13 @@ export default function RunSummaryPage() {
           setRunTagAssignments(tags);
           const hasProjectTag = tags.some((a) => a.tag.type === "PROJECT");
           setShowTagNudge(!hasProjectTag);
+
+          // Temporary verification — remove in Prompt B
+          const exportData = assembleRunExport(
+            { ...runData, stepResults: srData },
+            `v${runData.sourceEntry?.version ?? 1}`
+          );
+          console.log("RunExportProps:", JSON.stringify(exportData, null, 2));
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load.");
