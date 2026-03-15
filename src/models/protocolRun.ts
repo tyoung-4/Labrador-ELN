@@ -64,4 +64,8 @@ export type ProtocolRun = {
   } | null;
   protocol?: RunProtocol | null;
   stepResults?: StepResult[];
+  tagAssignments?: Array<{
+    tagId: string;
+    tag: { id: string; name: string; type: "PROJECT" | "GENERAL"; color: string };
+  }>;
 };

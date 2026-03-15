@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import AppTopNav from "@/components/AppTopNav";
 import { getCurrentUser } from "@/components/AppTopNav";
 import type { ProtocolRun } from "@/models/protocolRun";
+import TagDisplay from "@/components/tags/TagDisplay";
 
 type ViewMode = "active" | "history";
 
@@ -206,6 +207,11 @@ export default function RunsPage() {
                         ? ` · Duration: ${formatDuration(run.createdAt, run.completedAt)}`
                         : ""}
                     </p>
+                    {run.tagAssignments && run.tagAssignments.length > 0 && (
+                      <div className="mt-1.5">
+                        <TagDisplay tags={run.tagAssignments.map((a) => a.tag)} />
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     {run.status === "COMPLETED" && (

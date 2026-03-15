@@ -74,7 +74,23 @@ export async function GET(request: Request) {
       },
     });
 
-    return NextResponse.json(runs);
+    // Enrich with polymorphic tagAssignments
+    const runIds = runs.map((r) => r.id);
+    const tagAssignments = runIds.length
+      ? await prisma.tagAssignment.findMany({
+          where: { entityType: "RUN", entityId: { in: runIds } },
+          include: { tag: { select: { id: true, name: true, type: true, color: true } } },
+        })
+      : [];
+    const tagMap = new Map<string, typeof tagAssignments>();
+    for (const a of tagAssignments) {
+      const list = tagMap.get(a.entityId) ?? [];
+      list.push(a);
+      tagMap.set(a.entityId, list);
+    }
+    const enriched = runs.map((r) => ({ ...r, tagAssignments: tagMap.get(r.id) ?? [] }));
+
+    return NextResponse.json(enriched);
   } catch (error) {
     console.error("GET /api/protocol-runs failed:", error);
     const detail = process.env.NODE_ENV === "development" && error instanceof Error ? error.message : undefined;
