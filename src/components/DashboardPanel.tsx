@@ -157,6 +157,11 @@ function minutesToTime(mins: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+/** 48 half-hour slots "00:00" … "23:30" for the quick-add time picker (precomputed) */
+const TIME_OPTIONS: ReadonlyArray<string> = Array.from({ length: 48 }, (_, i) =>
+  minutesToTime(i * 30)
+);
+
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
 function localDateStr(d: Date = new Date()): string {
@@ -687,6 +692,7 @@ function ScheduleBlock({
 function DailySchedulePanel({
   items,
   onUpdateItem,
+  onAddItem,
   date,
   scrollTrigger,
   hourScrollTrigger,
@@ -694,6 +700,7 @@ function DailySchedulePanel({
 }: {
   items: TodoItem[];
   onUpdateItem: (id: string, updates: Partial<TodoItem>) => void;
+  onAddItem: (item: Omit<TodoItem, "id">) => void;
   date: string;
   scrollTrigger: number;
   hourScrollTrigger?: number;
@@ -707,6 +714,60 @@ function DailySchedulePanel({
     .sort((a, b) => (a.time! > b.time! ? 1 : -1));
   const allDayItems = dayItems.filter(i => !i.time);
   const scrollRef   = useRef<HTMLDivElement>(null);
+
+  // ── Quick-add dialog state ────────────────────────────────────────────────
+  const [quickAddOpen,     setQuickAddOpen]     = useState(false);
+  const [quickAddTime,     setQuickAddTime]     = useState("");     // "HH:MM" 24h
+  const [quickAddClickY,   setQuickAddClickY]   = useState(0);     // viewport Y for positioning
+  const [quickAddTitle,    setQuickAddTitle]    = useState("");
+  const [quickAddDuration, setQuickAddDuration] = useState(60);    // minutes
+  const quickAddRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click — reset title + duration
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (quickAddRef.current && !quickAddRef.current.contains(e.target as Node)) {
+        setQuickAddOpen(false);
+        setQuickAddTitle("");
+        setQuickAddDuration(60);
+      }
+    }
+    if (quickAddOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [quickAddOpen]);
+
+  function handleGridDoubleClick(e: React.MouseEvent<HTMLDivElement>) {
+    const rect      = e.currentTarget.getBoundingClientRect();
+    const clickY    = e.clientY - rect.top + e.currentTarget.scrollTop;
+    const rawMins   = Math.floor((clickY / PX_PER_HOUR) * 60);
+    const snapped   = Math.ceil(rawMins / 30) * 30;
+    const clamped   = Math.min(Math.max(snapped, 0), 1410);
+    setQuickAddTime(minutesToTime(clamped));
+    setQuickAddClickY(e.clientY);
+    setQuickAddOpen(true);
+  }
+
+  function handleQuickAddConfirm() {
+    if (!quickAddTitle.trim()) return;
+    const startMins = timeToMinutes(quickAddTime);
+    const endMins   = Math.min(startMins + quickAddDuration, 24 * 60 - 1);
+    onAddItem({
+      text: quickAddTitle.trim(),
+      done: false,
+      timeSensitive: true,
+      date,
+      time:    quickAddTime,
+      endTime: minutesToTime(endMins),
+      links:   [],
+    });
+    setQuickAddOpen(false);
+    setQuickAddTitle("");
+    setQuickAddDuration(60);
+    setQuickAddTime("");
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   // Scroll so the visible window starts at (currentTime − 1 hour).
   // Fires on mount, when navigating to/from today, and when scrollTrigger increments
@@ -756,7 +817,8 @@ function DailySchedulePanel({
       )}
 
       {/* Pixel-grid time column — 18rem = 6 h × 48 px/h, the default −1 h / +5 h window */}
-      <div ref={scrollRef} className="overflow-y-auto" style={{ maxHeight: "18rem" }}>
+      {/* Double-click anywhere on the grid to open the quick-add dialog */}
+      <div ref={scrollRef} className="overflow-y-auto" style={{ maxHeight: "18rem" }} onDoubleClick={handleGridDoubleClick}>
         <div className="relative" style={{ height: totalHeight }}>
 
           {/* Hour drop zones (behind everything) */}
@@ -825,6 +887,91 @@ function DailySchedulePanel({
           ))}
         </div>
       </div>
+
+      {/* ── Quick-add dialog — fixed floating card near the clicked time slot ── */}
+      {quickAddOpen && (
+        <div
+          ref={quickAddRef}
+          style={{
+            position: "fixed",
+            top: Math.min(quickAddClickY, (typeof window !== "undefined" ? window.innerHeight : 800) - 280),
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 50,
+            width: "280px",
+          }}
+          className="rounded-lg border border-white/20 bg-gray-900 p-4 shadow-xl"
+        >
+          {/* Header */}
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-sm font-medium text-white">Add to schedule</span>
+            <button
+              onClick={() => { setQuickAddOpen(false); setQuickAddTitle(""); setQuickAddDuration(60); }}
+              className="text-lg leading-none text-gray-400 hover:text-white"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Title input — auto-focused */}
+          <input
+            type="text"
+            placeholder="What needs to be done?"
+            value={quickAddTitle}
+            onChange={e => setQuickAddTitle(e.target.value)}
+            autoFocus
+            className="mb-3 w-full rounded border border-white/10 bg-white/10 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-white/30 focus:outline-none"
+            onKeyDown={e => {
+              if (e.key === "Enter" && quickAddTitle.trim()) handleQuickAddConfirm();
+              if (e.key === "Escape") { setQuickAddOpen(false); setQuickAddTitle(""); setQuickAddDuration(60); }
+            }}
+          />
+
+          {/* Time selector */}
+          <div className="mb-3 flex items-center gap-2">
+            <span className="text-xs text-gray-400">Time:</span>
+            <select
+              value={quickAddTime}
+              onChange={e => setQuickAddTime(e.target.value)}
+              className="flex-1 rounded border border-white/10 bg-zinc-800 px-2 py-1 text-sm text-white focus:outline-none"
+            >
+              {TIME_OPTIONS.map(t => (
+                <option key={t} value={t}>{formatTimeShort(t)}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Duration selector */}
+          <div className="mb-4 flex items-center gap-2">
+            <span className="text-xs text-gray-400">Duration:</span>
+            <select
+              value={quickAddDuration}
+              onChange={e => setQuickAddDuration(Number(e.target.value))}
+              className="flex-1 rounded border border-white/10 bg-zinc-800 px-2 py-1 text-sm text-white focus:outline-none"
+            >
+              <option value={30}>30 min</option>
+              <option value={60}>1 hour</option>
+              <option value={90}>1.5 hours</option>
+              <option value={120}>2 hours</option>
+              <option value={180}>3 hours</option>
+              <option value={240}>4 hours</option>
+            </select>
+          </div>
+
+          {/* Add button */}
+          <button
+            onClick={handleQuickAddConfirm}
+            disabled={!quickAddTitle.trim()}
+            className={`w-full rounded py-2 text-sm font-medium transition-colors ${
+              quickAddTitle.trim()
+                ? "bg-purple-600 text-white hover:bg-purple-700"
+                : "cursor-not-allowed bg-white/10 text-gray-500"
+            }`}
+          >
+            + Add to schedule
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -2176,6 +2323,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
               <DailySchedulePanel
                 items={items}
                 onUpdateItem={updateItem}
+                onAddItem={item => setItems(prev => [{ id: crypto.randomUUID(), ...item }, ...prev])}
                 date={scheduleDate}
                 scrollTrigger={scrollTrigger}
                 hourScrollTrigger={hourScrollTrigger}
