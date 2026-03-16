@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { MouseEvent, useState } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -160,6 +160,8 @@ export function nextDayStr(dateStr: string): string {
 
 // ─── DailyView ────────────────────────────────────────────────────────────────
 
+const TIMELINE_HEIGHT_PX = 600;
+
 export function DailyView({
   date,
   enabledResources,
@@ -167,6 +169,8 @@ export function DailyView({
   onCellClick,
   onEventClick,
   onEndEarly,
+  timeWindow,
+  currentUserId,
 }: {
   date: string;
   enabledResources: (ResourceMeta & { group: ResourceGroup })[];
@@ -174,6 +178,10 @@ export function DailyView({
   onCellClick: (resourceId: ResourceId, startTime: string) => void;
   onEventClick: (ev: ScheduleEvent) => void;
   onEndEarly?: (ev: ScheduleEvent) => void;
+  /** 6-hour window to display. Defaults to 8 am–8 pm when omitted. */
+  timeWindow?: { start: Date; end: Date };
+  /** Current user's ID. When provided, only owners (or "Admin") can interact. */
+  currentUserId?: string;
 }) {
   if (enabledResources.length === 0) {
     return (
@@ -186,17 +194,74 @@ export function DailyView({
   const colCount = enabledResources.length;
   const today    = localDateStr();
   const isToday  = date === today;
+  const now      = new Date();
+  const nowMins  = now.getHours() * 60 + now.getMinutes();
 
-  const now     = new Date();
-  const nowMins = now.getHours() * 60 + now.getMinutes();
+  // ── Time window ────────────────────────────────────────────────────────────
+  let windowStartMins: number;
+  let windowEndMins: number;
+  if (timeWindow) {
+    windowStartMins = timeWindow.start.getHours() * 60 + timeWindow.start.getMinutes();
+    windowEndMins   = timeWindow.end.getHours()   * 60 + timeWindow.end.getMinutes();
+    if (windowEndMins <= windowStartMins) windowEndMins += 1440; // overnight
+  } else {
+    windowStartMins = 480;   // 8 am default
+    windowEndMins   = 1200;  // 8 pm default
+  }
+  const minutesInView = windowEndMins - windowStartMins;
+  const pxPerMinute   = TIMELINE_HEIGHT_PX / minutesInView;
 
-  function isBookingActive(ev: ScheduleEvent): boolean {
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function tmins(t: string): number {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + (m || 0);
+  }
+
+  function bookingTop(startTime: string): number {
+    return Math.max((Math.max(tmins(startTime), windowStartMins) - windowStartMins) * pxPerMinute, 0);
+  }
+
+  function bookingHeight(startTime: string, endTime: string): number {
+    let s = tmins(startTime);
+    let e = tmins(endTime);
+    if (e <= s) e += 1440;
+    const durationMins = Math.max(0, Math.min(e, windowEndMins) - Math.max(s, windowStartMins));
+    return Math.max(durationMins * pxPerMinute, 24);
+  }
+
+  function bookingVisible(ev: ScheduleEvent): boolean {
+    if (!ev.startTime || !ev.endTime) return true;
+    let s = tmins(ev.startTime);
+    let e = tmins(ev.endTime);
+    if (e <= s) e += 1440;
+    return s < windowEndMins && e > windowStartMins;
+  }
+
+  function isActive(ev: ScheduleEvent): boolean {
     if (!isToday || !ev.startTime || !ev.endTime) return false;
-    const s = timeToMins(ev.startTime);
-    const e = timeToMins(ev.endTime);
-    // Normal run: end > start; overnight: end < start (treat as running until midnight)
+    const s = tmins(ev.startTime);
+    const e = tmins(ev.endTime);
     return e > s ? nowMins >= s && nowMins < e : nowMins >= s;
   }
+
+  function isOwner(ev: ScheduleEvent): boolean {
+    if (!currentUserId) return true;
+    return ev.userId === currentUserId || currentUserId === "Admin";
+  }
+
+  function handleColClick(e: MouseEvent<HTMLDivElement>, resourceId: ResourceId) {
+    const rect        = e.currentTarget.getBoundingClientRect();
+    const clickedMins = windowStartMins + (e.clientY - rect.top) / pxPerMinute;
+    const rounded     = Math.floor(clickedMins / 30) * 30;
+    const h = Math.floor(rounded / 60) % 24;
+    const m = rounded % 60;
+    onCellClick(resourceId, `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+  }
+
+  // Hour labels for the window
+  const startHour = Math.floor(windowStartMins / 60);
+  const endHour   = Math.ceil(windowEndMins / 60);
+  const hours     = Array.from({ length: endHour - startHour }, (_, i) => startHour + i);
 
   return (
     <div className="min-w-[320px]">
@@ -216,85 +281,95 @@ export function DailyView({
         ))}
       </div>
 
-      {/* 30-minute slot rows — 48 rows for full 24-hour day */}
-      {HOURS.map(h => {
-        const hh = String(h).padStart(2, "0");
-        return (
-          <div key={h}>
-            {([0, 30] as const).map(halfMin => {
-              const mm           = String(halfMin).padStart(2, "0");
-              const slotTime     = `${hh}:${mm}`;
-              const slotMins     = h * 60 + halfMin;
-              const isHalfHour   = halfMin === 30;
-              const isCurrent    = isToday && slotMins === Math.floor(nowMins / 30) * 30;
-              const h12          = h === 0 ? 12 : h > 12 ? h - 12 : h;
-              const ampm         = h < 12 ? "am" : "pm";
+      {/* Timeline */}
+      <div
+        className="relative grid"
+        style={{
+          height: `${TIMELINE_HEIGHT_PX}px`,
+          gridTemplateColumns: `3.5rem repeat(${colCount}, minmax(0, 1fr))`,
+        }}
+      >
+        {/* Current-time indicator */}
+        {isToday && nowMins >= windowStartMins && nowMins <= windowEndMins && (
+          <div
+            className="pointer-events-none absolute z-20 border-t-2 border-indigo-500"
+            style={{ top: `${(nowMins - windowStartMins) * pxPerMinute}px`, left: "3.5rem", right: 0 }}
+          />
+        )}
 
-              return (
+        {/* Time labels */}
+        <div className="relative border-r border-zinc-800">
+          {hours.map(h => {
+            const h12  = h === 0 ? 12 : h > 12 ? h - 12 : h;
+            const ampm = h < 12 ? "am" : "pm";
+            return (
+              <div
+                key={h}
+                className="absolute inset-x-0 px-1 text-right text-[9px] leading-none text-zinc-700"
+                style={{ top: `${(h * 60 - windowStartMins) * pxPerMinute}px` }}
+              >
+                {h12}:00 {ampm}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Resource columns */}
+        {enabledResources.map(r => {
+          const colEvts = events
+            .filter(e => e.resourceId === r.id && e.date === date)
+            .filter(bookingVisible);
+
+          return (
+            <div
+              key={r.id}
+              onClick={e => handleColClick(e, r.id)}
+              className="relative cursor-pointer border-r border-zinc-800 transition hover:bg-zinc-800/20"
+            >
+              {/* Hour lines */}
+              {hours.map(h => (
                 <div
-                  key={slotTime}
-                  className={`grid border-b ${
-                    isHalfHour ? "border-zinc-800/20" : "border-zinc-800/40"
-                  } ${isCurrent ? "bg-indigo-950/20" : ""}`}
-                  style={{ gridTemplateColumns: `3.5rem repeat(${colCount}, minmax(0, 1fr))` }}
-                >
-                  {/* Time label — only on :00 rows */}
-                  <div className={`border-r border-zinc-800 px-1.5 py-1 text-right text-[9px] leading-none ${
-                    isCurrent ? "font-bold text-indigo-400" : "text-zinc-700"
-                  }`}>
-                    {!isHalfHour && `${h12}:00 ${ampm}`}
-                  </div>
+                  key={h}
+                  className="pointer-events-none absolute inset-x-0 border-t border-zinc-800/40"
+                  style={{ top: `${(h * 60 - windowStartMins) * pxPerMinute}px` }}
+                />
+              ))}
 
-                  {enabledResources.map(r => {
-                    const slotEvts = events.filter(e =>
-                      e.resourceId === r.id &&
-                      e.date === date &&
-                      e.startTime === slotTime
-                    );
-                    return (
-                      <div
-                        key={r.id}
-                        onClick={() => onCellClick(r.id, slotTime)}
-                        className="group min-h-[1.5rem] cursor-pointer border-r border-zinc-800 p-0.5 transition hover:bg-zinc-800/50"
+              {/* Booking boxes */}
+              {colEvts.map(ev => {
+                if (!ev.startTime || !ev.endTime) return null;
+                const top    = bookingTop(ev.startTime);
+                const height = bookingHeight(ev.startTime, ev.endTime);
+                const active = isActive(ev);
+                const owner  = isOwner(ev);
+
+                return (
+                  <div
+                    key={ev.id}
+                    onClick={owner ? e => { e.stopPropagation(); onEventClick(ev); } : e => e.stopPropagation()}
+                    className={`absolute inset-x-0.5 overflow-hidden rounded px-1.5 py-1 text-[9px] leading-tight ${r.group.chipBg} ${r.group.chipText} ${owner ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
+                    style={{ top: `${top}px`, height: `${height}px` }}
+                  >
+                    <div className="truncate font-medium">{ev.title}</div>
+                    <div className="truncate opacity-70">{ev.userName}</div>
+                    {ev.startTime && ev.endTime && (
+                      <div className="opacity-60">{fmt12h(ev.startTime)}–{fmt12h(ev.endTime)}</div>
+                    )}
+                    {active && owner && onEndEarly && (
+                      <button
+                        onClick={e => { e.stopPropagation(); onEndEarly(ev); }}
+                        className="mt-1 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[8px] text-amber-300 transition hover:bg-amber-500/30"
                       >
-                        {slotEvts.map(ev => {
-                          const active = isBookingActive(ev);
-                          return (
-                            <div
-                              key={ev.id}
-                              onClick={e => { e.stopPropagation(); onEventClick(ev); }}
-                              className={`rounded px-1.5 py-1 text-[9px] leading-tight cursor-pointer ${r.group.chipBg} ${r.group.chipText} hover:opacity-80`}
-                            >
-                              <div className="truncate font-medium">{ev.title}</div>
-                              <div className="truncate opacity-70">{ev.userName}</div>
-                              {ev.startTime && ev.endTime && (
-                                <div className="opacity-60">{fmt12h(ev.startTime)}–{fmt12h(ev.endTime)}</div>
-                              )}
-                              {active && onEndEarly && (
-                                <button
-                                  onClick={e => { e.stopPropagation(); onEndEarly(ev); }}
-                                  className="mt-1 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[8px] text-amber-300 transition hover:bg-amber-500/30"
-                                >
-                                  End Early
-                                </button>
-                              )}
-                            </div>
-                          );
-                        })}
-                        {slotEvts.length === 0 && (
-                          <div className="flex h-full items-center justify-center opacity-0 group-hover:opacity-100">
-                            <span className="text-[9px] text-zinc-700">+</span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
+                        End Early
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

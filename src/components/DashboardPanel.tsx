@@ -2275,23 +2275,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
 
           {/* ── Equipment section (far right) ── */}
           <div className="flex flex-1 flex-col overflow-hidden">
-            {/* +Book above the calendar */}
-            <div className="flex shrink-0 items-center gap-2 border-b border-zinc-800 p-2">
-              <button
-                onClick={() => setShowFeatureEquipPicker(true)}
-                className="flex items-center gap-1.5 rounded border border-purple-500/40 bg-purple-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-purple-300 transition hover:bg-purple-500/20"
-              >
-                <span>+</span>
-                <span>Book</span>
-              </button>
-              <Link
-                href="/equipment"
-                className="text-[10px] text-zinc-500 transition hover:text-zinc-300"
-              >
-                Equipment ↗
-              </Link>
-            </div>
-            {/* Equipment calendar */}
+            {/* Equipment calendar (header is built into EquipmentCalendar) */}
             <div className="min-h-0 flex-1">
               {equipmentCalendar}
             </div>

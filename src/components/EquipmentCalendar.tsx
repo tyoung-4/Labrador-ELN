@@ -1,16 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { USER_STORAGE_KEY, ELN_USERS } from "@/components/AppTopNav";
 import {
   RESOURCE_GROUPS,
   ALL_RESOURCES,
   ENABLED_KEY,
   localDateStr,
-  getWeekDates,
   DailyView,
-  WeeklyView,
   BookingModal,
   type ResourceId,
   type ResourceGroup,
@@ -21,28 +19,47 @@ import { useEquipmentBookings, canUserDelete } from "@/hooks/useEquipmentBooking
 import { defaultEndTime } from "@/config/equipmentDefaults";
 import { useToast } from "@/components/ToastProvider";
 
-type CalView = "daily" | "weekly";
-
 const DASHBOARD_GROUP_KEY = "eln-dashboard-equipment-group";
+
+// ─── Time window ──────────────────────────────────────────────────────────────
+
+function getEquipmentTimeWindow(viewingDate: Date): { start: Date; end: Date } {
+  const today = new Date();
+  const isToday =
+    viewingDate.getFullYear() === today.getFullYear() &&
+    viewingDate.getMonth()    === today.getMonth()    &&
+    viewingDate.getDate()     === today.getDate();
+
+  if (isToday) {
+    const start = new Date();
+    const end   = new Date(start.getTime() + 6 * 60 * 60 * 1000);
+    return { start, end };
+  }
+
+  const start = new Date(viewingDate);
+  start.setHours(8, 0, 0, 0);
+  const end = new Date(viewingDate);
+  end.setHours(14, 0, 0, 0);
+  return { start, end };
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function EquipmentCalendar({ singleGroup = false }: { singleGroup?: boolean }) {
   // ── User ──────────────────────────────────────────────────────────────────
   const [userId,   setUserId]   = useState(ELN_USERS[0].id);
   const [userName, setUserName] = useState(ELN_USERS[0].name);
 
-  // ── View + navigation ─────────────────────────────────────────────────────
-  const [view,       setView]       = useState<CalView>("daily");
-  const [dailyDate,  setDailyDate]  = useState(localDateStr());
-  const [weekOffset, setWeekOffset] = useState(0);
+  // ── Navigation (daily only) ────────────────────────────────────────────────
+  const [dailyDate, setDailyDate] = useState(localDateStr());
 
   // ── API-backed events ─────────────────────────────────────────────────────
   const { events, refresh, saveBooking: saveBookingFn, deleteBooking: deleteBookingFn, endEarlyBooking } = useEquipmentBookings();
 
   // ── Toast + Early Release ─────────────────────────────────────────────────
-  const { addToast }        = useToast();
-  const earlySeenRef        = useRef<Set<string>>(new Set());
+  const { addToast }   = useToast();
+  const earlySeenRef   = useRef<Set<string>>(new Set());
 
-  // Poll /api/equipment/recent-releases every 30 s — surface toasts to all users
   const stableAddToast = useCallback(addToast, [addToast]);
   useEffect(() => {
     let cancelled = false;
@@ -64,7 +81,7 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
     return () => { cancelled = true; clearInterval(interval); };
   }, [stableAddToast]);
 
-  // ── Enabled resources (localStorage preference, not shared) ──────────────
+  // ── Enabled resources (localStorage preference) ────────────────────────────
   const enabledLoadingRef  = useRef(false);
   const dispatchEnabledRef = useRef(false);
 
@@ -83,6 +100,24 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
   });
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [saving,       setSaving]       = useState(false);
+
+  // ── Calendar popup state ──────────────────────────────────────────────────
+  const [calendarOpen,  setCalendarOpen]  = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const calendarRef = useRef<HTMLDivElement>(null);
+
+  // Close calendar on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (calendarRef.current && !calendarRef.current.contains(e.target as Node)) {
+        setCalendarOpen(false);
+      }
+    }
+    if (calendarOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [calendarOpen]);
 
   // ── Load user + enabled pref from localStorage ────────────────────────────
   useEffect(() => {
@@ -159,17 +194,15 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
 
   // ── Booking helpers ───────────────────────────────────────────────────────
   function openNew(params: Partial<BookingDraft> = {}) {
-    const resourceId = (params.resourceId ?? "") as ResourceId | "";
-    const startTime  = params.startTime ?? "09:00";
-    const computedEnd = resourceId
-      ? defaultEndTime(resourceId as ResourceId, startTime)
-      : "10:00";
+    const resourceId  = (params.resourceId ?? "") as ResourceId | "";
+    const startTime   = params.startTime ?? "09:00";
+    const computedEnd = resourceId ? defaultEndTime(resourceId as ResourceId, startTime) : "10:00";
 
     setEditEventId(null);
     setBookingError(null);
     setDraft({
       resourceId,
-      date: view === "daily" ? dailyDate : localDateStr(),
+      date: dailyDate,
       startTime,
       title: "",
       ...params,
@@ -218,9 +251,7 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
     );
     if (!ok) return;
 
-    // Pre-register so the poller doesn't fire a duplicate toast
     earlySeenRef.current.add(ev.id);
-
     const success = await endEarlyBooking(ev.id);
     if (success) {
       addToast(`${name} is now available — session ended early by ${ev.userName}`);
@@ -228,101 +259,69 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
     }
   }
 
-  // ── Scroll-to-default-time (currentTime − 1 h from top) ──────────────────
-  // Each 30-min slot = min-h-[1.5rem] = 24 px → 1 hour = 48 px
-  const EQ_PX_PER_HOUR = 48;
-  const eqScrollRef = useRef<HTMLDivElement>(null);
-
-  function scrollToDefaultTime() {
-    requestAnimationFrame(() => {
-      if (!eqScrollRef.current) return;
-      const now    = new Date();
-      const target = Math.max(0, (now.getHours() + now.getMinutes() / 60 - 1) * EQ_PX_PER_HOUR);
-      eqScrollRef.current.scrollTop = target;
-    });
-  }
-
-  // On mount and whenever dailyDate changes to today in daily view → apply default window
-  useEffect(() => {
-    if (view === "daily" && dailyDate === localDateStr()) scrollToDefaultTime();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, dailyDate]);
-
   // ── Navigation ────────────────────────────────────────────────────────────
   function navPrev() {
-    if (view === "daily") {
-      const d = new Date(dailyDate + "T00:00:00"); d.setDate(d.getDate() - 1); setDailyDate(localDateStr(d));
-    } else {
-      setWeekOffset(o => o - 1);
-    }
+    const d = new Date(dailyDate + "T00:00:00");
+    d.setDate(d.getDate() - 1);
+    setDailyDate(localDateStr(d));
   }
 
   function navNext() {
-    if (view === "daily") {
-      const d = new Date(dailyDate + "T00:00:00"); d.setDate(d.getDate() + 1); setDailyDate(localDateStr(d));
-    } else {
-      setWeekOffset(o => o + 1);
-    }
+    const d = new Date(dailyDate + "T00:00:00");
+    d.setDate(d.getDate() + 1);
+    setDailyDate(localDateStr(d));
   }
 
   function navToday() {
     setDailyDate(localDateStr());
-    setWeekOffset(0);
-    // Always reset scroll even if dailyDate was already today (effect won't re-fire in that case)
-    if (view === "daily") scrollToDefaultTime();
   }
 
-  // ── Derived display values ────────────────────────────────────────────────
+  // ── Derived values ────────────────────────────────────────────────────────
   const activeGroup = singleGroup
     ? RESOURCE_GROUPS.find(g => g.id === activeGroupId) ?? RESOURCE_GROUPS[0]
     : null;
 
-  // In singleGroup mode, only show enabled resources from the active group
   const enabledList = singleGroup
     ? ALL_RESOURCES.filter(r => r.group.id === activeGroupId && enabled.has(r.id))
     : ALL_RESOURCES.filter(r => enabled.has(r.id));
 
-  const weekDates = getWeekDates(weekOffset);
+  const dailyDateObj = new Date(dailyDate + "T00:00:00");
+  const timeWindow   = getEquipmentTimeWindow(dailyDateObj);
 
   const dateLabel = (() => {
-    if (view === "daily") {
-      const d       = new Date(dailyDate + "T00:00:00");
-      const isToday = dailyDate === localDateStr();
-      const label   = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-      return isToday ? `Today · ${label}` : label;
-    }
-    const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    return `${fmt(weekDates[0])} – ${fmt(weekDates[6])}`;
+    const isToday = dailyDate === localDateStr();
+    const label   = dailyDateObj.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    return isToday ? `Today · ${label}` : label;
   })();
 
-  // Delete button only shown when viewing your own booking
   const editingEvent  = editEventId ? events.find(e => e.id === editEventId) : null;
   const canDeleteEdit = editingEvent ? canUserDelete(editingEvent, userId) : false;
+
+  // ── Calendar popup days ────────────────────────────────────────────────────
+  const calendarDays = useMemo<(Date | null)[]>(() => {
+    const year  = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    const first = new Date(year, month, 1);
+    const startPad   = first.getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const days: (Date | null)[] = [];
+    for (let i = 0; i < startPad; i++) days.push(null);
+    for (let i = 1; i <= daysInMonth; i++) days.push(new Date(year, month, i));
+    while (days.length % 7 !== 0) days.push(null);
+    return days;
+  }, [calendarMonth]);
+
+  const todayStr = localDateStr();
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex h-full flex-col overflow-hidden">
 
       {/* ── Toolbar ── */}
-      <div className="mb-2 flex flex-wrap items-center gap-1.5 border-b border-zinc-800 pb-2">
+      <div className="mb-2 flex items-center justify-between border-b border-zinc-800 pb-2">
 
-        {/* Daily / Weekly switcher */}
-        <div className="flex overflow-hidden rounded border border-zinc-700 bg-zinc-800">
-          {(["daily", "weekly"] as CalView[]).map(v => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              className={`px-2.5 py-1 text-[10px] font-semibold capitalize transition ${
-                view === v ? "bg-indigo-600 text-white" : "text-zinc-400 hover:text-zinc-200"
-              }`}
-            >
-              {v}
-            </button>
-          ))}
-        </div>
-
-        {/* Prev / Today / Next */}
-        <div className="flex items-center">
+        {/* Left: nav + clickable date label */}
+        <div className="flex items-center gap-0.5">
           <button
             onClick={navPrev}
             className="rounded px-1.5 py-1 text-sm text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
@@ -337,16 +336,87 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
             className="rounded px-1.5 py-1 text-sm text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
             title="Next"
           >›</button>
+
+          {/* Clickable date label + calendar popup */}
+          <div ref={calendarRef} className="relative ml-1.5">
+            <button
+              onClick={() => {
+                setCalendarOpen(o => {
+                  if (!o) setCalendarMonth(new Date(dailyDate + "T00:00:00"));
+                  return !o;
+                });
+              }}
+              className="rounded px-1.5 py-1 text-[11px] font-semibold text-zinc-300 hover:bg-zinc-800"
+            >
+              {dateLabel}
+            </button>
+
+            {/* Calendar popup */}
+            {calendarOpen && (
+              <div className="absolute left-0 top-full z-50 mt-1 w-[280px] rounded-lg border border-white/10 bg-gray-900 p-3 shadow-xl">
+                {/* Month header */}
+                <div className="mb-2 flex items-center justify-between">
+                  <button
+                    onClick={() => setCalendarMonth(m => new Date(m.getFullYear(), m.getMonth() - 1))}
+                    className="rounded p-1 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                  >‹</button>
+                  <span className="text-[11px] font-semibold text-zinc-200">
+                    {calendarMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                  </span>
+                  <button
+                    onClick={() => setCalendarMonth(m => new Date(m.getFullYear(), m.getMonth() + 1))}
+                    className="rounded p-1 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                  >›</button>
+                </div>
+
+                {/* Day-of-week headers */}
+                <div className="mb-1 grid grid-cols-7">
+                  {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map(d => (
+                    <div key={d} className="py-0.5 text-center text-[9px] font-semibold text-zinc-600">{d}</div>
+                  ))}
+                </div>
+
+                {/* Day cells */}
+                <div className="grid grid-cols-7 gap-y-0.5">
+                  {calendarDays.map((day, i) => {
+                    if (!day) return <div key={i} />;
+                    const ds         = localDateStr(day);
+                    const isToday    = ds === todayStr;
+                    const isSelected = ds === dailyDate;
+                    const inMonth    = day.getMonth() === calendarMonth.getMonth();
+
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          setDailyDate(ds);
+                          setCalendarOpen(false);
+                        }}
+                        className={`rounded py-1 text-center text-[10px] transition ${
+                          isSelected
+                            ? "bg-white/20 font-bold text-white"
+                            : isToday
+                              ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                              : inMonth
+                                ? "text-zinc-300 hover:bg-zinc-700"
+                                : "text-zinc-700 hover:bg-zinc-800"
+                        }`}
+                      >
+                        {day.getDate()}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Date label */}
-        <p className="text-[11px] font-semibold text-zinc-300">{dateLabel}</p>
-
-        {/* Book button + Equipment page link */}
-        <div className="ml-auto flex items-center gap-2">
+        {/* Right: +Book + See full schedule */}
+        <div className="flex items-center gap-2">
           <button
             onClick={() => openNew()}
-            className="rounded bg-indigo-600 px-2.5 py-1 text-[10px] text-white hover:bg-indigo-500"
+            className="rounded border border-zinc-700 px-2.5 py-1 text-[10px] text-zinc-300 transition hover:bg-zinc-800 hover:text-zinc-100"
           >
             + Book
           </button>
@@ -354,7 +424,7 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
             href="/equipment"
             className="text-[10px] text-zinc-500 transition hover:text-zinc-300"
           >
-            Equipment ↗
+            See full schedule →
           </Link>
         </div>
       </div>
@@ -362,7 +432,6 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
       {/* ── Resource toggle chips (full page) / Group tabs (dashboard) ── */}
       {singleGroup && activeGroup ? (
         <div className="mb-2 border-b border-zinc-800 pb-2">
-          {/* Group tab switcher */}
           <div className="mb-1.5 flex gap-1">
             {RESOURCE_GROUPS.map(g => (
               <button
@@ -381,7 +450,6 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
               </button>
             ))}
           </div>
-          {/* Individual resource toggles for active group */}
           <div className="flex gap-1">
             {activeGroup.resources.map(r => (
               <button
@@ -412,7 +480,6 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
               >
                 {group.label}
               </button>
-
               {group.resources.map(r => (
                 <button
                   key={r.id}
@@ -433,28 +500,19 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
       )}
 
       {/* ── Calendar body ── */}
-      <div ref={eqScrollRef} className="flex-1 overflow-auto">
-        {view === "daily" && (
-          <DailyView
-            date={dailyDate}
-            enabledResources={enabledList}
-            events={events}
-            onCellClick={(resourceId, startTime) =>
-              openNew({ resourceId, date: dailyDate, startTime })
-            }
-            onEventClick={openEdit}
-            onEndEarly={handleEndEarly}
-          />
-        )}
-        {view === "weekly" && (
-          <WeeklyView
-            weekDates={weekDates}
-            enabledResources={enabledList}
-            events={events}
-            onCellClick={(resourceId, date) => openNew({ resourceId, date })}
-            onEventClick={openEdit}
-          />
-        )}
+      <div className="flex-1 overflow-auto">
+        <DailyView
+          date={dailyDate}
+          enabledResources={enabledList}
+          events={events}
+          onCellClick={(resourceId, startTime) =>
+            openNew({ resourceId, date: dailyDate, startTime })
+          }
+          onEventClick={openEdit}
+          onEndEarly={handleEndEarly}
+          timeWindow={timeWindow}
+          currentUserId={userId}
+        />
       </div>
 
       {/* ── Booking modal ── */}
