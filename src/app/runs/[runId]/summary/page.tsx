@@ -7,6 +7,8 @@ import AppTopNav from "@/components/AppTopNav";
 import { getCurrentUser } from "@/components/AppTopNav";
 import type { ProtocolRun, StepResult } from "@/models/protocolRun";
 import TagInput from "@/components/tags/TagInput";
+import { assembleRunExport } from "@/utils/assembleRunExport";
+import { exportRun } from "@/utils/exportRun";
 
 type ParsedStep = {
   id: string;
@@ -120,6 +122,7 @@ export default function RunSummaryPage() {
   const [error, setError] = useState<string | null>(null);
   const [runTagAssignments, setRunTagAssignments] = useState<NonNullable<ProtocolRun["tagAssignments"]>>([]);
   const [showTagNudge, setShowTagNudge] = useState(false);
+  const [showExportWarning, setShowExportWarning] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,6 +143,7 @@ export default function RunSummaryPage() {
           setRunTagAssignments(tags);
           const hasProjectTag = tags.some((a) => a.tag.type === "PROJECT");
           setShowTagNudge(!hasProjectTag);
+
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load.");
@@ -347,9 +351,77 @@ export default function RunSummaryPage() {
           />
         </div>
 
-        {/* PDF export placeholder */}
-        <div className="rounded border border-zinc-700 bg-zinc-800/50 p-4 text-center text-sm text-zinc-500">
-          📄 PDF export — coming soon
+        {/* Export button + IN PROGRESS confirmation dialog */}
+        <div>
+          {/* IN PROGRESS confirmation dialog */}
+          {showExportWarning && (
+            <div
+              style={{
+                position: "fixed",
+                inset: 0,
+                backgroundColor: "rgba(0,0,0,0.7)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 50,
+              }}
+            >
+              <div className="mx-4 w-full max-w-md rounded-lg border border-white/10 bg-gray-900 p-6">
+                <h3 className="mb-3 text-lg font-bold text-white">
+                  Export Incomplete Run?
+                </h3>
+                <p className="mb-6 text-sm text-gray-400">
+                  This run is still in progress. The exported PDF will show completed
+                  steps and mark remaining steps as pending. An incomplete run notice
+                  will appear at the top of the document.
+                </p>
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setShowExportWarning(false)}
+                    className="rounded border border-white/10 px-4 py-2 text-sm text-gray-400 hover:bg-white/5"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowExportWarning(false);
+                      const exportData = assembleRunExport(
+                        { ...run!, stepResults },
+                        `v${run!.sourceEntry?.version ?? 1}`
+                      );
+                      exportRun({ ...exportData, exportedAt: new Date() });
+                    }}
+                    className="rounded border border-amber-500 bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-400 hover:bg-amber-500/30"
+                  >
+                    Export Anyway
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Export button */}
+          <button
+            onClick={() => {
+              if (run!.status === "IN_PROGRESS") {
+                setShowExportWarning(true);
+              } else {
+                const exportData = assembleRunExport(
+                  { ...run!, stepResults },
+                  `v${run!.sourceEntry?.version ?? 1}`
+                );
+                exportRun({ ...exportData, exportedAt: new Date() });
+              }
+            }}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-gray-300 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            <span>📄</span>
+            <span>
+              {run!.status === "IN_PROGRESS"
+                ? "Export Partial Run PDF"
+                : "Export Run PDF"}
+            </span>
+          </button>
         </div>
 
         {/* Back links */}

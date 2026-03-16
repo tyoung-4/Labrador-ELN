@@ -51,6 +51,7 @@ export type ProtocolRun = {
     title: string;
     description: string;
     technique?: string;
+    version?: number;
     author?: {
       id: string;
       name: string | null;
