@@ -131,6 +131,21 @@ const GRID_START  = 0;    // first hour shown (12 AM)
 const GRID_HOURS  = 24;   // number of hours shown (full day)
 const GRID_END    = 24;   // last hour (exclusive)
 
+// ─── Weekly grid constants ─────────────────────────────────────────────────────
+const WEEK_START_HOUR         = 8;
+const WEEK_END_HOUR           = 18;
+const WEEK_TOTAL_MINUTES      = (WEEK_END_HOUR - WEEK_START_HOUR) * 60; // 600
+const WEEK_GRID_PX_PER_MINUTE = 1.5;
+const WEEK_GRID_HEIGHT        = WEEK_TOTAL_MINUTES * WEEK_GRID_PX_PER_MINUTE; // 900px
+const WEEK_TIME_GUTTER_W      = 28; // px width of time-label gutter
+
+function getWeekItemTop(startMins: number): number {
+  return Math.max((startMins - WEEK_START_HOUR * 60) * WEEK_GRID_PX_PER_MINUTE, 0);
+}
+function getWeekItemHeight(durationMins: number): number {
+  return Math.max(durationMins * WEEK_GRID_PX_PER_MINUTE, 20);
+}
+
 function timeToMinutes(t: string): number {
   const [h, m] = t.split(":").map(Number);
   return h * 60 + (m || 0);
@@ -830,66 +845,175 @@ function WeeklySchedulePanel({
   const allDates  = getWeekDates(weekOffset);
   const weekDates = showWeekends ? allDates : allDates.filter(d => d.getDay() !== 0 && d.getDay() !== 6);
   const today     = localDateStr();
-  const cols      = weekDates.length;
+
+  // Track current time (minutes since midnight) for the red "now" indicator
+  const [nowMins, setNowMins] = useState<number>(() => {
+    const n = new Date();
+    return n.getHours() * 60 + n.getMinutes();
+  });
+  useEffect(() => {
+    const id = setInterval(() => {
+      const n = new Date();
+      setNowMins(n.getHours() * 60 + n.getMinutes());
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Hour labels 8 am – 6 pm (one label per hour boundary)
+  const hourLabels = Array.from({ length: WEEK_END_HOUR - WEEK_START_HOUR + 1 }, (_, i) => {
+    const h     = WEEK_START_HOUR + i;
+    const label = h === 12 ? "12p" : h > 12 ? `${h - 12}p` : `${h}a`;
+    const topPx = i * 60 * WEEK_GRID_PX_PER_MINUTE;
+    return { label, topPx };
+  });
 
   return (
-    <div
-      className="grid h-full gap-0.5"
-      style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-    >
-      {weekDates.map(date => {
-        const ds       = localDateStr(date);
-        const rawItems = items.filter(i => i.date === ds && !i.done);
-        // Sort ascending by time; tasks with no time go to the bottom
-        const dayItems = [...rawItems].sort((a, b) => {
-          if (!a.time && !b.time) return 0;
-          if (!a.time) return 1;
-          if (!b.time) return -1;
-          return a.time.localeCompare(b.time);
-        });
-        const isToday  = ds === today;
+    <div className="flex h-full flex-col">
 
-        return (
-          <div
-            key={ds}
-            onDoubleClick={() => onDayDoubleClick(date)}
-            className={`h-full min-h-[6rem] cursor-pointer rounded border p-1 ${
-              isToday
-                ? "border-indigo-500/40 bg-indigo-500/10"
-                : "border-zinc-700/40 bg-zinc-800/20"
-            }`}
-          >
-            <p
-              className={`text-[9px] font-semibold uppercase tracking-wide ${
-                isToday ? "text-indigo-400" : "text-zinc-500"
-              }`}
+      {/* ── Fixed day-header row ── */}
+      <div
+        className="flex shrink-0 border-b border-zinc-800"
+        style={{ paddingLeft: WEEK_TIME_GUTTER_W }}
+      >
+        {weekDates.map(date => {
+          const ds      = localDateStr(date);
+          const isToday = ds === today;
+          return (
+            <div
+              key={ds}
+              onDoubleClick={() => onDayDoubleClick(date)}
+              className={`flex-1 cursor-pointer py-1 text-center ${isToday ? "bg-indigo-500/10" : ""}`}
             >
-              {date.toLocaleDateString("en-US", { weekday: "short" })}
-            </p>
-            <p
-              className={`mb-1 text-xs font-bold ${
-                isToday ? "text-indigo-200" : "text-zinc-400"
-              }`}
-            >
-              {date.getDate()}
-            </p>
-            <div className="space-y-0.5">
-              {dayItems.slice(0, 4).map(item => (
-                <div
-                  key={item.id}
-                  className="truncate rounded bg-indigo-500/20 px-1 py-px text-[8px] leading-tight text-indigo-200"
-                >
-                  {item.time && <span className="opacity-60">{formatTimeShort(item.time)} </span>}
-                  {item.text}
-                </div>
-              ))}
-              {dayItems.length > 4 && (
-                <p className="text-[8px] text-zinc-600">+{dayItems.length - 4} more</p>
-              )}
+              <p className={`text-[9px] font-semibold uppercase tracking-wide ${isToday ? "text-indigo-400" : "text-zinc-500"}`}>
+                {date.toLocaleDateString("en-US", { weekday: "short" })}
+              </p>
+              <p className={`text-xs font-bold ${isToday ? "text-indigo-200" : "text-zinc-400"}`}>
+                {date.getDate()}
+              </p>
             </div>
+          );
+        })}
+      </div>
+
+      {/* ── Scrollable time grid ── */}
+      <div className="min-h-0 flex-1 overflow-y-scroll">
+
+        {/* Inner grid: time gutter + day columns */}
+        <div
+          className="relative flex"
+          style={{ height: WEEK_GRID_HEIGHT }}
+        >
+
+          {/* Time gutter */}
+          <div
+            className="relative shrink-0"
+            style={{ width: WEEK_TIME_GUTTER_W }}
+          >
+            {hourLabels.map(({ label, topPx }) => (
+              <span
+                key={label}
+                className="absolute right-1 text-[8px] leading-none text-zinc-600"
+                style={{ top: topPx - 4 }}
+              >
+                {label}
+              </span>
+            ))}
           </div>
-        );
-      })}
+
+          {/* Day columns */}
+          {weekDates.map(date => {
+            const ds         = localDateStr(date);
+            const isToday    = ds === today;
+            const dayItems   = items.filter(i => i.date === ds && !i.done);
+            const timedItems = dayItems.filter(i => !!i.time);
+
+            // Current-time indicator position
+            const nowLinePx  = (nowMins - WEEK_START_HOUR * 60) * WEEK_GRID_PX_PER_MINUTE;
+            const showNowLine = isToday && nowMins >= WEEK_START_HOUR * 60 && nowMins <= WEEK_END_HOUR * 60;
+
+            return (
+              <div
+                key={ds}
+                onDoubleClick={() => onDayDoubleClick(date)}
+                className={`relative flex-1 cursor-pointer border-l ${
+                  isToday ? "border-indigo-500/20 bg-indigo-500/5" : "border-zinc-800/50"
+                }`}
+              >
+                {/* Hour grid lines */}
+                {Array.from({ length: WEEK_END_HOUR - WEEK_START_HOUR + 1 }, (_, i) => (
+                  <div
+                    key={i}
+                    className="absolute inset-x-0 border-t border-zinc-800/40"
+                    style={{ top: i * 60 * WEEK_GRID_PX_PER_MINUTE }}
+                  />
+                ))}
+
+                {/* Timed task blocks */}
+                {timedItems.map(item => {
+                  const startMins    = timeToMinutes(item.time!);
+                  const endMins      = item.endTime ? timeToMinutes(item.endTime) : startMins + 60;
+                  const durationMins = Math.max(endMins - startMins, 15);
+                  // Skip items outside the 8am–6pm window
+                  if (startMins < WEEK_START_HOUR * 60 || startMins >= WEEK_END_HOUR * 60) return null;
+                  const top    = getWeekItemTop(startMins);
+                  const height = getWeekItemHeight(durationMins);
+                  return (
+                    <div
+                      key={item.id}
+                      className={`absolute inset-x-0.5 overflow-hidden rounded px-1 py-0.5 text-[8px] leading-tight ${
+                        item.timeSensitive
+                          ? "bg-amber-500/25 text-amber-200"
+                          : "bg-indigo-500/25 text-indigo-200"
+                      }`}
+                      style={{ top, height }}
+                      title={`${formatTimeShort(item.time!)}${item.endTime ? "–" + formatTimeShort(item.endTime) : ""}: ${item.text}`}
+                    >
+                      <span className="block truncate opacity-70">{formatTimeShort(item.time!)}</span>
+                      <span className="block truncate font-medium">{item.text}</span>
+                    </div>
+                  );
+                })}
+
+                {/* Current-time indicator */}
+                {showNowLine && (
+                  <div
+                    className="pointer-events-none absolute inset-x-0 z-10 border-t-2 border-red-500"
+                    style={{ top: nowLinePx }}
+                  >
+                    <div className="absolute -left-1 -top-1.5 h-2.5 w-2.5 rounded-full bg-red-500" />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* ── Untimed items row (below grid) ── */}
+        {weekDates.some(d => items.some(i => i.date === localDateStr(d) && !i.done && !i.time)) && (
+          <div
+            className="flex border-t border-zinc-800"
+            style={{ paddingLeft: WEEK_TIME_GUTTER_W }}
+          >
+            {weekDates.map(date => {
+              const ds           = localDateStr(date);
+              const untimedItems = items.filter(i => i.date === ds && !i.done && !i.time);
+              return (
+                <div key={ds} className="flex-1 border-l border-zinc-800/50 p-0.5">
+                  {untimedItems.map(item => (
+                    <div
+                      key={item.id}
+                      className="mb-0.5 truncate rounded bg-zinc-700/40 px-1 py-px text-[8px] text-zinc-400"
+                    >
+                      {item.text}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+      </div>
     </div>
   );
 }
@@ -2047,7 +2171,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
         <div className="flex h-[420px] overflow-hidden">
 
           {/* ── Schedule panel ── */}
-          <div className="w-2/5 shrink-0 overflow-y-auto border-r border-zinc-800 p-3">
+          <div className={`w-2/5 shrink-0 border-r border-zinc-800 ${scheduleView === "daily" ? "overflow-y-auto p-3" : "overflow-hidden p-0"}`}>
             {scheduleView === "daily" ? (
               <DailySchedulePanel
                 items={items}
