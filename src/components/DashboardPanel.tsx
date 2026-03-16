@@ -674,11 +674,15 @@ function DailySchedulePanel({
   onUpdateItem,
   date,
   scrollTrigger,
+  hourScrollTrigger,
+  hourScrollTarget,
 }: {
   items: TodoItem[];
   onUpdateItem: (id: string, updates: Partial<TodoItem>) => void;
   date: string;
   scrollTrigger: number;
+  hourScrollTrigger?: number;
+  hourScrollTarget?: number;
 }) {
   const today       = localDateStr();
   const isToday     = date === today;
@@ -702,6 +706,17 @@ function DailySchedulePanel({
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isToday, scrollTrigger]);
+
+  // Scroll to a specific hour — triggered by double-click navigation from weekly view.
+  useEffect(() => {
+    if (hourScrollTrigger === undefined || hourScrollTrigger === 0) return;
+    requestAnimationFrame(() => {
+      if (!scrollRef.current) return;
+      const targetPx = (hourScrollTarget ?? 8) * PX_PER_HOUR;
+      scrollRef.current.scrollTop = Math.max(0, targetPx - PX_PER_HOUR);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hourScrollTrigger]);
 
   const totalHeight = GRID_HOURS * PX_PER_HOUR;
   const now_        = new Date();  // snapshot for render; used by hour labels + red bar
@@ -805,10 +820,12 @@ function WeeklySchedulePanel({
   items,
   weekOffset,
   showWeekends,
+  onDayDoubleClick,
 }: {
   items: TodoItem[];
   weekOffset: number;
   showWeekends: boolean;
+  onDayDoubleClick: (date: Date) => void;
 }) {
   const allDates  = getWeekDates(weekOffset);
   const weekDates = showWeekends ? allDates : allDates.filter(d => d.getDay() !== 0 && d.getDay() !== 6);
@@ -822,13 +839,21 @@ function WeeklySchedulePanel({
     >
       {weekDates.map(date => {
         const ds       = localDateStr(date);
-        const dayItems = items.filter(i => i.date === ds && !i.done);
+        const rawItems = items.filter(i => i.date === ds && !i.done);
+        // Sort ascending by time; tasks with no time go to the bottom
+        const dayItems = [...rawItems].sort((a, b) => {
+          if (!a.time && !b.time) return 0;
+          if (!a.time) return 1;
+          if (!b.time) return -1;
+          return a.time.localeCompare(b.time);
+        });
         const isToday  = ds === today;
 
         return (
           <div
             key={ds}
-            className={`h-full min-h-[6rem] rounded border p-1 ${
+            onDoubleClick={() => onDayDoubleClick(date)}
+            className={`h-full min-h-[6rem] cursor-pointer rounded border p-1 ${
               isToday
                 ? "border-indigo-500/40 bg-indigo-500/10"
                 : "border-zinc-700/40 bg-zinc-800/20"
@@ -1545,6 +1570,8 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
   const [scheduleDate,   setScheduleDate]   = useState(localDateStr());   // daily nav date
   const [scrollTrigger,  setScrollTrigger]  = useState(0);                // inc → DailySchedulePanel re-scrolls
   const [weekOffset,   setWeekOffset]   = useState(0);
+  const [hourScrollTrigger, setHourScrollTrigger] = useState(0);          // inc → DailySchedulePanel scrolls to hourScrollTarget
+  const [hourScrollTarget,  setHourScrollTarget]  = useState(8);          // hour to scroll to on double-click from weekly view
   const [showWeekends, setShowWeekends] = useState(() => {
     try { return localStorage.getItem("eln-showWeekends") === "true"; } catch { return false; }
   });
@@ -1819,6 +1846,28 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
 
   const editingItem = editingItemId ? items.find(i => i.id === editingItemId) : null;
 
+  // ── Double-click a weekly-view day column → switch to daily view for that date ──
+  function handleDayDoubleClick(date: Date) {
+    const todayStr = localDateStr();
+    const ds       = localDateStr(date);
+    const isToday  = ds === todayStr;
+
+    setScheduleView("daily");
+    setScheduleDate(ds);
+
+    if (isToday) {
+      // Scroll to current time using the existing scroll-trigger mechanism.
+      // Reset hourScrollTrigger to 0 so the hour-scroll effect does not fire
+      // if it was previously set by an earlier non-today double-click.
+      setHourScrollTrigger(0);
+      setScrollTrigger(t => t + 1);
+    } else {
+      // Scroll to 8:00 am
+      setHourScrollTarget(8);
+      setHourScrollTrigger(t => t + 1);
+    }
+  }
+
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       {showProtoPicker && (
@@ -1929,6 +1978,15 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
                 className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
                 aria-label="Next day"
               >›</button>
+              {/* Date label — inline to the right of › */}
+              <span className="ml-1.5 text-[9px] font-semibold uppercase tracking-widest text-zinc-600">
+                {(() => {
+                  const d = new Date(scheduleDate + "T00:00:00");
+                  const isToday = scheduleDate === localDateStr();
+                  const label   = d.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+                  return isToday ? `Today · ${label}` : label;
+                })()}
+              </span>
             </div>
           )}
 
@@ -1957,6 +2015,14 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
                 >
                   ›
                 </button>
+                {/* Week range label — inline to the right of › */}
+                <span className="ml-1.5 text-[9px] font-semibold uppercase tracking-widest text-zinc-600">
+                  {(() => {
+                    const dates = getWeekDates(weekOffset);
+                    const fmt   = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                    return `${fmt(dates[0])} – ${fmt(dates[6])}`;
+                  })()}
+                </span>
               </div>
               <button
                 onClick={() => setShowWeekends(v => !v)}
@@ -1982,24 +2048,22 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
 
           {/* ── Schedule panel ── */}
           <div className="w-2/5 shrink-0 overflow-y-auto border-r border-zinc-800 p-3">
-            <p className="mb-2 text-[9px] font-semibold uppercase tracking-widest text-zinc-600">
-              {scheduleView === "daily"
-                ? (() => {
-                    const d = new Date(scheduleDate + "T00:00:00");
-                    const isToday = scheduleDate === localDateStr();
-                    const label   = d.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
-                    return isToday ? `Today · ${label}` : label;
-                  })()
-                : (() => {
-                    const dates = getWeekDates(weekOffset);
-                    const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-                    return `${fmt(dates[0])} – ${fmt(dates[6])}`;
-                  })()}
-            </p>
             {scheduleView === "daily" ? (
-              <DailySchedulePanel items={items} onUpdateItem={updateItem} date={scheduleDate} scrollTrigger={scrollTrigger} />
+              <DailySchedulePanel
+                items={items}
+                onUpdateItem={updateItem}
+                date={scheduleDate}
+                scrollTrigger={scrollTrigger}
+                hourScrollTrigger={hourScrollTrigger}
+                hourScrollTarget={hourScrollTarget}
+              />
             ) : (
-              <WeeklySchedulePanel items={items} weekOffset={weekOffset} showWeekends={showWeekends} />
+              <WeeklySchedulePanel
+                items={items}
+                weekOffset={weekOffset}
+                showWeekends={showWeekends}
+                onDayDoubleClick={handleDayDoubleClick}
+              />
             )}
           </div>
 
