@@ -4,7 +4,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Editor from "@/components/Editor";
 import AppTopNav from "@/components/AppTopNav";
 import { USER_STORAGE_KEY } from "@/components/AppTopNav";
-import { Q5_TEMPLATE_ENTRY_ID } from "@/lib/defaultTemplates";
 import { TECHNIQUE_OPTIONS, PROTOCOL_TECHNIQUES, type Entry } from "@/models/entry";
 import { parseTypedData } from "@/lib/entryTypes";
 import { printProtocol } from "@/utils/printProtocol";
@@ -448,8 +447,8 @@ export default function ProtocolsPage() {
   }), [authHeaders]);
 
   // ── Permissions ────────────────────────────────────────────────────────────
-  const canEdit   = (e: Entry) => e.id !== Q5_TEMPLATE_ENTRY_ID && (currentUser.role === "ADMIN" || Boolean(e.authorId && e.authorId === currentUser.id));
-  const canDelete = (e: Entry) => e.id !== Q5_TEMPLATE_ENTRY_ID && (currentUser.role === "ADMIN" || Boolean(e.authorId && e.authorId === currentUser.id));
+  const canEdit   = (e: Entry) => currentUser.role === "ADMIN" || Boolean(e.authorId && e.authorId === currentUser.id);
+  const canDelete = (e: Entry) => currentUser.role === "ADMIN" || Boolean(e.authorId && e.authorId === currentUser.id);
 
   // ── Load ───────────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -545,10 +544,6 @@ export default function ProtocolsPage() {
 
   /** Entry point for saving — intercepts to show version bump modal for edits */
   async function handleSave(payload: Partial<Entry>) {
-    if (payload.id === Q5_TEMPLATE_ENTRY_ID) {
-      setSaveError("This template is permanent. Clone it first to create an editable copy.");
-      return;
-    }
     const isUpdate = editorMode === "edit" && Boolean(payload.id);
 
     // Block save if nothing changed
@@ -734,8 +729,6 @@ export default function ProtocolsPage() {
       );
     });
     filtered.sort((a, b) => {
-      if (a.id === Q5_TEMPLATE_ENTRY_ID) return -1;
-      if (b.id === Q5_TEMPLATE_ENTRY_ID) return 1;
       if (sortBy === "oldest")    return a.createdAt.localeCompare(b.createdAt);
       if (sortBy === "technique") return (a.technique || "General").localeCompare(b.technique || "General");
       if (sortBy === "author")    return (a.author?.name || "Unknown").localeCompare(b.author?.name || "Unknown");
