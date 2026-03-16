@@ -1,6 +1,6 @@
 "use client";
 
-import { MouseEvent, useState } from "react";
+import { MouseEvent, useEffect, useRef, useState } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -160,7 +160,23 @@ export function nextDayStr(dateStr: string): string {
 
 // ─── DailyView ────────────────────────────────────────────────────────────────
 
-const TIMELINE_HEIGHT_PX = 600;
+const TOTAL_MINUTES      = 1440;                                // 12 am – 11:59 pm
+const GRID_PX_PER_MINUTE = 2;                                   // 2 px / min = 120 px / hr
+const TOTAL_GRID_HEIGHT  = TOTAL_MINUTES * GRID_PX_PER_MINUTE; // 2880 px
+const CONTAINER_HEIGHT   = 360  * GRID_PX_PER_MINUTE;          // 720 px  (6-hr viewport)
+
+// 48 labels: 12:00 am, 12:30 am … 11:30 pm  (pre-computed at module load)
+const TIME_LABELS: ReadonlyArray<{ label: string; topPx: number }> =
+  Array.from({ length: 48 }, (_, i) => {
+    const totalMins = i * 30;
+    const h24       = Math.floor(totalMins / 60);
+    const m         = totalMins % 60;
+    const h12       = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+    return {
+      label: `${h12}:${String(m).padStart(2, "0")} ${h24 < 12 ? "am" : "pm"}`,
+      topPx: totalMins * GRID_PX_PER_MINUTE,
+    };
+  });
 
 export function DailyView({
   date,
@@ -169,8 +185,8 @@ export function DailyView({
   onCellClick,
   onEventClick,
   onEndEarly,
-  timeWindow,
   currentUserId,
+  scrollTrigger,
 }: {
   date: string;
   enabledResources: (ResourceMeta & { group: ResourceGroup })[];
@@ -178,11 +194,41 @@ export function DailyView({
   onCellClick: (resourceId: ResourceId, startTime: string) => void;
   onEventClick: (ev: ScheduleEvent) => void;
   onEndEarly?: (ev: ScheduleEvent) => void;
-  /** 6-hour window to display. Defaults to 8 am–8 pm when omitted. */
-  timeWindow?: { start: Date; end: Date };
   /** Current user's ID. When provided, only owners (or "Admin") can interact. */
   currentUserId?: string;
+  /** Increment to force-scroll back to default position (e.g. on Today click). */
+  scrollTrigger?: number;
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Track current minute for the live time indicator — updates every 60 s
+  const [nowMins, setNowMins] = useState(() => {
+    const n = new Date();
+    return n.getHours() * 60 + n.getMinutes();
+  });
+  useEffect(() => {
+    const id = setInterval(() => {
+      const n = new Date();
+      setNowMins(n.getHours() * 60 + n.getMinutes());
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Scroll to default position on mount, date change, or explicit trigger
+  function defaultScrollPx(): number {
+    if (date === localDateStr()) {
+      const n = new Date();
+      return (n.getHours() * 60 + n.getMinutes()) * GRID_PX_PER_MINUTE;
+    }
+    return 8 * 60 * GRID_PX_PER_MINUTE; // 8 am = 960 px
+  }
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      if (scrollRef.current) scrollRef.current.scrollTop = defaultScrollPx();
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, scrollTrigger]);
+
   if (enabledResources.length === 0) {
     return (
       <div className="flex h-32 items-center justify-center">
@@ -192,24 +238,7 @@ export function DailyView({
   }
 
   const colCount = enabledResources.length;
-  const today    = localDateStr();
-  const isToday  = date === today;
-  const now      = new Date();
-  const nowMins  = now.getHours() * 60 + now.getMinutes();
-
-  // ── Time window ────────────────────────────────────────────────────────────
-  let windowStartMins: number;
-  let windowEndMins: number;
-  if (timeWindow) {
-    windowStartMins = timeWindow.start.getHours() * 60 + timeWindow.start.getMinutes();
-    windowEndMins   = timeWindow.end.getHours()   * 60 + timeWindow.end.getMinutes();
-    if (windowEndMins <= windowStartMins) windowEndMins += 1440; // overnight
-  } else {
-    windowStartMins = 480;   // 8 am default
-    windowEndMins   = 1200;  // 8 pm default
-  }
-  const minutesInView = windowEndMins - windowStartMins;
-  const pxPerMinute   = TIMELINE_HEIGHT_PX / minutesInView;
+  const isToday  = date === localDateStr();
 
   // ── Helpers ────────────────────────────────────────────────────────────────
   function tmins(t: string): number {
@@ -218,23 +247,14 @@ export function DailyView({
   }
 
   function bookingTop(startTime: string): number {
-    return Math.max((Math.max(tmins(startTime), windowStartMins) - windowStartMins) * pxPerMinute, 0);
+    return tmins(startTime) * GRID_PX_PER_MINUTE;
   }
 
   function bookingHeight(startTime: string, endTime: string): number {
     let s = tmins(startTime);
     let e = tmins(endTime);
-    if (e <= s) e += 1440;
-    const durationMins = Math.max(0, Math.min(e, windowEndMins) - Math.max(s, windowStartMins));
-    return Math.max(durationMins * pxPerMinute, 24);
-  }
-
-  function bookingVisible(ev: ScheduleEvent): boolean {
-    if (!ev.startTime || !ev.endTime) return true;
-    let s = tmins(ev.startTime);
-    let e = tmins(ev.endTime);
-    if (e <= s) e += 1440;
-    return s < windowEndMins && e > windowStartMins;
+    if (e <= s) e += 1440; // overnight
+    return Math.max((e - s) * GRID_PX_PER_MINUTE, 24);
   }
 
   function isActive(ev: ScheduleEvent): boolean {
@@ -251,124 +271,129 @@ export function DailyView({
 
   function handleColClick(e: MouseEvent<HTMLDivElement>, resourceId: ResourceId) {
     const rect        = e.currentTarget.getBoundingClientRect();
-    const clickedMins = windowStartMins + (e.clientY - rect.top) / pxPerMinute;
+    const clickedMins = Math.floor((e.clientY - rect.top) / GRID_PX_PER_MINUTE);
     const rounded     = Math.floor(clickedMins / 30) * 30;
     const h = Math.floor(rounded / 60) % 24;
     const m = rounded % 60;
     onCellClick(resourceId, `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
   }
 
-  // Hour labels for the window
-  const startHour = Math.floor(windowStartMins / 60);
-  const endHour   = Math.ceil(windowEndMins / 60);
-  const hours     = Array.from({ length: endHour - startHour }, (_, i) => startHour + i);
-
   return (
     <div className="min-w-[320px]">
-      {/* Resource header */}
+      {/* ── Scroll viewport (6-hr window) ── */}
       <div
-        className="sticky top-0 z-10 grid border-b border-zinc-800 bg-zinc-950"
-        style={{ gridTemplateColumns: `3.5rem repeat(${colCount}, minmax(0, 1fr))` }}
+        ref={scrollRef}
+        className="overflow-y-scroll"
+        style={{ height: `${CONTAINER_HEIGHT}px` }}
       >
-        <div className="border-r border-zinc-800" />
-        {enabledResources.map(r => (
-          <div
-            key={r.id}
-            className={`border-r border-zinc-800 px-2 py-2 text-center text-[10px] font-semibold ${r.group.textCls}`}
-          >
-            {r.label}
-          </div>
-        ))}
-      </div>
-
-      {/* Timeline */}
-      <div
-        className="relative grid"
-        style={{
-          height: `${TIMELINE_HEIGHT_PX}px`,
-          gridTemplateColumns: `3.5rem repeat(${colCount}, minmax(0, 1fr))`,
-        }}
-      >
-        {/* Current-time indicator */}
-        {isToday && nowMins >= windowStartMins && nowMins <= windowEndMins && (
-          <div
-            className="pointer-events-none absolute z-20 border-t-2 border-indigo-500"
-            style={{ top: `${(nowMins - windowStartMins) * pxPerMinute}px`, left: "3.5rem", right: 0 }}
-          />
-        )}
-
-        {/* Time labels */}
-        <div className="relative border-r border-zinc-800">
-          {hours.map(h => {
-            const h12  = h === 0 ? 12 : h > 12 ? h - 12 : h;
-            const ampm = h < 12 ? "am" : "pm";
-            return (
-              <div
-                key={h}
-                className="absolute inset-x-0 px-1 text-right text-[9px] leading-none text-zinc-700"
-                style={{ top: `${(h * 60 - windowStartMins) * pxPerMinute}px` }}
-              >
-                {h12}:00 {ampm}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Resource columns */}
-        {enabledResources.map(r => {
-          const colEvts = events
-            .filter(e => e.resourceId === r.id && e.date === date)
-            .filter(bookingVisible);
-
-          return (
+        {/* Sticky resource header */}
+        <div
+          className="sticky top-0 z-10 grid border-b border-zinc-800 bg-zinc-950"
+          style={{ gridTemplateColumns: `3.5rem repeat(${colCount}, minmax(0, 1fr))` }}
+        >
+          <div className="border-r border-zinc-800" />
+          {enabledResources.map(r => (
             <div
               key={r.id}
-              onClick={e => handleColClick(e, r.id)}
-              className="relative cursor-pointer border-r border-zinc-800 transition hover:bg-zinc-800/20"
+              className={`border-r border-zinc-800 px-2 py-2 text-center text-[10px] font-semibold ${r.group.textCls}`}
             >
-              {/* Hour lines */}
-              {hours.map(h => (
-                <div
-                  key={h}
-                  className="pointer-events-none absolute inset-x-0 border-t border-zinc-800/40"
-                  style={{ top: `${(h * 60 - windowStartMins) * pxPerMinute}px` }}
-                />
-              ))}
-
-              {/* Booking boxes */}
-              {colEvts.map(ev => {
-                if (!ev.startTime || !ev.endTime) return null;
-                const top    = bookingTop(ev.startTime);
-                const height = bookingHeight(ev.startTime, ev.endTime);
-                const active = isActive(ev);
-                const owner  = isOwner(ev);
-
-                return (
-                  <div
-                    key={ev.id}
-                    onClick={owner ? e => { e.stopPropagation(); onEventClick(ev); } : e => e.stopPropagation()}
-                    className={`absolute inset-x-0.5 overflow-hidden rounded px-1.5 py-1 text-[9px] leading-tight ${r.group.chipBg} ${r.group.chipText} ${owner ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
-                    style={{ top: `${top}px`, height: `${height}px` }}
-                  >
-                    <div className="truncate font-medium">{ev.title}</div>
-                    <div className="truncate opacity-70">{ev.userName}</div>
-                    {ev.startTime && ev.endTime && (
-                      <div className="opacity-60">{fmt12h(ev.startTime)}–{fmt12h(ev.endTime)}</div>
-                    )}
-                    {active && owner && onEndEarly && (
-                      <button
-                        onClick={e => { e.stopPropagation(); onEndEarly(ev); }}
-                        className="mt-1 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[8px] text-amber-300 transition hover:bg-amber-500/30"
-                      >
-                        End Early
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
+              {r.label}
             </div>
-          );
-        })}
+          ))}
+        </div>
+
+        {/* ── Full-day grid (2880 px) ── */}
+        <div className="relative" style={{ height: `${TOTAL_GRID_HEIGHT}px` }}>
+
+          {/* Current-time indicator (today only) */}
+          {isToday && (
+            <div
+              className="pointer-events-none absolute z-20 border-t-2 border-red-500"
+              style={{ top: `${nowMins * GRID_PX_PER_MINUTE}px`, left: "3.5rem", right: 0 }}
+            />
+          )}
+
+          {/* Time label column */}
+          <div
+            className="absolute left-0 top-0 bottom-0 border-r border-zinc-800"
+            style={{ width: "3.5rem" }}
+          >
+            {TIME_LABELS.map(({ label, topPx }) => (
+              <div
+                key={topPx}
+                className="absolute inset-x-0 px-1 text-right text-[9px] leading-none text-zinc-700"
+                style={{ top: `${topPx}px` }}
+              >
+                {label}
+              </div>
+            ))}
+          </div>
+
+          {/* Resource columns */}
+          <div
+            className="absolute top-0 bottom-0 grid"
+            style={{
+              left: "3.5rem",
+              right: 0,
+              gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))`,
+            }}
+          >
+            {enabledResources.map(r => {
+              const colEvts = events.filter(e => e.resourceId === r.id && e.date === date);
+
+              return (
+                <div
+                  key={r.id}
+                  onClick={e => handleColClick(e, r.id)}
+                  className="relative h-full cursor-pointer border-r border-zinc-800 transition hover:bg-zinc-800/20"
+                >
+                  {/* 30-min grid lines */}
+                  {TIME_LABELS.map(({ topPx }, i) => (
+                    <div
+                      key={topPx}
+                      className={`pointer-events-none absolute inset-x-0 border-t ${
+                        i % 2 === 0 ? "border-zinc-800/40" : "border-zinc-800/20"
+                      }`}
+                      style={{ top: `${topPx}px` }}
+                    />
+                  ))}
+
+                  {/* Booking boxes */}
+                  {colEvts.map(ev => {
+                    if (!ev.startTime || !ev.endTime) return null;
+                    const top    = bookingTop(ev.startTime);
+                    const height = bookingHeight(ev.startTime, ev.endTime);
+                    const active = isActive(ev);
+                    const owner  = isOwner(ev);
+
+                    return (
+                      <div
+                        key={ev.id}
+                        onClick={owner ? e => { e.stopPropagation(); onEventClick(ev); } : e => e.stopPropagation()}
+                        className={`absolute inset-x-0.5 overflow-hidden rounded px-1.5 py-1 text-[9px] leading-tight ${r.group.chipBg} ${r.group.chipText} ${owner ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
+                        style={{ top: `${top}px`, height: `${height}px` }}
+                      >
+                        <div className="truncate font-medium">{ev.title}</div>
+                        <div className="truncate opacity-70">{ev.userName}</div>
+                        {ev.startTime && ev.endTime && (
+                          <div className="opacity-60">{fmt12h(ev.startTime)}–{fmt12h(ev.endTime)}</div>
+                        )}
+                        {active && owner && onEndEarly && (
+                          <button
+                            onClick={e => { e.stopPropagation(); onEndEarly(ev); }}
+                            className="mt-1 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[8px] text-amber-300 transition hover:bg-amber-500/30"
+                          >
+                            End Early
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );

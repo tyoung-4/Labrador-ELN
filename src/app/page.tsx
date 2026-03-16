@@ -8,10 +8,6 @@ export default function Home() {
     <div className="flex min-h-screen flex-col gap-4 bg-zinc-950 p-6 text-zinc-100">
       <AppTopNav />
 
-      <p className="text-xs font-medium uppercase tracking-widest text-zinc-500">
-        JCW Lab ELN &mdash; in development
-      </p>
-
       {/* Dashboard — full width, above module grid */}
       <DashboardPanel equipmentCalendar={<EquipmentCalendar singleGroup />} />
 

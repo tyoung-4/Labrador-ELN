@@ -21,28 +21,6 @@ import { useToast } from "@/components/ToastProvider";
 
 const DASHBOARD_GROUP_KEY = "eln-dashboard-equipment-group";
 
-// ─── Time window ──────────────────────────────────────────────────────────────
-
-function getEquipmentTimeWindow(viewingDate: Date): { start: Date; end: Date } {
-  const today = new Date();
-  const isToday =
-    viewingDate.getFullYear() === today.getFullYear() &&
-    viewingDate.getMonth()    === today.getMonth()    &&
-    viewingDate.getDate()     === today.getDate();
-
-  if (isToday) {
-    const start = new Date();
-    const end   = new Date(start.getTime() + 6 * 60 * 60 * 1000);
-    return { start, end };
-  }
-
-  const start = new Date(viewingDate);
-  start.setHours(8, 0, 0, 0);
-  const end = new Date(viewingDate);
-  end.setHours(14, 0, 0, 0);
-  return { start, end };
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function EquipmentCalendar({ singleGroup = false }: { singleGroup?: boolean }) {
@@ -51,7 +29,8 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
   const [userName, setUserName] = useState(ELN_USERS[0].name);
 
   // ── Navigation (daily only) ────────────────────────────────────────────────
-  const [dailyDate, setDailyDate] = useState(localDateStr());
+  const [dailyDate,      setDailyDate]      = useState(localDateStr());
+  const [eqScrollTrigger, setEqScrollTrigger] = useState(0);
 
   // ── API-backed events ─────────────────────────────────────────────────────
   const { events, refresh, saveBooking: saveBookingFn, deleteBooking: deleteBookingFn, endEarlyBooking } = useEquipmentBookings();
@@ -274,6 +253,7 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
 
   function navToday() {
     setDailyDate(localDateStr());
+    setEqScrollTrigger(t => t + 1); // force scroll even if already on today
   }
 
   // ── Derived values ────────────────────────────────────────────────────────
@@ -286,7 +266,6 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
     : ALL_RESOURCES.filter(r => enabled.has(r.id));
 
   const dailyDateObj = new Date(dailyDate + "T00:00:00");
-  const timeWindow   = getEquipmentTimeWindow(dailyDateObj);
 
   const dateLabel = (() => {
     const isToday = dailyDate === localDateStr();
@@ -510,8 +489,8 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
           }
           onEventClick={openEdit}
           onEndEarly={handleEndEarly}
-          timeWindow={timeWindow}
           currentUserId={userId}
+          scrollTrigger={eqScrollTrigger}
         />
       </div>
 
