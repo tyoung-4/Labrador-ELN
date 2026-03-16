@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { TECHNIQUE_OPTIONS, PROTOCOL_TECHNIQUES } from "@/models/entry";
-import { Q5_TEMPLATE_ENTRY_ID } from "@/lib/defaultTemplates";
 import { ENTRY_TYPE_CONFIGS } from "@/lib/entryTypes";
 import type { EntryType } from "@prisma/client";
 
@@ -136,10 +135,6 @@ export async function PUT(request: Request, context: RouteContext) {
     const actor = getActorFromRequest(request);
     await ensureActor(actor);
 
-    if (id === Q5_TEMPLATE_ENTRY_ID) {
-      return NextResponse.json({ error: "This template is permanent and cannot be edited." }, { status: 403 });
-    }
-
     const existing = await prisma.entry.findUnique({ where: { id }, select: { authorId: true } });
     if (!existing) return new NextResponse(null, { status: 404 });
     if (!canEditEntry(actor, existing.authorId)) {
@@ -179,10 +174,6 @@ export async function DELETE(request: Request, context: RouteContext) {
   try {
     const actor = getActorFromRequest(request);
     await ensureActor(actor);
-
-    if (id === Q5_TEMPLATE_ENTRY_ID) {
-      return NextResponse.json({ error: "This template is permanent and cannot be deleted." }, { status: 403 });
-    }
 
     const existing = await prisma.entry.findUnique({ where: { id }, select: { authorId: true } });
     if (!existing) return new NextResponse(null, { status: 404 });
