@@ -160,21 +160,20 @@ export function nextDayStr(dateStr: string): string {
 
 // ─── DailyView ────────────────────────────────────────────────────────────────
 
-const TOTAL_MINUTES      = 1440;                                // 12 am – 11:59 pm
-const GRID_PX_PER_MINUTE = 2;                                   // 2 px / min = 120 px / hr
-const TOTAL_GRID_HEIGHT  = TOTAL_MINUTES * GRID_PX_PER_MINUTE; // 2880 px
-const CONTAINER_HEIGHT   = 720  * GRID_PX_PER_MINUTE;          // 1440 px (12-hr viewport)
+const TOTAL_MINUTES      = 1440;                                              // 12 am – 11:59 pm
+const VISIBLE_MINUTES    = 10 * 60;                                           // 600 min (7 am – 5 pm)
+const GRID_PX_PER_MINUTE = 0.667;                                             // 40 px/hr — fits 10 hrs in ~400px
+const TOTAL_GRID_HEIGHT  = Math.round(TOTAL_MINUTES * GRID_PX_PER_MINUTE);   // ~960 px full day
+const CONTAINER_HEIGHT   = Math.round(VISIBLE_MINUTES * GRID_PX_PER_MINUTE); // ~400 px visible
 
-// 48 labels: 12:00 am, 12:30 am … 11:30 pm  (pre-computed at module load)
+// 2-hour interval labels: 12am, 2am … 10pm (12 entries)
 const TIME_LABELS: ReadonlyArray<{ label: string; topPx: number }> =
-  Array.from({ length: 48 }, (_, i) => {
-    const totalMins = i * 30;
-    const h24       = Math.floor(totalMins / 60);
-    const m         = totalMins % 60;
-    const h12       = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+  [0, 120, 240, 360, 480, 600, 720, 840, 960, 1080, 1200, 1320].map(mins => {
+    const h24 = Math.floor(mins / 60);
+    const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
     return {
-      label: `${h12}:${String(m).padStart(2, "0")} ${h24 < 12 ? "am" : "pm"}`,
-      topPx: totalMins * GRID_PX_PER_MINUTE,
+      label: `${h12}:00 ${h24 < 12 ? "am" : "pm"}`,
+      topPx: mins * GRID_PX_PER_MINUTE,
     };
   });
 
@@ -214,13 +213,9 @@ export function DailyView({
     return () => clearInterval(id);
   }, []);
 
-  // Scroll to default position on mount, date change, or explicit trigger
+  // Always default to 7:00 am regardless of date or current time
   function defaultScrollPx(): number {
-    if (date === localDateStr()) {
-      const n = new Date();
-      return (n.getHours() * 60 + n.getMinutes()) * GRID_PX_PER_MINUTE;
-    }
-    return 8 * 60 * GRID_PX_PER_MINUTE; // 8 am = 960 px
+    return Math.round(7 * 60 * GRID_PX_PER_MINUTE); // ~280 px
   }
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -280,11 +275,16 @@ export function DailyView({
 
   return (
     <div className="min-w-[320px]">
-      {/* ── Scroll viewport (6-hr window) ── */}
+      {/* ── Scroll viewport (7 am–5 pm default, full day scrollable) ── */}
       <div
         ref={scrollRef}
         className="overflow-y-scroll"
-        style={{ height: `${CONTAINER_HEIGHT}px` }}
+        style={{
+          height: `${CONTAINER_HEIGHT}px`,
+          maxHeight: `${CONTAINER_HEIGHT}px`,
+          overflowY: "scroll",
+          flexShrink: 0,
+        }}
       >
         {/* Sticky resource header */}
         <div
