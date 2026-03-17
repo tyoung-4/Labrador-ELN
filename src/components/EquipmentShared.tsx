@@ -160,10 +160,12 @@ export function nextDayStr(dateStr: string): string {
 
 // ─── DailyView ────────────────────────────────────────────────────────────────
 
-const TOTAL_MINUTES      = 1440;                                // 12 am – 11:59 pm
-const GRID_PX_PER_MINUTE = 2;                                   // 2 px / min = 120 px / hr
-const TOTAL_GRID_HEIGHT  = TOTAL_MINUTES * GRID_PX_PER_MINUTE; // 2880 px
-const CONTAINER_HEIGHT   = 720  * GRID_PX_PER_MINUTE;          // 1440 px (12-hr viewport)
+const TOTAL_MINUTES      = 1440;                                         // 12 am – 11:59 pm
+const VISIBLE_HOURS      = 10;                                           // 7 am – 5 pm
+const VISIBLE_MINUTES    = VISIBLE_HOURS * 60;                           // 600 min
+const GRID_PX_PER_MINUTE = 600 / VISIBLE_MINUTES;                        // 1.0 px/min = 60 px/hr
+const TOTAL_GRID_HEIGHT  = TOTAL_MINUTES * GRID_PX_PER_MINUTE;           // 1440 px full day
+const CONTAINER_HEIGHT   = VISIBLE_MINUTES * GRID_PX_PER_MINUTE;         // 600 px visible
 
 // 48 labels: 12:00 am, 12:30 am … 11:30 pm  (pre-computed at module load)
 const TIME_LABELS: ReadonlyArray<{ label: string; topPx: number }> =
@@ -214,13 +216,9 @@ export function DailyView({
     return () => clearInterval(id);
   }, []);
 
-  // Scroll to default position on mount, date change, or explicit trigger
+  // Always default to 7:00 am regardless of date or current time
   function defaultScrollPx(): number {
-    if (date === localDateStr()) {
-      const n = new Date();
-      return (n.getHours() * 60 + n.getMinutes()) * GRID_PX_PER_MINUTE;
-    }
-    return 8 * 60 * GRID_PX_PER_MINUTE; // 8 am = 960 px
+    return 7 * 60 * GRID_PX_PER_MINUTE; // 420 px
   }
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -280,7 +278,7 @@ export function DailyView({
 
   return (
     <div className="min-w-[320px]">
-      {/* ── Scroll viewport (6-hr window) ── */}
+      {/* ── Scroll viewport (7 am–5 pm default, full day scrollable) ── */}
       <div
         ref={scrollRef}
         className="overflow-y-scroll"
