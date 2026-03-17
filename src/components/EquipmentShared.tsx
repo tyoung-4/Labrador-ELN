@@ -163,7 +163,7 @@ export function nextDayStr(dateStr: string): string {
 const TOTAL_MINUTES      = 1440;                                // 12 am – 11:59 pm
 const GRID_PX_PER_MINUTE = 2;                                   // 2 px / min = 120 px / hr
 const TOTAL_GRID_HEIGHT  = TOTAL_MINUTES * GRID_PX_PER_MINUTE; // 2880 px
-const CONTAINER_HEIGHT   = 360  * GRID_PX_PER_MINUTE;          // 720 px  (6-hr viewport)
+const CONTAINER_HEIGHT   = 720  * GRID_PX_PER_MINUTE;          // 1440 px (12-hr viewport)
 
 // 48 labels: 12:00 am, 12:30 am … 11:30 pm  (pre-computed at module load)
 const TIME_LABELS: ReadonlyArray<{ label: string; topPx: number }> =
