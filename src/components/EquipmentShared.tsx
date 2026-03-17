@@ -160,12 +160,11 @@ export function nextDayStr(dateStr: string): string {
 
 // ─── DailyView ────────────────────────────────────────────────────────────────
 
-const TOTAL_MINUTES      = 1440;                                         // 12 am – 11:59 pm
-const VISIBLE_HOURS      = 10;                                           // 7 am – 5 pm
-const VISIBLE_MINUTES    = VISIBLE_HOURS * 60;                           // 600 min
-const GRID_PX_PER_MINUTE = 600 / VISIBLE_MINUTES;                        // 1.0 px/min = 60 px/hr
-const TOTAL_GRID_HEIGHT  = TOTAL_MINUTES * GRID_PX_PER_MINUTE;           // 1440 px full day
-const CONTAINER_HEIGHT   = VISIBLE_MINUTES * GRID_PX_PER_MINUTE;         // 600 px visible
+const TOTAL_MINUTES      = 1440;                                              // 12 am – 11:59 pm
+const VISIBLE_MINUTES    = 10 * 60;                                           // 600 min (7 am – 5 pm)
+const GRID_PX_PER_MINUTE = 0.667;                                             // 40 px/hr — fits 10 hrs in ~400px
+const TOTAL_GRID_HEIGHT  = Math.round(TOTAL_MINUTES * GRID_PX_PER_MINUTE);   // ~960 px full day
+const CONTAINER_HEIGHT   = Math.round(VISIBLE_MINUTES * GRID_PX_PER_MINUTE); // ~400 px visible
 
 // 2-hour interval labels: 12am, 2am … 10pm (12 entries)
 const TIME_LABELS: ReadonlyArray<{ label: string; topPx: number }> =
@@ -216,7 +215,7 @@ export function DailyView({
 
   // Always default to 7:00 am regardless of date or current time
   function defaultScrollPx(): number {
-    return 7 * 60 * GRID_PX_PER_MINUTE; // 420 px
+    return Math.round(7 * 60 * GRID_PX_PER_MINUTE); // ~280 px
   }
   useEffect(() => {
     requestAnimationFrame(() => {

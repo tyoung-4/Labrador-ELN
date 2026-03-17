@@ -2448,7 +2448,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
         </div>
 
         {/* Body: [Schedule LEFT] | [▶ Tasks collapsible] | [Equipment RIGHT] */}
-        <div className="flex h-[702px] overflow-hidden">
+        <div className="flex h-[502px] overflow-hidden">
 
           {/* ── Schedule panel ── */}
           <div className={`w-2/5 shrink-0 border-r border-zinc-800 ${scheduleView === "daily" ? "overflow-y-auto p-3" : "overflow-hidden p-0"}`}>
