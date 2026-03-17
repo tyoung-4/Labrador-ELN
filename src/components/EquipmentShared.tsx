@@ -167,16 +167,14 @@ const GRID_PX_PER_MINUTE = 600 / VISIBLE_MINUTES;                        // 1.0 
 const TOTAL_GRID_HEIGHT  = TOTAL_MINUTES * GRID_PX_PER_MINUTE;           // 1440 px full day
 const CONTAINER_HEIGHT   = VISIBLE_MINUTES * GRID_PX_PER_MINUTE;         // 600 px visible
 
-// 48 labels: 12:00 am, 12:30 am … 11:30 pm  (pre-computed at module load)
+// 2-hour interval labels: 12am, 2am … 10pm (12 entries)
 const TIME_LABELS: ReadonlyArray<{ label: string; topPx: number }> =
-  Array.from({ length: 48 }, (_, i) => {
-    const totalMins = i * 30;
-    const h24       = Math.floor(totalMins / 60);
-    const m         = totalMins % 60;
-    const h12       = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+  [0, 120, 240, 360, 480, 600, 720, 840, 960, 1080, 1200, 1320].map(mins => {
+    const h24 = Math.floor(mins / 60);
+    const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
     return {
-      label: `${h12}:${String(m).padStart(2, "0")} ${h24 < 12 ? "am" : "pm"}`,
-      topPx: totalMins * GRID_PX_PER_MINUTE,
+      label: `${h12}:00 ${h24 < 12 ? "am" : "pm"}`,
+      topPx: mins * GRID_PX_PER_MINUTE,
     };
   });
 
@@ -282,7 +280,12 @@ export function DailyView({
       <div
         ref={scrollRef}
         className="overflow-y-scroll"
-        style={{ height: `${CONTAINER_HEIGHT}px` }}
+        style={{
+          height: `${CONTAINER_HEIGHT}px`,
+          maxHeight: `${CONTAINER_HEIGHT}px`,
+          overflowY: "scroll",
+          flexShrink: 0,
+        }}
       >
         {/* Sticky resource header */}
         <div
