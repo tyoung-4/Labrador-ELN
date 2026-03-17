@@ -322,7 +322,8 @@ const EquipmentCalendar = forwardRef<EquipmentCalendarHandle, {
     <div className="flex h-full flex-col overflow-hidden">
 
       {/* ── Toolbar — hidden in dashboard unified-header mode ── */}
-      {!hideToolbar && <div className="mb-2 flex items-center justify-between border-b border-zinc-800 pb-2">
+      {!hideToolbar && (
+      <div className="mb-2 flex items-center justify-between border-b border-zinc-800 pb-2">
 
         {/* Left: nav + clickable date label */}
         <div className="flex items-center gap-0.5">
@@ -431,7 +432,8 @@ const EquipmentCalendar = forwardRef<EquipmentCalendarHandle, {
             See full schedule →
           </Link>
         </div>
-      </div>}
+      </div>
+      )}
 
       {/* ── Resource toggle chips (full page) / Group tabs (dashboard) ── */}
       {singleGroup && activeGroup ? (
