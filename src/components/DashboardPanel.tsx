@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import React, { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import type { EquipmentCalendarHandle } from "@/components/EquipmentCalendar";
 import {
   DndContext,
   closestCenter,
@@ -1847,6 +1848,60 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
     try { return localStorage.getItem("eln-showWeekends") === "true"; } catch { return false; }
   });
 
+  // ── Equipment navigation state (for unified header) ──────────────────────
+  const [eqDate,          setEqDate]          = useState(localDateStr());
+  const [eqScrollTrigger, setEqScrollTrigger] = useState(0);
+  const [eqCalOpen,       setEqCalOpen]       = useState(false);
+  const [eqCalMonth,      setEqCalMonth]      = useState<Date>(() => new Date());
+  const eqCalRef    = useRef<HTMLDivElement>(null);
+  const eqOpenNewRef = useRef<EquipmentCalendarHandle>(null);
+
+  // Close equipment calendar popup on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (eqCalRef.current && !eqCalRef.current.contains(e.target as Node)) {
+        setEqCalOpen(false);
+      }
+    }
+    if (eqCalOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [eqCalOpen]);
+
+  const eqDateLabel = (() => {
+    const isToday = eqDate === localDateStr();
+    const obj     = new Date(eqDate + "T00:00:00");
+    const label   = obj.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    return isToday ? `Today · ${label}` : label;
+  })();
+
+  const eqCalDays = useMemo<(Date | null)[]>(() => {
+    const year  = eqCalMonth.getFullYear();
+    const month = eqCalMonth.getMonth();
+    const first = new Date(year, month, 1);
+    const startPad   = first.getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const days: (Date | null)[] = [];
+    for (let i = 0; i < startPad; i++) days.push(null);
+    for (let i = 1; i <= daysInMonth; i++) days.push(new Date(year, month, i));
+    while (days.length % 7 !== 0) days.push(null);
+    return days;
+  }, [eqCalMonth]);
+
+  function eqNavPrev() {
+    const d = new Date(eqDate + "T00:00:00"); d.setDate(d.getDate() - 1);
+    setEqDate(localDateStr(d));
+  }
+  function eqNavNext() {
+    const d = new Date(eqDate + "T00:00:00"); d.setDate(d.getDate() + 1);
+    setEqDate(localDateStr(d));
+  }
+  function eqNavToday() {
+    setEqDate(localDateStr());
+    setEqScrollTrigger(t => t + 1);
+  }
+
   // Form state
   const [newText,         setNewText]         = useState("");
   const [newNotes,        setNewNotes]        = useState("");
@@ -2192,126 +2247,204 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
 
       <section className="overflow-hidden rounded-xl border border-indigo-500/30 bg-zinc-900">
 
-        {/* Header */}
-        <div className="flex items-center gap-3 border-b border-zinc-800 px-5 py-3">
-          <p className="text-sm font-semibold text-indigo-300">Dashboard</p>
+        {/* ── Unified header bar ─────────────────────────────────────────────── */}
+        <div className="flex items-start justify-between border-b border-zinc-800 px-4 py-3">
 
-          {/* Daily / Weekly toggle */}
-          <div className="flex overflow-hidden rounded border border-zinc-700 bg-zinc-800">
+          {/* LEFT — personal schedule controls */}
+          <div className="flex flex-col gap-1">
+            <span className="text-sm font-semibold text-indigo-300">
+              {currentUser.name}&apos;s Dashboard
+            </span>
+            <div className="flex items-center gap-1.5">
+              {/* Daily / Weekly toggle */}
+              <div className="flex overflow-hidden rounded border border-zinc-700 bg-zinc-800">
+                <button
+                  onClick={() => setScheduleView("daily")}
+                  className={`px-2.5 py-1 text-[10px] font-semibold transition ${
+                    scheduleView === "daily"
+                      ? "bg-indigo-600 text-white"
+                      : "text-zinc-500 hover:text-zinc-300"
+                  }`}
+                >Daily</button>
+                <button
+                  onClick={() => setScheduleView("weekly")}
+                  className={`px-2.5 py-1 text-[10px] font-semibold transition ${
+                    scheduleView === "weekly"
+                      ? "bg-indigo-600 text-white"
+                      : "text-zinc-500 hover:text-zinc-300"
+                  }`}
+                >Weekly</button>
+              </div>
+
+              {/* Weekends toggle — only in weekly mode */}
+              {scheduleView === "weekly" && (
+                <button
+                  onClick={() => setShowWeekends(v => !v)}
+                  className={`rounded border px-2 py-0.5 text-[9px] font-semibold transition ${
+                    showWeekends
+                      ? "border-zinc-700 bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+                      : "border-zinc-700 bg-zinc-800 text-zinc-600 hover:text-zinc-400"
+                  }`}
+                >{showWeekends ? "Hide weekends" : "Show weekends"}</button>
+              )}
+
+              {/* Day navigation — daily mode */}
+              {scheduleView === "daily" && (
+                <div className="flex items-center gap-0.5">
+                  <button
+                    onClick={() => { const d = new Date(scheduleDate + "T00:00:00"); d.setDate(d.getDate()-1); setScheduleDate(localDateStr(d)); }}
+                    className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                    aria-label="Previous day"
+                  >‹</button>
+                  <button
+                    onClick={() => { setScheduleDate(localDateStr()); setScrollTrigger(t => t+1); }}
+                    className="rounded px-1 py-0.5 text-[9px] text-zinc-600 hover:text-zinc-400"
+                  >Today</button>
+                  <button
+                    onClick={() => { const d = new Date(scheduleDate + "T00:00:00"); d.setDate(d.getDate()+1); setScheduleDate(localDateStr(d)); }}
+                    className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                    aria-label="Next day"
+                  >›</button>
+                  <span className="ml-1 text-[9px] font-semibold uppercase tracking-widest text-zinc-600">
+                    {(() => {
+                      const d = new Date(scheduleDate + "T00:00:00");
+                      const isToday = scheduleDate === localDateStr();
+                      const label = d.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+                      return isToday ? `Today · ${label}` : label;
+                    })()}
+                  </span>
+                </div>
+              )}
+
+              {/* Week navigation — weekly mode */}
+              {scheduleView === "weekly" && (
+                <div className="flex items-center gap-0.5">
+                  <button
+                    onClick={() => setWeekOffset(o => o-1)}
+                    className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                    aria-label="Previous week"
+                  >‹</button>
+                  <button
+                    onClick={() => setWeekOffset(0)}
+                    className="rounded px-1 py-0.5 text-[9px] text-zinc-600 hover:text-zinc-400"
+                  >Today</button>
+                  <button
+                    onClick={() => setWeekOffset(o => o+1)}
+                    className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                    aria-label="Next week"
+                  >›</button>
+                  <span className="ml-1 text-[9px] font-semibold uppercase tracking-widest text-zinc-600">
+                    {(() => {
+                      const dates = getWeekDates(weekOffset);
+                      const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                      return `${fmt(dates[0])} – ${fmt(dates[6])}`;
+                    })()}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* CENTER — Add to list toggle */}
+          <div className="flex flex-1 items-start justify-center pt-1">
             <button
-              onClick={() => setScheduleView("daily")}
-              className={`px-2.5 py-1 text-[10px] font-semibold transition ${
-                scheduleView === "daily"
-                  ? "bg-indigo-600 text-white"
-                  : "text-zinc-500 hover:text-zinc-300"
-              }`}
+              onClick={togglePanel}
+              className="flex items-center gap-1.5 rounded px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-zinc-500 transition hover:bg-zinc-800/60 hover:text-zinc-400"
+              title={panelOpen ? "Collapse add-to-list form" : "Expand add-to-list form"}
             >
-              Daily
-            </button>
-            <button
-              onClick={() => setScheduleView("weekly")}
-              className={`px-2.5 py-1 text-[10px] font-semibold transition ${
-                scheduleView === "weekly"
-                  ? "bg-indigo-600 text-white"
-                  : "text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              Weekly
+              <span>{panelOpen ? "▲" : "▼"}</span>
+              <span>Add to List</span>
             </button>
           </div>
 
-          {/* Day navigation (daily mode only) */}
-          {scheduleView === "daily" && (
+          {/* RIGHT — equipment schedule controls */}
+          <div className="flex flex-col items-end gap-1">
             <div className="flex items-center gap-0.5">
               <button
-                onClick={() => {
-                  const d = new Date(scheduleDate + "T00:00:00");
-                  d.setDate(d.getDate() - 1);
-                  setScheduleDate(localDateStr(d));
-                }}
-                className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-                aria-label="Previous day"
+                onClick={eqNavPrev}
+                className="rounded px-1.5 py-1 text-sm text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                title="Previous"
               >‹</button>
-              {/* Today — always visible; navigates to today AND resets scroll position */}
               <button
-                onClick={() => {
-                  setScheduleDate(localDateStr());
-                  setScrollTrigger(t => t + 1);
-                }}
-                className="rounded px-1 py-0.5 text-[9px] text-zinc-600 hover:text-zinc-400"
+                onClick={eqNavToday}
+                className="rounded px-2 py-1 text-[10px] text-zinc-600 hover:text-zinc-400"
               >Today</button>
               <button
-                onClick={() => {
-                  const d = new Date(scheduleDate + "T00:00:00");
-                  d.setDate(d.getDate() + 1);
-                  setScheduleDate(localDateStr(d));
-                }}
-                className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-                aria-label="Next day"
+                onClick={eqNavNext}
+                className="rounded px-1.5 py-1 text-sm text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                title="Next"
               >›</button>
-              {/* Date label — inline to the right of › */}
-              <span className="ml-1.5 text-[9px] font-semibold uppercase tracking-widest text-zinc-600">
-                {(() => {
-                  const d = new Date(scheduleDate + "T00:00:00");
-                  const isToday = scheduleDate === localDateStr();
-                  const label   = d.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
-                  return isToday ? `Today · ${label}` : label;
-                })()}
-              </span>
-            </div>
-          )}
 
-          {/* Week navigation + weekends toggle (weekly mode only) */}
-          {scheduleView === "weekly" && (
-            <>
-              <div className="flex items-center gap-0.5">
+              {/* Clickable date label + calendar popup */}
+              <div ref={eqCalRef} className="relative ml-1">
                 <button
-                  onClick={() => setWeekOffset(o => o - 1)}
-                  className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-                  aria-label="Previous week"
-                >
-                  ‹
-                </button>
-                {/* Today — always visible in weekly mode too */}
-                <button
-                  onClick={() => setWeekOffset(0)}
-                  className="rounded px-1 py-0.5 text-[9px] text-zinc-600 hover:text-zinc-400"
-                >
-                  Today
-                </button>
-                <button
-                  onClick={() => setWeekOffset(o => o + 1)}
-                  className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-                  aria-label="Next week"
-                >
-                  ›
-                </button>
-                {/* Week range label — inline to the right of › */}
-                <span className="ml-1.5 text-[9px] font-semibold uppercase tracking-widest text-zinc-600">
-                  {(() => {
-                    const dates = getWeekDates(weekOffset);
-                    const fmt   = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-                    return `${fmt(dates[0])} – ${fmt(dates[6])}`;
-                  })()}
-                </span>
+                  onClick={() => {
+                    setEqCalOpen(o => {
+                      if (!o) setEqCalMonth(new Date(eqDate + "T00:00:00"));
+                      return !o;
+                    });
+                  }}
+                  className="rounded px-1.5 py-1 text-[11px] font-semibold text-zinc-300 hover:bg-zinc-800"
+                >{eqDateLabel}</button>
+
+                {eqCalOpen && (
+                  <div className="absolute right-0 top-full z-50 mt-1 w-[280px] rounded-lg border border-white/10 bg-gray-900 p-3 shadow-xl">
+                    {/* Month header */}
+                    <div className="mb-2 flex items-center justify-between">
+                      <button
+                        onClick={() => setEqCalMonth(m => new Date(m.getFullYear(), m.getMonth()-1))}
+                        className="rounded p-1 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                      >‹</button>
+                      <span className="text-[11px] font-semibold text-zinc-200">
+                        {eqCalMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                      </span>
+                      <button
+                        onClick={() => setEqCalMonth(m => new Date(m.getFullYear(), m.getMonth()+1))}
+                        className="rounded p-1 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                      >›</button>
+                    </div>
+                    {/* Day-of-week headers */}
+                    <div className="mb-1 grid grid-cols-7">
+                      {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d => (
+                        <div key={d} className="py-0.5 text-center text-[9px] font-semibold text-zinc-600">{d}</div>
+                      ))}
+                    </div>
+                    {/* Day cells */}
+                    <div className="grid grid-cols-7 gap-y-0.5">
+                      {eqCalDays.map((day, i) => {
+                        if (!day) return <div key={i} />;
+                        const ds         = localDateStr(day);
+                        const isToday    = ds === localDateStr();
+                        const isSelected = ds === eqDate;
+                        const inMonth    = day.getMonth() === eqCalMonth.getMonth();
+                        return (
+                          <button
+                            key={i}
+                            onClick={() => { setEqDate(ds); setEqCalOpen(false); }}
+                            className={`rounded py-1 text-center text-[10px] transition ${
+                              isSelected ? "bg-white/20 font-bold text-white"
+                              : isToday ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                              : inMonth ? "text-zinc-300 hover:bg-zinc-700"
+                              : "text-zinc-700 hover:bg-zinc-800"
+                            }`}
+                          >{day.getDate()}</button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
-              <button
-                onClick={() => setShowWeekends(v => !v)}
-                className={`rounded border px-2 py-0.5 text-[9px] font-semibold transition ${
-                  showWeekends
-                    ? "border-zinc-700 bg-zinc-800 text-zinc-400 hover:text-zinc-200"
-                    : "border-zinc-700 bg-zinc-800 text-zinc-600 hover:text-zinc-400"
-                }`}
-              >
-                {showWeekends ? "Hide weekends" : "Show weekends"}
-              </button>
-            </>
-          )}
 
-          <p className="ml-auto text-xs text-zinc-500">
-            Tasks for{" "}
-            <span className="font-semibold text-zinc-300">{currentUser.name}</span>
-          </p>
+              <button
+                onClick={() => eqOpenNewRef.current?.openNew()}
+                className="ml-1 rounded border border-zinc-700 px-2.5 py-1 text-[10px] text-zinc-300 transition hover:bg-zinc-800 hover:text-zinc-100"
+              >+ Book</button>
+              <Link
+                href="/equipment"
+                className="ml-1 text-[10px] text-zinc-500 transition hover:text-zinc-300"
+              >See full schedule →</Link>
+            </div>
+          </div>
         </div>
 
         {/* Body: [Schedule LEFT] | [▶ Tasks collapsible] | [Equipment RIGHT] */}
@@ -2342,17 +2475,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
           {/* ── Tasks column: always visible ── */}
           <div className="flex w-72 shrink-0 flex-col overflow-hidden border-r border-zinc-800">
 
-            {/* Add to List toggle — chevron header, always visible */}
-            <button
-              onClick={togglePanel}
-              className="flex shrink-0 items-center gap-1.5 border-b border-zinc-800 px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500 transition hover:bg-zinc-800/40 hover:text-zinc-400"
-              title={panelOpen ? "Collapse add-to-list form" : "Expand add-to-list form"}
-            >
-              <span>{panelOpen ? "▲" : "▼"}</span>
-              <span>Add to list</span>
-            </button>
-
-            {/* Add to List form — collapsible */}
+            {/* Add to List form — collapsible (toggle is in unified header) */}
             {panelOpen && (
               <div className="flex shrink-0 flex-col gap-3 border-b border-zinc-800 p-4">
                 {/* Task title — notes toggle in top-right corner */}
@@ -2547,9 +2670,18 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
 
           {/* ── Equipment section (far right) ── */}
           <div className="flex flex-1 flex-col overflow-hidden">
-            {/* Equipment calendar (header is built into EquipmentCalendar) */}
+            {/* Inject controlled nav props + hide built-in toolbar */}
             <div className="min-h-0 flex-1">
-              {equipmentCalendar}
+              {equipmentCalendar && React.cloneElement(
+                equipmentCalendar as React.ReactElement<Record<string, unknown>>,
+                {
+                  hideToolbar: true,
+                  controlledDate: eqDate,
+                  onDateChange: setEqDate,
+                  controlledScrollTrigger: eqScrollTrigger,
+                  ref: eqOpenNewRef,
+                }
+              )}
             </div>
           </div>
         </div>

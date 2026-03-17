@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { USER_STORAGE_KEY, ELN_USERS } from "@/components/AppTopNav";
 import {
   RESOURCE_GROUPS,
@@ -23,13 +23,35 @@ const DASHBOARD_GROUP_KEY = "eln-dashboard-equipment-group";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function EquipmentCalendar({ singleGroup = false }: { singleGroup?: boolean }) {
+/** Imperative handle exposed to DashboardPanel for unified-header +Book action */
+export interface EquipmentCalendarHandle {
+  openNew: () => void;
+}
+
+const EquipmentCalendar = forwardRef<EquipmentCalendarHandle, {
+  singleGroup?: boolean;
+  /** When true, hides the built-in toolbar (used by DashboardPanel's unified header) */
+  hideToolbar?: boolean;
+  /** Controlled daily date string "YYYY-MM-DD" (lifted state from DashboardPanel) */
+  controlledDate?: string;
+  /** Called when the date changes in controlled mode */
+  onDateChange?: (d: string) => void;
+  /** Incremented by DashboardPanel's Today button to trigger scroll-to-now */
+  controlledScrollTrigger?: number;
+}>(function EquipmentCalendar({ singleGroup = false, hideToolbar = false, controlledDate, onDateChange, controlledScrollTrigger }, ref) {
   // ── User ──────────────────────────────────────────────────────────────────
   const [userId,   setUserId]   = useState(ELN_USERS[0].id);
   const [userName, setUserName] = useState(ELN_USERS[0].name);
 
   // ── Navigation (daily only) ────────────────────────────────────────────────
-  const [dailyDate,      setDailyDate]      = useState(localDateStr());
+  // When controlledDate is provided (dashboard unified-header mode), use that;
+  // otherwise use internal state managed by navPrev / navNext / navToday.
+  const [internalDate,   setInternalDate]   = useState(localDateStr());
+  const dailyDate = controlledDate ?? internalDate;
+  const setDailyDate = (d: string) => {
+    if (onDateChange) onDateChange(d);
+    else setInternalDate(d);
+  };
   const [eqScrollTrigger, setEqScrollTrigger] = useState(0);
 
   // ── API-backed events ─────────────────────────────────────────────────────
@@ -256,6 +278,9 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
     setEqScrollTrigger(t => t + 1); // force scroll even if already on today
   }
 
+  // Expose openNew() to DashboardPanel's unified +Book button
+  useImperativeHandle(ref, () => ({ openNew: () => openNew() }));
+
   // ── Derived values ────────────────────────────────────────────────────────
   const activeGroup = singleGroup
     ? RESOURCE_GROUPS.find(g => g.id === activeGroupId) ?? RESOURCE_GROUPS[0]
@@ -296,8 +321,8 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
   return (
     <div className="flex h-full flex-col overflow-hidden">
 
-      {/* ── Toolbar ── */}
-      <div className="mb-2 flex items-center justify-between border-b border-zinc-800 pb-2">
+      {/* ── Toolbar — hidden in dashboard unified-header mode ── */}
+      {!hideToolbar && <div className="mb-2 flex items-center justify-between border-b border-zinc-800 pb-2">
 
         {/* Left: nav + clickable date label */}
         <div className="flex items-center gap-0.5">
@@ -406,7 +431,7 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
             See full schedule →
           </Link>
         </div>
-      </div>
+      </div>}
 
       {/* ── Resource toggle chips (full page) / Group tabs (dashboard) ── */}
       {singleGroup && activeGroup ? (
@@ -490,7 +515,7 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
           onEventClick={openEdit}
           onEndEarly={handleEndEarly}
           currentUserId={userId}
-          scrollTrigger={eqScrollTrigger}
+          scrollTrigger={controlledScrollTrigger ?? eqScrollTrigger}
         />
       </div>
 
@@ -510,4 +535,6 @@ export default function EquipmentCalendar({ singleGroup = false }: { singleGroup
       )}
     </div>
   );
-}
+});
+
+export default EquipmentCalendar;
