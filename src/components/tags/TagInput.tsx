@@ -204,9 +204,24 @@ function NewTagDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, type: tagType, color, createdBy: currentUser }),
       });
-      const tagData = (await tagRes.json()) as { exists: boolean; tag: TagSummary };
+      const tagData = (await tagRes.json()) as {
+        exists: boolean;
+        tag: TagSummary;
+        conflictType?: TagType;
+      };
 
       if (tagData.exists) {
+        if (tagData.conflictType && tagData.conflictType !== tagType) {
+          // Cross-type conflict — do NOT add, show error and stop
+          const conflictLabel = tagData.conflictType === "PROJECT" ? "Project" : "General";
+          const requestedLabel = tagType === "PROJECT" ? "Project" : "General";
+          setAlreadyExistsMsg(
+            `"${tagData.tag.name}" already exists as a ${conflictLabel} tag and cannot be duplicated as a ${requestedLabel} tag`
+          );
+          setSubmitting(false);
+          return;
+        }
+        // Same-type conflict — add existing tag instead
         setAlreadyExistsMsg(
           `Tag "${tagData.tag.name}" already exists — it has been added instead`
         );

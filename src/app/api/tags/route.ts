@@ -62,7 +62,11 @@ export async function POST(req: NextRequest) {
   });
 
   if (existing) {
-    return NextResponse.json({ exists: true, tag: existing });
+    return NextResponse.json({
+      exists: true,
+      tag: existing,
+      conflictType: existing.type, // "PROJECT" or "GENERAL"
+    });
   }
 
   const tag = await prisma.tag.create({
