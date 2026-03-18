@@ -8,13 +8,14 @@ datasource db {
 }
 
 model User {
-  id           String        @id @default(uuid())
-  email        String        @unique
-  name         String?
-  role         String        @default("MEMBER")
-  createdAt    DateTime      @default(now())
-  entries      Entry[]
-  protocolRuns ProtocolRun[]
+  id                 String          @id @default(uuid())
+  email              String          @unique
+  name               String?
+  role               String          @default("MEMBER")
+  createdAt          DateTime        @default(now())
+  entries            Entry[]
+  protocolRuns       ProtocolRun[]
+  projectMemberships ProjectMember[]
 }
 
 enum EntryType {
@@ -73,6 +74,11 @@ model Tag {
   createdBy   String          @default("Admin")
   createdAt   DateTime        @default(now())
   assignments TagAssignment[]
+
+  // New optional fields — existing tags unaffected (NULL by default)
+  description String?         // project overview / short description
+  startDate   DateTime?       // user-set display date, overrides createdAt for display
+  members     ProjectMember[] // only populated for PROJECT-type tags
 }
 
 model TagAssignment {
@@ -198,4 +204,17 @@ model ProtocolStep {
 enum StepType {
   STEP
   SUBSTEP
+}
+
+model ProjectMember {
+  id      String   @id @default(cuid())
+  tagId   String
+  tag     Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  addedAt DateTime @default(now())
+
+  @@unique([tagId, userId])
+  @@index([tagId])
+  @@index([userId])
 }
