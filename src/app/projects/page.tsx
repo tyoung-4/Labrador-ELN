@@ -2,7 +2,8 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import AppTopNav from "@/components/AppTopNav";
+import AppTopNav, { getCurrentUser } from "@/components/AppTopNav";
+import NewProjectForm from "@/components/projects/NewProjectForm";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -625,6 +626,18 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [untagged, setUntagged] = useState<UntaggedCounts | null>(null);
 
+  // Current user (from localStorage via AppTopNav helper)
+  const [currentUser, setCurrentUser] = useState("Admin");
+  useEffect(() => {
+    setCurrentUser(getCurrentUser().name);
+    function onStorage() { setCurrentUser(getCurrentUser().name); }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  // New project form
+  const [showNewProjectForm, setShowNewProjectForm] = useState(false);
+
   // Detail state
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
@@ -676,8 +689,16 @@ export default function ProjectsPage() {
 
       {/* Page header */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-white">Projects</h1>
-        <p className="text-sm text-zinc-400">Organize your runs and protocols by project</p>
+        <div>
+          <h1 className="text-2xl font-bold text-white">Projects</h1>
+          <p className="text-sm text-zinc-400">Organize your runs and protocols by project</p>
+        </div>
+        <button
+          onClick={() => setShowNewProjectForm(true)}
+          className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700"
+        >
+          + New Project
+        </button>
       </div>
 
       {/* Detail view replaces card grid */}
@@ -714,6 +735,31 @@ export default function ProjectsPage() {
           {/* Untagged warning section */}
           {!loading && untagged && <UntaggedSection counts={untagged} />}
         </>
+      )}
+
+      {/* New Project modal */}
+      {showNewProjectForm && (
+        <NewProjectForm
+          currentUser={currentUser}
+          onSuccess={(newTag) => {
+            setShowNewProjectForm(false);
+            // Refresh project list to include new project
+            setProjects((prev) => [
+              {
+                id: newTag.id,
+                name: newTag.name,
+                color: newTag.color,
+                createdBy: newTag.createdBy,
+                createdAt: newTag.createdAt,
+                runCount: 0,
+                protocolCount: 0,
+                lastActivity: null,
+              },
+              ...prev,
+            ]);
+          }}
+          onCancel={() => setShowNewProjectForm(false)}
+        />
       )}
     </div>
   );

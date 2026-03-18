@@ -6,10 +6,10 @@ import { useEffect, useState } from "react";
 import GlobalClock from "./GlobalClock";
 
 const NAV_ITEMS = [
-  { href: "/",          label: "Home",         exact: true,  activeClass: "bg-sky-500 text-white"    },
-  { href: "/projects",  label: "Projects",     exact: false, activeClass: "bg-emerald-600 text-white" },
-  { href: "/equipment", label: "Equipment",    exact: false, activeClass: "bg-purple-600 text-white" },
-  { href: "/ingestion", label: "👾 Ingestion", exact: false, activeClass: "bg-amber-600 text-white"  },
+  { href: "/",          label: "Home",         exact: true,  activeClass: "bg-sky-500 text-white",     hard: false },
+  { href: "/projects",  label: "Projects",     exact: false, activeClass: "bg-emerald-600 text-white", hard: true  },
+  { href: "/equipment", label: "Equipment",    exact: false, activeClass: "bg-purple-600 text-white",  hard: false },
+  { href: "/ingestion", label: "👾 Ingestion", exact: false, activeClass: "bg-amber-600 text-white",   hard: false },
 ];
 
 export const ELN_USERS = [
@@ -54,14 +54,16 @@ export default function AppTopNav() {
         const active = item.exact
           ? pathname === item.href
           : pathname === item.href || pathname.startsWith(item.href + "/");
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`rounded px-3 py-1.5 text-sm transition ${
-              active ? item.activeClass : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
-            }`}
-          >
+        const cls = `rounded px-3 py-1.5 text-sm transition ${
+          active ? item.activeClass : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+        }`;
+        // Projects uses a hard <a> so detail-view state is cleared on click
+        return item.hard ? (
+          <a key={item.href} href={item.href} className={cls}>
+            {item.label}
+          </a>
+        ) : (
+          <Link key={item.href} href={item.href} className={cls}>
             {item.label}
           </Link>
         );
