@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import AppTopNav, { getCurrentUser } from "@/components/AppTopNav";
 import NewProjectForm from "@/components/projects/NewProjectForm";
 
@@ -8,49 +8,55 @@ import NewProjectForm from "@/components/projects/NewProjectForm";
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
+type ProjectMember = {
+  user: { id: string; name: string | null };
+};
+
 type ProjectSummary = {
   id: string;
   name: string;
   color: string;
   createdBy: string;
   createdAt: string;
+  description: string | null;
+  startDate: string | null;
+  members: ProjectMember[];
   runCount: number;
   protocolCount: number;
   lastActivity: string | null;
 };
 
 type UntaggedCounts = {
-  untaggedRunCount: number;
-  untaggedProtocolCount: number;
+  runCount: number;
+  protocolCount: number;
 };
 
+type SortOption = "lastActivity" | "name" | "created" | "runs";
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Helpers
+// Helper functions
 // ─────────────────────────────────────────────────────────────────────────────
 
-function relativeDate(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const s = Math.floor(diff / 1000);
-  const m = Math.floor(s / 60);
-  const h = Math.floor(m / 60);
-  const d = Math.floor(h / 24);
-  const w = Math.floor(d / 7);
-  const mo = Math.floor(d / 30);
-  const y = Math.floor(d / 365);
-  if (s < 60) return "just now";
-  if (m < 60) return `${m}m ago`;
-  if (h < 24) return `${h}h ago`;
-  if (d < 7) return `${d}d ago`;
-  if (w < 4) return `${w}w ago`;
-  if (mo < 12) return `${mo}mo ago`;
-  return `${y}y ago`;
+function formatDate(date: Date | string | null | undefined): string {
+  if (!date) return "—";
+  return new Date(date).toLocaleDateString("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+  });
 }
 
-function hexToRgba(hex: string, alpha: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+function formatRelativeDate(date: Date | string | null): string {
+  if (!date) return "Never";
+  const now = new Date();
+  const d = new Date(date);
+  const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
+  if (diffDays === 0) return "today";
+  if (diffDays === 1) return "yesterday";
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+  if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
+  return `${Math.floor(diffDays / 365)} years ago`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -59,21 +65,21 @@ function hexToRgba(hex: string, alpha: number): string {
 
 function SkeletonCards() {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {[0, 1, 2].map((i) => (
         <div
           key={i}
           className="animate-pulse overflow-hidden rounded-lg border border-white/10 bg-white/5"
         >
-          <div className="h-1 bg-zinc-700" />
-          <div className="space-y-3 p-5">
+          <div className="h-1.5 bg-zinc-700" />
+          <div className="space-y-3 p-4">
             <div className="h-5 w-3/4 rounded bg-zinc-700" />
-            <div className="h-3 w-1/2 rounded bg-zinc-700" />
+            <div className="h-3 w-full rounded bg-zinc-700" />
             <div className="h-3 w-2/3 rounded bg-zinc-700" />
             <div className="flex gap-2 pt-1">
-              <div className="h-5 w-16 rounded-full bg-zinc-700" />
-              <div className="h-5 w-20 rounded-full bg-zinc-700" />
-              <div className="h-5 w-28 rounded-full bg-zinc-700" />
+              <div className="h-5 w-16 rounded bg-zinc-700" />
+              <div className="h-5 w-20 rounded bg-zinc-700" />
+              <div className="h-5 w-28 rounded bg-zinc-700" />
             </div>
           </div>
         </div>
@@ -86,107 +92,149 @@ function SkeletonCards() {
 // Project card
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ProjectCard({ project }: { project: ProjectSummary }) {
-  function navigate() {
-    window.location.href = `/projects/${project.id}`;
-  }
-
+function ProjectCard({ tag }: { tag: ProjectSummary }) {
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={navigate}
-      onKeyDown={(e) => e.key === "Enter" && navigate()}
-      className="group cursor-pointer overflow-hidden rounded-lg border border-white/10 bg-white/5 transition hover:border-white/20 hover:bg-white/10"
+    <a
+      href={`/projects/${tag.id}`}
+      className="group block overflow-hidden rounded-lg border border-white/10 bg-white/5 transition-all hover:border-white/20 hover:bg-white/10"
     >
-      {/* Color bar */}
-      <div className="h-1 w-full" style={{ backgroundColor: project.color }} />
+      {/* Color bar — 6px tall */}
+      <div style={{ backgroundColor: tag.color, height: "6px" }} />
 
-      {/* Body */}
-      <div className="p-5">
-        {/* Row 1 — name + tag pill */}
-        <div className="mb-1 flex flex-wrap items-center gap-2">
-          <h2 className="text-base font-bold text-white">{project.name}</h2>
+      {/* Card body */}
+      <div className="p-4">
+        {/* Row 1: project name + PROJECT pill */}
+        <div className="mb-1 flex items-start justify-between gap-2">
+          <span className="text-base font-semibold leading-tight text-white">
+            {tag.name}
+          </span>
           <span
-            className="rounded-full px-2 py-0.5 text-xs font-medium"
+            className="flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium text-white"
             style={{
-              backgroundColor: hexToRgba(project.color, 0.2),
-              border: `1px solid ${project.color}`,
-              color: project.color,
+              backgroundColor: tag.color + "40",
+              border: `1px solid ${tag.color}`,
             }}
           >
-            {project.name}
+            PROJECT
           </span>
         </div>
 
-        {/* Row 2 — created by + relative date */}
-        <p className="mb-3 text-xs text-zinc-500">
-          Created by {project.createdBy} · {relativeDate(project.createdAt)}
-        </p>
+        {/* Row 2: description — max 2 lines */}
+        {tag.description && (
+          <p className="mb-3 line-clamp-2 text-xs text-gray-400">
+            {tag.description}
+          </p>
+        )}
 
-        {/* Row 3 — stat chips */}
-        <div className="mb-4 flex flex-wrap gap-2">
-          <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
-            {project.runCount} run{project.runCount !== 1 ? "s" : ""}
+        {/* Row 3: owner + members */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-gray-500">Owner:</span>
+          <span className="text-xs text-gray-300">{tag.createdBy}</span>
+          {tag.members.length > 1 && (
+            <>
+              <span className="text-xs text-gray-600">·</span>
+              <span className="text-xs text-gray-500">
+                {tag.members.length} member{tag.members.length !== 1 ? "s" : ""}
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* Row 4: stat chips */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="rounded bg-white/10 px-2 py-0.5 text-xs text-gray-300">
+            {tag.runCount} run{tag.runCount !== 1 ? "s" : ""}
           </span>
-          <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
-            {project.protocolCount} protocol{project.protocolCount !== 1 ? "s" : ""}
+          <span className="rounded bg-white/10 px-2 py-0.5 text-xs text-gray-300">
+            {tag.protocolCount} protocol{tag.protocolCount !== 1 ? "s" : ""}
           </span>
-          <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
-            {project.lastActivity ? `Active ${relativeDate(project.lastActivity)}` : "No activity yet"}
+          <span className="rounded bg-white/10 px-2 py-0.5 text-xs text-gray-400">
+            {tag.lastActivity
+              ? `Active ${formatRelativeDate(tag.lastActivity)}`
+              : "No activity yet"}
           </span>
         </div>
 
-        {/* Row 4 — view link */}
-        <div className="flex justify-end">
-          <span
-            className="text-xs font-medium transition group-hover:brightness-125"
-            style={{ color: project.color }}
-          >
-            View Project →
+        {/* Row 5: started date + open link */}
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-gray-600">
+            Started {formatDate(tag.startDate ?? tag.createdAt)}
+          </span>
+          <span className="text-xs text-gray-400 transition-colors group-hover:text-white">
+            Open Project →
           </span>
         </div>
       </div>
-    </div>
+    </a>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Untagged warning section
+// Untagged section — scoped to current user
 // ─────────────────────────────────────────────────────────────────────────────
 
-function UntaggedSection({ counts }: { counts: UntaggedCounts }) {
-  return (
-    <div className="mt-8 rounded-lg border border-white/10 bg-white/5 p-4">
-      <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-400">
-        Untagged Items
-      </h3>
-      <div className="flex flex-wrap gap-6">
-        <div className="flex items-center gap-2">
-          <span className="text-lg font-bold text-amber-400">{counts.untaggedRunCount}</span>
-          <span className="text-sm text-zinc-400">runs without a Project tag</span>
-          {counts.untaggedRunCount > 0 && (
-            <a
-              href="/runs?filter=untagged"
-              className="ml-2 text-sm text-amber-400 hover:underline"
-            >
-              View →
-            </a>
+function UntaggedSection({
+  untagged,
+  setShowNewProjectForm,
+}: {
+  untagged: UntaggedCounts;
+  setShowNewProjectForm: (v: boolean) => void;
+}) {
+  const hasUntagged = untagged.runCount > 0 || untagged.protocolCount > 0;
+
+  if (hasUntagged) {
+    return (
+      <div className="mt-8 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+        <h3 className="mb-3 text-sm font-medium uppercase tracking-wide text-amber-400">
+          ⚠️ Your Untagged Items
+        </h3>
+        <p className="mb-3 text-xs text-gray-500">
+          These items belong to you but have no Project tag. Adding a Project
+          tag helps keep your work organized.
+        </p>
+        <div className="flex flex-wrap gap-6">
+          {untagged.runCount > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-bold text-amber-400">
+                {untagged.runCount}
+              </span>
+              <span className="text-sm text-gray-400">
+                run{untagged.runCount !== 1 ? "s" : ""} without a Project tag
+              </span>
+              <a
+                href="/runs?filter=untagged"
+                className="ml-1 text-sm text-amber-400 hover:underline"
+              >
+                View →
+              </a>
+            </div>
           )}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-lg font-bold text-amber-400">{counts.untaggedProtocolCount}</span>
-          <span className="text-sm text-zinc-400">protocols without a Project tag</span>
-          {counts.untaggedProtocolCount > 0 && (
-            <a
-              href="/protocols?filter=untagged"
-              className="ml-2 text-sm text-amber-400 hover:underline"
-            >
-              View →
-            </a>
+          {untagged.protocolCount > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-bold text-amber-400">
+                {untagged.protocolCount}
+              </span>
+              <span className="text-sm text-gray-400">
+                protocol{untagged.protocolCount !== 1 ? "s" : ""} without a Project tag
+              </span>
+              <a
+                href="/protocols?filter=untagged"
+                className="ml-1 text-sm text-amber-400 hover:underline"
+              >
+                View →
+              </a>
+            </div>
           )}
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="mt-8 rounded-lg border border-green-500/20 bg-green-500/5 p-3">
+      <p className="text-xs text-green-400">
+        ✓ All your runs and protocols have a Project tag.
+      </p>
     </div>
   );
 }
@@ -197,42 +245,74 @@ function UntaggedSection({ counts }: { counts: UntaggedCounts }) {
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [loading, setLoading] = useState(true);
   const [untagged, setUntagged] = useState<UntaggedCounts | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [sortBy, setSortBy] = useState<SortOption>("lastActivity");
+  const [showNewProjectForm, setShowNewProjectForm] = useState(false);
 
   // Current user (from localStorage via AppTopNav helper)
-  const [currentUser, setCurrentUser] = useState("Admin");
+  const [currentUser, setCurrentUser] = useState(() => getCurrentUser().name);
   useEffect(() => {
     setCurrentUser(getCurrentUser().name);
-    function onStorage() { setCurrentUser(getCurrentUser().name); }
+    function onStorage() {
+      setCurrentUser(getCurrentUser().name);
+    }
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  // New project form
-  const [showNewProjectForm, setShowNewProjectForm] = useState(false);
-
-  // Load project list + untagged counts on mount
+  // Load project list + user-scoped untagged counts
   useEffect(() => {
+    if (!currentUser) return;
     let cancelled = false;
     async function load() {
       setLoading(true);
       try {
-        const [projRes, untaggedRes] = await Promise.all([
-          fetch("/api/projects"),
-          fetch("/api/projects/untagged"),
-        ]);
-        if (!cancelled) {
-          if (projRes.ok) setProjects((await projRes.json()) as ProjectSummary[]);
-          if (untaggedRes.ok) setUntagged((await untaggedRes.json()) as UntaggedCounts);
+        const res = await fetch(
+          `/api/projects?currentUser=${encodeURIComponent(currentUser)}`
+        );
+        if (!cancelled && res.ok) {
+          const data = (await res.json()) as {
+            projects: ProjectSummary[];
+            untagged: UntaggedCounts;
+          };
+          setProjects(data.projects);
+          setUntagged(data.untagged);
         }
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
     load();
-    return () => { cancelled = true; };
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser]);
+
+  // Sorted project list
+  const sortedProjects = useMemo(() => {
+    return [...projects].sort((a, b) => {
+      switch (sortBy) {
+        case "name":
+          return a.name.localeCompare(b.name);
+        case "created":
+          return (
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+        case "runs":
+          return b.runCount - a.runCount;
+        case "lastActivity":
+        default:
+          if (!a.lastActivity && !b.lastActivity) return 0;
+          if (!a.lastActivity) return 1;
+          if (!b.lastActivity) return -1;
+          return (
+            new Date(b.lastActivity).getTime() -
+            new Date(a.lastActivity).getTime()
+          );
+      }
+    });
+  }, [projects, sortBy]);
 
   return (
     <div className="min-h-screen bg-zinc-950 p-6 text-zinc-100">
@@ -242,7 +322,9 @@ export default function ProjectsPage() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-white">Projects</h1>
-          <p className="text-sm text-zinc-400">Organize your runs and protocols by project</p>
+          <p className="text-sm text-zinc-400">
+            Organize your runs and protocols by project
+          </p>
         </div>
         <button
           onClick={() => setShowNewProjectForm(true)}
@@ -252,26 +334,62 @@ export default function ProjectsPage() {
         </button>
       </div>
 
-      {/* Card grid */}
+      {/* Content */}
       {loading ? (
         <SkeletonCards />
       ) : projects.length === 0 ? (
-        <div className="py-16 text-center text-zinc-500">
-          <p className="mb-2 text-lg">No projects yet</p>
-          <p className="text-sm">
-            Add a Project tag to any protocol or run to see it here.
+        /* ── Empty state ─────────────────────────────────────────────────── */
+        <div className="py-20 text-center">
+          <div className="mb-4 text-5xl">📁</div>
+          <h2 className="mb-2 text-lg font-semibold text-white">
+            No projects yet
+          </h2>
+          <p className="mx-auto mb-6 max-w-sm text-sm text-gray-400">
+            Create your first project to start organizing your protocols, runs,
+            and data in one place.
           </p>
+          <button
+            onClick={() => setShowNewProjectForm(true)}
+            className="rounded-lg bg-purple-600 px-5 py-2 text-sm font-medium text-white hover:bg-purple-700"
+          >
+            + Create First Project
+          </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {projects.map((project) => (
-            <ProjectCard key={project.id} project={project} />
-          ))}
-        </div>
-      )}
+        <>
+          {/* ── Sort controls ──────────────────────────────────────────────── */}
+          <div className="mb-4 flex items-center justify-between">
+            <p className="text-sm text-gray-500">
+              {projects.length} project{projects.length !== 1 ? "s" : ""}
+            </p>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortOption)}
+              className="rounded border border-white/10 bg-white/5 px-3 py-1 text-sm text-gray-300 focus:outline-none"
+            >
+              <option value="lastActivity">Sort: Last Activity</option>
+              <option value="name">Sort: Name A–Z</option>
+              <option value="created">Sort: Date Created</option>
+              <option value="runs">Sort: Most Runs</option>
+            </select>
+          </div>
 
-      {/* Untagged warning section */}
-      {!loading && untagged && <UntaggedSection counts={untagged} />}
+          {/* ── Card grid ──────────────────────────────────────────────────── */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {sortedProjects.map((tag) => (
+              <ProjectCard key={tag.id} tag={tag} />
+            ))}
+          </div>
+
+          {/* ── Untagged section ───────────────────────────────────────────── */}
+          {untagged && (
+            <UntaggedSection
+              untagged={untagged}
+              setShowNewProjectForm={setShowNewProjectForm}
+            />
+          )}
+        </>
+      )}
 
       {/* New Project modal */}
       {showNewProjectForm && (
@@ -287,6 +405,9 @@ export default function ProjectsPage() {
                 color: newTag.color,
                 createdBy: newTag.createdBy,
                 createdAt: newTag.createdAt,
+                description: newTag.description ?? null,
+                startDate: newTag.startDate ?? null,
+                members: [],
                 runCount: 0,
                 protocolCount: 0,
                 lastActivity: null,
