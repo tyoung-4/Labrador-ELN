@@ -8,38 +8,45 @@ datasource db {
 }
 
 model User {
-  id           String        @id @default(uuid())
-  email        String        @unique
-  name         String?
-  role         String        @default("MEMBER")
-  createdAt    DateTime      @default(now())
-  entries      Entry[]
-  protocolRuns ProtocolRun[]
+  id                 String          @id @default(uuid())
+  email              String          @unique
+  name               String?
+  role               String          @default("MEMBER")
+  createdAt          DateTime        @default(now())
+  entries            Entry[]
+  protocolRuns       ProtocolRun[]
+  projectMemberships ProjectMember[]
+}
+
+enum EntryType {
+  GENERAL
+  EXPERIMENT
+  PROTOCOL
+  NOTE
+  CELL_LINE
+  PROTEIN
+  REAGENT
+  CHROMATOGRAPHY_RUN
 }
 
 model Entry {
-  id                String        @id @default(uuid())
-  title             String
-  description       String        @default("")
-  technique         String        @default("General")
-  body              String
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  version           Int           @default(1)
-  author            User?         @relation(fields: [authorId], references: [id])
-  authorId          String?
-  tags              Tag[]         @relation("EntryTags")
-  attachments       Attachment[]
-  protocolRuns       ProtocolRun[]
-  // Ingestion-only fields (null for protocol entries)
-  entryKind         String?       // EXPERIMENTAL_DATA | PLASMID_MAP
-  operator          String?
-  runReference      String?
-  plasmidName       String?
-  bacterialStrain   String?
-  selectionMarker   String?
-  entryDate         DateTime?
-  notes             String?       // plain text notes for ingestion
+  id           String        @id @default(uuid())
+  title        String
+  description  String        @default("")
+  technique    String        @default("General")
+  entryType    EntryType     @default(GENERAL)
+  typedData    Json          @default("{}")
+  body         String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  version      Int           @default(1)
+  author       User?         @relation(fields: [authorId], references: [id])
+  authorId     String?
+  attachments   Attachment[]
+  protocolRuns  ProtocolRun[]  @relation("RunSource")
+  linkedRun     ProtocolRun?   @relation("RunLink", fields: [linkedRunId], references: [id])
+  linkedRunId   String?
+  protocol      Protocol?
 }
 
 model Attachment {
@@ -52,31 +59,165 @@ model Attachment {
   path      String
   checksum  String?
   createdAt DateTime @default(now())
-  entryType String?  // EXPERIMENTAL_DATA | PLASMID_MAP for ingestion
+}
+
+enum TagType {
+  PROJECT
+  GENERAL
 }
 
 model Tag {
-  id      String  @id @default(uuid())
-  name    String  @unique
-  entries Entry[] @relation("EntryTags")
+  id          String          @id @default(uuid())
+  name        String          @unique
+  type        TagType         @default(GENERAL)
+  color       String          @default("#6366f1")
+  createdBy   String          @default("Admin")
+  createdAt   DateTime        @default(now())
+  assignments TagAssignment[]
+
+  // New optional fields — existing tags unaffected (NULL by default)
+  description String?         // project overview / short description
+  startDate   DateTime?       // user-set display date, overrides createdAt for display
+  members     ProjectMember[] // only populated for PROJECT-type tags
+}
+
+model TagAssignment {
+  id         String   @id @default(cuid())
+  tagId      String
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  entityType String   // "RUN" | "ENTRY" | "INVENTORY" | "KNOWLEDGE_HUB"
+  entityId   String
+  assignedBy String
+  assignedAt DateTime @default(now())
+
+  @@unique([tagId, entityType, entityId])
+  @@index([entityType, entityId])
+  @@index([tagId])
 }
 
 model ProtocolRun {
-  id               String   @id @default(uuid())
+  id               String    @id @default(uuid())
+  runId            String?   @unique
   title            String
-  status           String   @default("IN_PROGRESS")
-  locked           Boolean  @default(true)
+  status           String    @default("IN_PROGRESS")
+  locked           Boolean   @default(true)
   runBody          String
-  notes            String   @default("")
-  interactionState String   @default("{}")
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  sourceEntry      Entry    @relation(fields: [sourceEntryId], references: [id])
-  sourceEntryId    String
-  runner           User?    @relation(fields: [runnerId], references: [id])
-  runnerId         String?
+  notes            String    @default("")
+  interactionState String    @default("{}")
+  operatorName     String    @default("")
+  completedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  sourceEntry    Entry     @relation("RunSource", fields: [sourceEntryId], references: [id])
+  sourceEntryId  String
+  protocol       Protocol? @relation(fields: [protocolId], references: [id])
+  protocolId     String?
+  runner         User?     @relation(fields: [runnerId], references: [id])
+  runnerId       String?
+  linkedEntries  Entry[]   @relation("RunLink")
+  stepResults    StepResult[]
 }
 
+model StepResult {
+  id          String      @id @default(uuid())
+  run         ProtocolRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  runId       String
+  stepId      String      // synthetic "step-{idx}" matching interactionState keys
+  result      String      // "PASSED" | "FAILED" | "SKIPPED"
+  notes       String      @default("")
+  fieldValues String      @default("{}") // JSON of field key→value
+  completedAt DateTime    @default(now())
+
+  @@unique([runId, stepId])
+  @@index([runId])
+}
+
+model TodoHistory {
+  id        String   @id @default(uuid())
+  userId    String
+  userName  String
+  date      String   // YYYY-MM-DD — the day the list belonged to
+  items     Json     // TodoItem[] snapshot at time of cleanup
+  createdAt DateTime @default(now())
+}
+
+model EquipmentBooking {
+  id            String    @id @default(uuid())
+  equipmentId   String
+  operatorName  String
+  userId        String
+  title         String    @default("")
+  startTime     DateTime
+  endTime       DateTime
+  endedEarlyAt  DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([equipmentId, startTime, endTime])
+}
+
+model Protocol {
+  id               String   @id @default(uuid())
+  entry            Entry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  entryId          String   @unique
+  name             String?
+  technique        String?
+  shortDescription String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  sections ProtocolSection[]
+  runs     ProtocolRun[]
+
+  @@unique([name])
+}
+
+model ProtocolSection {
+  id         String   @id @default(uuid())
+  protocol   Protocol @relation(fields: [protocolId], references: [id], onDelete: Cascade)
+  protocolId String
+  name       String
+  order      Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  steps ProtocolStep[]
+
+  @@index([protocolId, order])
+}
+
+model ProtocolStep {
+  id         String          @id @default(uuid())
+  section    ProtocolSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  sectionId  String
+  stepType   StepType        @default(STEP)
+  parentStep ProtocolStep?   @relation("ProtocolStepToSubsteps", fields: [parentStepId], references: [id], onDelete: Cascade)
+  parentStepId String?
+  substeps   ProtocolStep[]  @relation("ProtocolStepToSubsteps")
+  estimatedMinutes Int?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@index([sectionId])
+  @@index([parentStepId])
+}
+
+enum StepType {
+  STEP
+  SUBSTEP
+}
+
+model ProjectMember {
+  id      String   @id @default(cuid())
+  tagId   String
+  tag     Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  addedAt DateTime @default(now())
+
+  @@unique([tagId, userId])
+  @@index([tagId])
+  @@index([userId])
+}
 model InventoryReagent {
   id                String               @id @default(cuid())
   name              String

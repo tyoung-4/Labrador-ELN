@@ -7,6 +7,7 @@ import CellLinesList from "@/components/inventory/CellLinesList";
 import PlasmidsList from "@/components/inventory/PlasmidsList";
 import ProteinStocksList from "@/components/inventory/ProteinStocksList";
 import type { ImportCategory } from "@/app/api/inventory/import/route";
+import { ELN_USERS } from "@/components/AppTopNav";
 
 const ImportModal = dynamic(() => import("@/components/inventory/ImportModal"), { ssr: false });
 
@@ -19,7 +20,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "proteins", label: "Protein Stocks" },
 ];
 
-const USER_STORAGE_KEY = "eln_current_user";
+const USER_STORAGE_KEY = "eln-current-user-id";
 
 export default function InventoryPage() {
   const [tab, setTab] = useState<Tab>("reagents");
@@ -30,12 +31,12 @@ export default function InventoryPage() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const stored = localStorage.getItem(USER_STORAGE_KEY);
-    if (stored) setCurrentUser(stored);
-    const onStorage = () => {
-      const u = localStorage.getItem(USER_STORAGE_KEY);
-      if (u) setCurrentUser(u);
+    const resolve = (id: string | null) => {
+      const user = ELN_USERS.find((u) => u.id === id);
+      if (user) setCurrentUser(user.name);
     };
+    resolve(localStorage.getItem(USER_STORAGE_KEY));
+    const onStorage = () => resolve(localStorage.getItem(USER_STORAGE_KEY));
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, []);

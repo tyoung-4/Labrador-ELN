@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import Editor from "@/components/Editor";
 import EntryList from "@/components/EntryList";
 import AppTopNav from "@/components/AppTopNav";
-import { Q5_TEMPLATE_ENTRY_ID } from "@/lib/defaultTemplates";
 import { TECHNIQUE_OPTIONS, type Entry } from "@/models/entry";
 
 type CurrentUser = {
@@ -83,13 +82,11 @@ export default function EntriesPage() {
   );
 
   const canEdit = (entry: Entry) => {
-    if (entry.id === Q5_TEMPLATE_ENTRY_ID) return false;
     if (currentUser.role === "ADMIN") return true;
     return Boolean(entry.authorId && entry.authorId === currentUser.id);
   };
 
   const canDelete = (entry: Entry) => {
-    if (entry.id === Q5_TEMPLATE_ENTRY_ID) return false;
     if (currentUser.role === "ADMIN") return true;
     return Boolean(entry.authorId && entry.authorId === currentUser.id);
   };
@@ -118,10 +115,6 @@ export default function EntriesPage() {
   }, [load]);
 
   async function handleSave(payload: Partial<Entry>) {
-    if (payload.id === Q5_TEMPLATE_ENTRY_ID) {
-      setSaveError("This template is permanent. Clone it first to create an editable copy.");
-      return;
-    }
     setLoading(true);
     setSaveError(null);
     try {
@@ -137,6 +130,8 @@ export default function EntriesPage() {
           body: payload.body,
           technique: payload.technique,
           authorId: payload.authorId,
+          entryType: payload.entryType,
+          typedData: payload.typedData,
         }),
       });
 
@@ -298,8 +293,6 @@ export default function EntriesPage() {
     });
 
     filtered.sort((a, b) => {
-      if (a.id === Q5_TEMPLATE_ENTRY_ID) return -1;
-      if (b.id === Q5_TEMPLATE_ENTRY_ID) return 1;
       if (sortBy === "oldest") return a.createdAt.localeCompare(b.createdAt);
       if (sortBy === "technique") return (a.technique || "General").localeCompare(b.technique || "General");
       if (sortBy === "author") return (a.author?.name || "Unknown").localeCompare(b.author?.name || "Unknown");

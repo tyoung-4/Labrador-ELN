@@ -53,6 +53,14 @@ async function getRunId(context: RouteContext): Promise<string> {
   return resolved.id;
 }
 
+async function enrichRunWithTags<T extends { id: string }>(run: T) {
+  const tagAssignments = await prisma.tagAssignment.findMany({
+    where: { entityType: "RUN", entityId: run.id },
+    include: { tag: { select: { id: true, name: true, type: true, color: true } } },
+  });
+  return { ...run, tagAssignments };
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const id = await getRunId(context);
   try {
@@ -68,10 +76,36 @@ export async function GET(request: Request, context: RouteContext) {
             title: true,
             description: true,
             technique: true,
+            version: true,
             author: { select: { id: true, name: true, role: true } },
           },
         },
         runner: { select: { id: true, name: true, role: true } },
+        protocol: {
+          select: {
+            id: true,
+            name: true,
+            technique: true,
+            shortDescription: true,
+            sections: {
+              orderBy: { order: "asc" },
+              select: {
+                id: true,
+                name: true,
+                order: true,
+                steps: {
+                  orderBy: { createdAt: "asc" },
+                  select: {
+                    id: true,
+                    stepType: true,
+                    parentStepId: true,
+                    estimatedMinutes: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
     if (!found) return new NextResponse(null, { status: 404 });
@@ -79,7 +113,7 @@ export async function GET(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Not allowed to view this run" }, { status: 403 });
     }
 
-    return NextResponse.json(found);
+    return NextResponse.json(await enrichRunWithTags(found));
   } catch (error) {
     console.error(`GET /api/protocol-runs/${id} failed:`, error);
     const detail = process.env.NODE_ENV === "development" && error instanceof Error ? error.message : undefined;
@@ -110,6 +144,7 @@ export async function PUT(request: Request, context: RouteContext) {
         interactionState: typeof payload.interactionState === "string" ? payload.interactionState : undefined,
         status: nextStatus,
         locked: nextStatus === "COMPLETED" ? true : undefined,
+        completedAt: nextStatus === "COMPLETED" ? new Date() : undefined,
         notes: typeof payload.notes === "string" ? payload.notes : undefined,
       },
       include: {
@@ -119,14 +154,40 @@ export async function PUT(request: Request, context: RouteContext) {
             title: true,
             description: true,
             technique: true,
+            version: true,
             author: { select: { id: true, name: true, role: true } },
           },
         },
         runner: { select: { id: true, name: true, role: true } },
+        protocol: {
+          select: {
+            id: true,
+            name: true,
+            technique: true,
+            shortDescription: true,
+            sections: {
+              orderBy: { order: "asc" },
+              select: {
+                id: true,
+                name: true,
+                order: true,
+                steps: {
+                  orderBy: { createdAt: "asc" },
+                  select: {
+                    id: true,
+                    stepType: true,
+                    parentStepId: true,
+                    estimatedMinutes: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
-    return NextResponse.json(updated);
+    return NextResponse.json(await enrichRunWithTags(updated));
   } catch (error) {
     console.error(`PUT /api/protocol-runs/${id} failed:`, error);
     const detail = process.env.NODE_ENV === "development" && error instanceof Error ? error.message : undefined;

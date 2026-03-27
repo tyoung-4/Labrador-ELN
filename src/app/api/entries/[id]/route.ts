@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { TECHNIQUE_OPTIONS } from "@/models/entry";
-import { Q5_TEMPLATE_ENTRY_ID } from "@/lib/defaultTemplates";
+import { TECHNIQUE_OPTIONS, PROTOCOL_TECHNIQUES } from "@/models/entry";
+import { ENTRY_TYPE_CONFIGS } from "@/lib/entryTypes";
+import type { EntryType } from "@prisma/client";
 
 type Actor = {
   id: string;
@@ -18,7 +19,22 @@ function normalizeDescription(value: unknown): string {
 function normalizeTechnique(value: unknown): string {
   const raw = String(value ?? "").trim();
   if (!raw) return "General";
-  return TECHNIQUE_OPTIONS.includes(raw as (typeof TECHNIQUE_OPTIONS)[number]) ? raw : "Other";
+  // Accept both the legacy TECHNIQUE_OPTIONS (7 values) and the full
+  // PROTOCOL_TECHNIQUES catalogue (21 values) so protocols created via
+  // the creation modal keep their technique through subsequent saves.
+  if (TECHNIQUE_OPTIONS.includes(raw as (typeof TECHNIQUE_OPTIONS)[number])) return raw;
+  if (PROTOCOL_TECHNIQUES.includes(raw as (typeof PROTOCOL_TECHNIQUES)[number])) return raw;
+  return "Other";
+}
+
+function normalizeEntryType(value: unknown): EntryType {
+  const raw = String(value ?? "").trim().toUpperCase();
+  return (raw in ENTRY_TYPE_CONFIGS ? raw : "GENERAL") as EntryType;
+}
+
+function normalizeTypedData(value: unknown): object {
+  if (value && typeof value === "object") return value;
+  return {};
 }
 
 function getActorFromRequest(request?: Request): Actor {
@@ -69,6 +85,29 @@ async function getEntryId(context: RouteContext): Promise<string> {
   return resolved.id;
 }
 
+// Standard include for single-entry queries (includes attachments and linked run)
+// Note: tagAssignments are polymorphic and fetched separately — see enrichWithTags()
+const ENTRY_INCLUDE = {
+  author: {
+    select: { id: true, name: true, role: true },
+  },
+  attachments: {
+    orderBy: { createdAt: "asc" as const },
+  },
+  linkedRun: {
+    select: { id: true, title: true, status: true, createdAt: true },
+  },
+};
+
+/** Attach tagAssignments to a single entry via a separate polymorphic query */
+async function enrichWithTags<T extends { id: string }>(entry: T) {
+  const tagAssignments = await prisma.tagAssignment.findMany({
+    where: { entityType: "ENTRY", entityId: entry.id },
+    include: { tag: { select: { id: true, name: true, type: true, color: true } } },
+  });
+  return { ...entry, tagAssignments };
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const id = await getEntryId(context);
   try {
@@ -77,15 +116,11 @@ export async function GET(request: Request, context: RouteContext) {
 
     const found = await prisma.entry.findUnique({
       where: { id },
-      include: {
-        author: {
-          select: { id: true, name: true, role: true },
-        },
-      },
+      include: ENTRY_INCLUDE,
     });
 
     if (!found) return new NextResponse(null, { status: 404 });
-    return NextResponse.json(found);
+    return NextResponse.json(await enrichWithTags(found));
   } catch (error) {
     console.error(`GET /api/entries/${id} failed:`, error);
     const detail = process.env.NODE_ENV === "development" && error instanceof Error ? error.message : undefined;
@@ -100,32 +135,31 @@ export async function PUT(request: Request, context: RouteContext) {
     const actor = getActorFromRequest(request);
     await ensureActor(actor);
 
-    if (id === Q5_TEMPLATE_ENTRY_ID) {
-      return NextResponse.json({ error: "This template is permanent and cannot be edited." }, { status: 403 });
-    }
-
     const existing = await prisma.entry.findUnique({ where: { id }, select: { authorId: true } });
     if (!existing) return new NextResponse(null, { status: 404 });
     if (!canEditEntry(actor, existing.authorId)) {
       return NextResponse.json({ error: "Not allowed to edit this entry" }, { status: 403 });
     }
 
+    const data: Record<string, unknown> = {
+      title: payload.title,
+      description: normalizeDescription(payload.description),
+      technique: normalizeTechnique(payload.technique),
+      body: payload.body,
+      version: { increment: 1 },
+    };
+
+    // Only update entryType / typedData / linkedRunId if they were explicitly sent
+    if ("entryType"   in payload) data.entryType   = normalizeEntryType(payload.entryType);
+    if ("typedData"   in payload) data.typedData   = normalizeTypedData(payload.typedData);
+    if ("linkedRunId" in payload) data.linkedRunId = payload.linkedRunId ?? null;
+
     const updated = await prisma.entry.update({
       where: { id },
-      data: {
-        title: payload.title,
-        description: normalizeDescription(payload.description),
-        technique: normalizeTechnique(payload.technique),
-        body: payload.body,
-        version: { increment: 1 },
-      },
-      include: {
-        author: {
-          select: { id: true, name: true, role: true },
-        },
-      },
+      data,
+      include: ENTRY_INCLUDE,
     });
-    return NextResponse.json(updated);
+    return NextResponse.json(await enrichWithTags(updated));
   } catch (error) {
     const isMissing = typeof error === "object" && error !== null && "code" in error && error.code === "P2025";
     if (isMissing) return new NextResponse(null, { status: 404 });
@@ -140,10 +174,6 @@ export async function DELETE(request: Request, context: RouteContext) {
   try {
     const actor = getActorFromRequest(request);
     await ensureActor(actor);
-
-    if (id === Q5_TEMPLATE_ENTRY_ID) {
-      return NextResponse.json({ error: "This template is permanent and cannot be deleted." }, { status: 403 });
-    }
 
     const existing = await prisma.entry.findUnique({ where: { id }, select: { authorId: true } });
     if (!existing) return new NextResponse(null, { status: 404 });
@@ -186,23 +216,46 @@ export async function POST(request: Request, context: RouteContext) {
     const source = await prisma.entry.findUnique({ where: { id } });
     if (!source) return new NextResponse(null, { status: 404 });
 
+    // Merge versioning metadata into cloned typedData
+    const sourceTypedData =
+      source.typedData && typeof source.typedData === "object"
+        ? (source.typedData as { typed?: Record<string, string>; custom?: string[] })
+        : { typed: {}, custom: [] as string[] };
+    // Build the typed fields for the clone: start from source, strip any
+    // parent/clone provenance, then add fresh _clonedFromId metadata.
+    // Using _clonedFromId (NOT _parentId) prevents buildFamilies() from
+    // treating the clone as a version-child of the source.
+    const baseTyped: Record<string, string> = { ...(sourceTypedData.typed ?? {}) };
+    delete baseTyped._parentId;
+    delete baseTyped._parentTitle;
+    delete baseTyped._clonedFromId;
+    delete baseTyped._clonedFromTitle;
+
+    const cloneTypedData: Record<string, unknown> = {
+      ...sourceTypedData,
+      typed: {
+        ...baseTyped,
+        _semVer: "1.0",
+        _clonedFromId: source.id,
+        _clonedFromTitle: source.title,
+      },
+    };
+
     const cloned = await prisma.entry.create({
       data: {
         title: `${source.title} (Clone)`,
         description: source.description,
         technique: source.technique,
+        entryType: source.entryType,
+        typedData: cloneTypedData as never,
         body: source.body,
         authorId: actor.id,
         version: 1,
       },
-      include: {
-        author: {
-          select: { id: true, name: true, role: true },
-        },
-      },
+      include: ENTRY_INCLUDE,
     });
 
-    return NextResponse.json(cloned, { status: 201 });
+    return NextResponse.json(await enrichWithTags(cloned), { status: 201 });
   } catch (error) {
     console.error(`POST /api/entries/${id} clone failed:`, error);
     const detail = process.env.NODE_ENV === "development" && error instanceof Error ? error.message : undefined;
