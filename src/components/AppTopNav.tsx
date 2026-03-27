@@ -7,6 +7,7 @@ const items = [
   { href: "/", label: "Home" },
   { href: "/entries", label: "Protocols" },
   { href: "/runs", label: "Runs" },
+  { href: "/inventory", label: "Inventory" },
 ];
 
 export default function AppTopNav() {
@@ -26,7 +27,7 @@ export default function AppTopNav() {
           </Link>
         );
       })}
-      <span className="ml-auto text-xs text-zinc-500">Inventory, Schedule, Knowledge Hub: planned</span>
+      <span className="ml-auto text-xs text-zinc-500">Schedule, Knowledge Hub: planned</span>
     </nav>
   );
 }

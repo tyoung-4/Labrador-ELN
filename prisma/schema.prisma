@@ -18,19 +18,28 @@ model User {
 }
 
 model Entry {
-  id           String        @id @default(uuid())
-  title        String
-  description  String        @default("")
-  technique    String        @default("General")
-  body         String
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  version      Int           @default(1)
-  author       User?         @relation(fields: [authorId], references: [id])
-  authorId     String?
-  tags         Tag[]         @relation("EntryTags")
-  attachments  Attachment[]
-  protocolRuns ProtocolRun[]
+  id                String        @id @default(uuid())
+  title             String
+  description       String        @default("")
+  technique         String        @default("General")
+  body              String
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  version           Int           @default(1)
+  author            User?         @relation(fields: [authorId], references: [id])
+  authorId          String?
+  tags              Tag[]         @relation("EntryTags")
+  attachments       Attachment[]
+  protocolRuns       ProtocolRun[]
+  // Ingestion-only fields (null for protocol entries)
+  entryKind         String?       // EXPERIMENTAL_DATA | PLASMID_MAP
+  operator          String?
+  runReference      String?
+  plasmidName       String?
+  bacterialStrain   String?
+  selectionMarker   String?
+  entryDate         DateTime?
+  notes             String?       // plain text notes for ingestion
 }
 
 model Attachment {
@@ -43,6 +52,7 @@ model Attachment {
   path      String
   checksum  String?
   createdAt DateTime @default(now())
+  entryType String?  // EXPERIMENTAL_DATA | PLASMID_MAP for ingestion
 }
 
 model Tag {
@@ -65,4 +75,160 @@ model ProtocolRun {
   sourceEntryId    String
   runner           User?    @relation(fields: [runnerId], references: [id])
   runnerId         String?
+}
+
+model InventoryReagent {
+  id                String               @id @default(cuid())
+  name              String
+  category          String               @default("general")
+  quantity          Float?
+  initialQuantity   Float?
+  unit              String?
+  concentration     Float?
+  concUnit          String?
+  location          String?
+  lotNumber         String?
+  catalogNumber     String?
+  vendor            String?
+  expiryDate        DateTime?
+  owner             String?
+  notes             String?
+  tags              String[]
+  lowStockThreshold Float?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  researchNotes     ReagentResearchNote[]
+  usageEvents       ReagentUsageEvent[]
+  attachments       ReagentAttachment[]
+}
+
+model ReagentUsageEvent {
+  id         String           @id @default(cuid())
+  reagentId  String
+  reagent    InventoryReagent @relation(fields: [reagentId], references: [id], onDelete: Cascade)
+  amountUsed Float
+  usedBy     String
+  date       DateTime         @default(now())
+  notes      String?
+
+  @@index([reagentId])
+}
+
+model ReagentResearchNote {
+  id        String           @id @default(cuid())
+  reagentId String
+  reagent   InventoryReagent @relation(fields: [reagentId], references: [id], onDelete: Cascade)
+  content   String
+  author    String
+  createdAt DateTime         @default(now())
+
+  @@index([reagentId])
+}
+
+model ReagentAttachment {
+  id        String           @id @default(cuid())
+  reagentId String
+  reagent   InventoryReagent @relation(fields: [reagentId], references: [id], onDelete: Cascade)
+  filename  String
+  path      String
+  mime      String
+  size      Int
+  createdAt DateTime         @default(now())
+
+  @@index([reagentId])
+}
+
+model CellLine {
+  id            String                 @id @default(cuid())
+  name          String
+  species       String?
+  tissue        String?
+  morphology    String?
+  passage       Int?
+  location      String?
+  owner         String?
+  notes         String?
+  tags          String[]
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  researchNotes CellLineResearchNote[]
+}
+
+model CellLineResearchNote {
+  id         String   @id @default(cuid())
+  cellLineId String
+  cellLine   CellLine @relation(fields: [cellLineId], references: [id], onDelete: Cascade)
+  content    String
+  author     String
+  createdAt  DateTime @default(now())
+
+  @@index([cellLineId])
+}
+
+model Plasmid {
+  id            String                @id @default(cuid())
+  name          String
+  backbone      String?
+  insert        String?
+  resistance    String?
+  promoter      String?
+  location      String?
+  owner         String?
+  notes         String?
+  tags          String[]
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  researchNotes PlasmidResearchNote[]
+}
+
+model PlasmidResearchNote {
+  id        String   @id @default(cuid())
+  plasmidId String
+  plasmid   Plasmid  @relation(fields: [plasmidId], references: [id], onDelete: Cascade)
+  content   String
+  author    String
+  createdAt DateTime @default(now())
+
+  @@index([plasmidId])
+}
+
+model ProteinStock {
+  id            String                   @id @default(cuid())
+  name          String
+  concentration Float?
+  concUnit      String?
+  volume        Float?
+  volUnit       String?
+  purity        String?
+  location      String?
+  owner         String?
+  notes         String?
+  tags          String[]
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+  researchNotes ProteinStockResearchNote[]
+  usageEvents   ProteinUsageEvent[]
+}
+
+model ProteinUsageEvent {
+  id         String       @id @default(cuid())
+  stockId    String
+  stock      ProteinStock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  amountUsed Float
+  usedBy     String
+  date       DateTime     @default(now())
+  notes      String?
+
+  @@index([stockId])
+}
+
+model ProteinStockResearchNote {
+  id        String       @id @default(cuid())
+  stockId   String
+  stock     ProteinStock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  content   String
+  author    String
+  createdAt DateTime     @default(now())
+
+  @@index([stockId])
 }
