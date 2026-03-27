@@ -413,13 +413,13 @@ export default function ImportModal({
                 </div>
               )}
 
-              <div className="overflow-auto rounded-xl border border-white/10">
-                <table className="w-full text-sm">
+              <div className="overflow-auto rounded-xl border border-zinc-700 bg-zinc-900">
+                <table className="w-full text-sm bg-zinc-900">
                   <thead>
-                    <tr className="bg-white/5 border-b border-white/10">
-                      <th className="text-left px-4 py-2 text-white/50 font-medium">Spreadsheet Column</th>
-                      <th className="text-left px-4 py-2 text-white/50 font-medium">Maps to ELN Field</th>
-                      <th className="text-left px-4 py-2 text-white/50 font-medium">Sample Values</th>
+                    <tr className="bg-zinc-800 border-b border-zinc-700">
+                      <th className="text-left px-4 py-2 text-zinc-400 font-medium">Spreadsheet Column</th>
+                      <th className="text-left px-4 py-2 text-zinc-400 font-medium">Maps to ELN Field</th>
+                      <th className="text-left px-4 py-2 text-zinc-400 font-medium">Sample Values</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -427,8 +427,8 @@ export default function ImportModal({
                       const samples = dataRows.slice(0, 3).map((r) => r?.[i]).filter((v) => v !== null && v !== "").slice(0, 3);
                       const autoSuggested = autoSuggest(m.header, category) !== "" && m.field === autoSuggest(m.header, category);
                       return (
-                        <tr key={m.header} className="border-b border-white/5 hover:bg-white/5">
-                          <td className="px-4 py-2 text-white/80 font-mono text-xs">{m.header}</td>
+                        <tr key={m.header} className="border-b border-zinc-800 hover:bg-zinc-800/60">
+                          <td className="px-4 py-2 text-zinc-200 font-mono text-xs">{m.header}</td>
                           <td className="px-4 py-2">
                             <select
                               value={m.field}
@@ -437,7 +437,7 @@ export default function ImportModal({
                                 updated[i] = { ...m, field: e.target.value };
                                 setMappings(updated);
                               }}
-                              className={`bg-white/10 text-white rounded-lg px-2 py-1 text-xs border outline-none w-full ${autoSuggested ? "border-teal-400/60" : "border-white/20"}`}
+                              className={`bg-zinc-800 text-zinc-100 rounded-lg px-2 py-1 text-xs border outline-none w-full ${autoSuggested ? "border-teal-400" : "border-zinc-600"}`}
                             >
                               <option value="">— skip —</option>
                               {CATEGORY_FIELDS[category].map((f) => (
@@ -445,7 +445,7 @@ export default function ImportModal({
                               ))}
                             </select>
                           </td>
-                          <td className="px-4 py-2 text-white/40 text-xs">{samples.join(", ") || "—"}</td>
+                          <td className="px-4 py-2 text-zinc-500 text-xs">{samples.join(", ") || "—"}</td>
                         </tr>
                       );
                     })}
@@ -480,13 +480,13 @@ export default function ImportModal({
                 </div>
               </div>
 
-              <div className="overflow-auto rounded-xl border border-white/10" style={{ maxHeight: "calc(100vh - 420px)" }}>
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-[#1a1a2e]">
-                    <tr className="bg-white/5 border-b border-white/10">
+              <div className="overflow-auto rounded-xl border border-zinc-700 bg-zinc-900" style={{ maxHeight: "calc(100vh - 420px)" }}>
+                <table className="w-full text-xs bg-zinc-900">
+                  <thead className="sticky top-0">
+                    <tr className="bg-zinc-800 border-b border-zinc-700">
                       <th className="px-3 py-2 w-8"></th>
                       {mappings.filter((m) => m.field).map((m) => (
-                        <th key={m.header} className="text-left px-3 py-2 text-white/50 font-medium whitespace-nowrap">{m.field}</th>
+                        <th key={m.header} className="text-left px-3 py-2 text-zinc-400 font-medium whitespace-nowrap">{m.field}</th>
                       ))}
                     </tr>
                   </thead>
@@ -494,7 +494,7 @@ export default function ImportModal({
                     {allMappedRows.map(({ row, idx }) => (
                       <tr
                         key={idx}
-                        className={`border-b border-white/5 cursor-pointer transition-colors ${selectedRowIds.has(idx) ? "bg-teal-400/5" : "opacity-50"}`}
+                        className={`border-b border-zinc-800 cursor-pointer transition-colors ${selectedRowIds.has(idx) ? "bg-teal-900/30 hover:bg-teal-900/40" : "opacity-40 hover:opacity-60"}`}
                         onClick={() => {
                           const next = new Set(selectedRowIds);
                           if (next.has(idx)) next.delete(idx); else next.add(idx);
@@ -510,7 +510,7 @@ export default function ImportModal({
                           />
                         </td>
                         {mappings.filter((m) => m.field).map((m) => (
-                          <td key={m.header} className="px-3 py-2 text-white/70 max-w-[180px] truncate">
+                          <td key={m.header} className="px-3 py-2 text-zinc-200 max-w-[180px] truncate">
                             {row[m.field] !== undefined ? String(row[m.field]) : "—"}
                           </td>
                         ))}
