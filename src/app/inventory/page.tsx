@@ -7,7 +7,7 @@ import CellLinesList from "@/components/inventory/CellLinesList";
 import PlasmidsList from "@/components/inventory/PlasmidsList";
 import ProteinStocksList from "@/components/inventory/ProteinStocksList";
 import type { ImportCategory } from "@/app/api/inventory/import/route";
-import { ELN_USERS } from "@/components/AppTopNav";
+import AppTopNav, { ELN_USERS } from "@/components/AppTopNav";
 
 const ImportModal = dynamic(() => import("@/components/inventory/ImportModal"), { ssr: false });
 
@@ -64,7 +64,9 @@ export default function InventoryPage() {
   }, [goToTab]);
 
   return (
-    <div className="min-h-screen bg-[#0f0f1a] text-white px-6 py-8 max-w-5xl mx-auto">
+    <div className="flex min-h-screen flex-col gap-4 bg-zinc-950 p-6 text-zinc-100">
+      <AppTopNav />
+      <div className="mx-auto w-full max-w-5xl">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -112,6 +114,8 @@ export default function InventoryPage() {
         {tab === "cellLines" && <CellLinesList search={debouncedSearch} currentUser={currentUser} />}
         {tab === "plasmids" && <PlasmidsList search={debouncedSearch} currentUser={currentUser} />}
         {tab === "proteins" && <ProteinStocksList search={debouncedSearch} currentUser={currentUser} />}
+      </div>
+
       </div>
 
       {/* Import Modal */}
