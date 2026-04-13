@@ -41,9 +41,15 @@ export default function ReagentsList({ search, currentUser }: { search: string; 
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/inventory/reagents?search=${encodeURIComponent(search)}`);
-    setReagents(await res.json());
-    setLoading(false);
+    try {
+      const res = await fetch(`/api/inventory/reagents?search=${encodeURIComponent(search)}`);
+      const data = await res.json();
+      if (Array.isArray(data)) setReagents(data);
+    } catch {
+      // leave reagents as-is on network/parse error
+    } finally {
+      setLoading(false);
+    }
   }, [search]);
 
   useEffect(() => { load(); }, [load]);
