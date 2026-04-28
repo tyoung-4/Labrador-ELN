@@ -37,7 +37,6 @@ export default function ProteinStockForm({
         },
         body: JSON.stringify({
           name: name.trim(),
-          plasmidId: plasmidId || null,
           owner: currentUser,
           notes: notes.trim() || null,
           tags: [],
