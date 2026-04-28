@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import ArchiveButton from "./ArchiveButton";
+import MarkForArchiveButton from "./MarkForArchiveButton";
 
 interface CellLine {
   id: string;
@@ -13,6 +15,7 @@ interface CellLine {
   owner: string | null;
   notes: string | null;
   tags: string[];
+  markedForArchive: boolean;
   _count: { researchNotes: number };
 }
 
@@ -23,9 +26,15 @@ export default function CellLinesList({ search, currentUser }: { search: string;
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/inventory/celllines?search=${encodeURIComponent(search)}`);
-    setItems(await res.json());
-    setLoading(false);
+    try {
+      const res = await fetch(`/api/inventory/celllines?search=${encodeURIComponent(search)}`);
+      const data = await res.json();
+      if (Array.isArray(data)) setItems(data);
+    } catch {
+      // leave items as-is on error
+    } finally {
+      setLoading(false);
+    }
   }, [search]);
 
   useEffect(() => { load(); }, [load]);
@@ -44,12 +53,20 @@ export default function CellLinesList({ search, currentUser }: { search: string;
       {items.map((item) => {
         const expanded = expandedIds.has(item.id);
         return (
-          <div key={item.id} className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+          <div
+            key={item.id}
+            className={`bg-white/5 border rounded-xl overflow-hidden ${item.markedForArchive ? "border-orange-500/40" : "border-white/10"}`}
+          >
             <div
               className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/5"
               onClick={() => setExpandedIds((prev) => { const n = new Set(prev); if (n.has(item.id)) n.delete(item.id); else n.add(item.id); return n; })}
             >
-              <span className="text-white font-semibold flex-1">{item.name}</span>
+              <span className="text-white font-semibold flex-1">
+                {item.name}
+                {item.markedForArchive && (
+                  <span className="ml-2 text-orange-400/70 text-xs font-normal">⚑ flagged</span>
+                )}
+              </span>
               <div className="flex items-center gap-2 text-white/40 text-xs">
                 {item.species && <span>{item.species}</span>}
                 {item.passage !== null && <span>P{item.passage}</span>}
@@ -68,7 +85,24 @@ export default function CellLinesList({ search, currentUser }: { search: string;
                     {item.tags.map((t) => <span key={t} className="bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded-full">{t}</span>)}
                   </div>
                 )}
-                <button onClick={() => handleDelete(item.id)} className="text-red-400/60 hover:text-red-400 transition-colors mt-1">Delete</button>
+                <div className="flex items-center gap-4 mt-1 flex-wrap">
+                  <MarkForArchiveButton
+                    entityType="cell_line"
+                    entityId={item.id}
+                    entityName={item.name}
+                    currentUser={currentUser}
+                    alreadyMarked={item.markedForArchive}
+                    onMarked={load}
+                  />
+                  <ArchiveButton
+                    entityType="cell_line"
+                    entityId={item.id}
+                    entityName={item.name}
+                    currentUser={currentUser}
+                    onArchived={load}
+                  />
+                  <button onClick={() => handleDelete(item.id)} className="text-red-400/60 hover:text-red-400 transition-colors">Delete</button>
+                </div>
               </div>
             )}
           </div>

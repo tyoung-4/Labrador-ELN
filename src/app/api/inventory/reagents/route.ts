@@ -7,6 +7,7 @@ export async function GET(req: NextRequest) {
     const search = searchParams.get("search") ?? "";
     const where = search
       ? {
+          isArchived: false,
           OR: [
             { name: { contains: search, mode: "insensitive" as const } },
             { category: { contains: search, mode: "insensitive" as const } },
@@ -15,7 +16,7 @@ export async function GET(req: NextRequest) {
             { notes: { contains: search, mode: "insensitive" as const } },
           ],
         }
-      : {};
+      : { isArchived: false };
     const reagents = await prisma.inventoryReagent.findMany({
       where,
       orderBy: { name: "asc" },
