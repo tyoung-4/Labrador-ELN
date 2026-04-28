@@ -36,8 +36,9 @@ export default function CellLineForm({
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch("/api/inventory/celllines", {
-        method: "POST",
+      const url = existing ? `/api/inventory/celllines/${existing.id}` : "/api/inventory/celllines";
+      const res = await fetch(url, {
+        method: existing ? "PATCH" : "POST",
         headers: {
           "Content-Type": "application/json",
           "x-user-name": currentUser,
@@ -48,12 +49,12 @@ export default function CellLineForm({
           tissue: tissue.trim() || null,
           passage: passage ? parseInt(passage) : null,
           location: storageLocation.trim() || null,
-          owner: currentUser,
+          ...(existing ? {} : { owner: currentUser }),
           notes: notes.trim() || null,
           tags: [],
         }),
       });
-      if (!res.ok) throw new Error("Failed to create cell line");
+      if (!res.ok) throw new Error(existing ? "Failed to update cell line" : "Failed to create cell line");
       const item = await res.json();
       onSuccess(item);
     } catch (err) {
@@ -206,7 +207,7 @@ export default function CellLineForm({
               : "bg-purple-600 hover:bg-purple-700 text-white"
           }`}
         >
-          {submitting ? "Adding..." : "Add Cell Line"}
+          {submitting ? "Saving..." : existing ? "Save Changes" : "Add Cell Line"}
         </button>
       </div>
     </div>

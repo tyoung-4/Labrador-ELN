@@ -29,20 +29,21 @@ export default function ProteinStockForm({
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch("/api/inventory/proteinstocks", {
-        method: "POST",
+      const url = existing ? `/api/inventory/proteinstocks/${existing.id}` : "/api/inventory/proteinstocks";
+      const res = await fetch(url, {
+        method: existing ? "PATCH" : "POST",
         headers: {
           "Content-Type": "application/json",
           "x-user-name": currentUser,
         },
         body: JSON.stringify({
           name: name.trim(),
-          owner: currentUser,
+          ...(existing ? {} : { owner: currentUser }),
           notes: notes.trim() || null,
           tags: [],
         }),
       });
-      if (!res.ok) throw new Error("Failed to create protein stock");
+      if (!res.ok) throw new Error(existing ? "Failed to update protein stock" : "Failed to create protein stock");
       const item = await res.json();
       onSuccess(item);
     } catch (err) {
@@ -124,7 +125,7 @@ export default function ProteinStockForm({
               : "bg-purple-600 hover:bg-purple-700 text-white"
           }`}
         >
-          {submitting ? "Adding..." : "Add Protein Stock"}
+          {submitting ? "Saving..." : existing ? "Save Changes" : "Add Protein Stock"}
         </button>
       </div>
     </div>

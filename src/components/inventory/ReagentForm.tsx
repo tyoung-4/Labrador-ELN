@@ -44,8 +44,10 @@ export default function ReagentForm({
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch("/api/inventory/reagents", {
-        method: "POST",
+      const url = existing ? `/api/inventory/reagents/${existing.id}` : "/api/inventory/reagents";
+      const method = existing ? "PATCH" : "POST";
+      const res = await fetch(url, {
+        method,
         headers: {
           "Content-Type": "application/json",
           "x-user-name": currentUser,
@@ -62,10 +64,10 @@ export default function ReagentForm({
           expiryDate: expiryDate ? new Date(expiryDate) : null,
           lowStockThreshold: null,
           notes: notes.trim() || null,
-          owner: currentUser,
+          ...(existing ? {} : { owner: currentUser }),
         }),
       });
-      if (!res.ok) throw new Error("Failed to create reagent");
+      if (!res.ok) throw new Error(existing ? "Failed to update reagent" : "Failed to create reagent");
       const item = await res.json();
       onSuccess(item);
     } catch (err) {
@@ -238,7 +240,7 @@ export default function ReagentForm({
               : "bg-purple-600 hover:bg-purple-700 text-white"
           }`}
         >
-          {submitting ? "Adding..." : "Add Reagent"}
+          {submitting ? "Saving..." : existing ? "Save Changes" : "Add Reagent"}
         </button>
       </div>
     </div>

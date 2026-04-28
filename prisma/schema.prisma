@@ -391,6 +391,7 @@ model ProteinStock {
   updatedAt     DateTime                 @updatedAt
   researchNotes ProteinStockResearchNote[]
   usageEvents   ProteinUsageEvent[]
+  batches       ProteinBatch[]
 
   // Archive fields
   isArchived       Boolean   @default(false)
@@ -405,6 +406,31 @@ model ProteinStock {
   // Edit tracking
   lastEditedBy  String?
   lastEditedAt  DateTime?
+}
+
+model ProteinBatch {
+  id                  String       @id @default(cuid())
+  batchId             String       @unique
+  stockId             String
+  stock               ProteinStock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  purificationDate    DateTime
+  initialVolume       Float        // µL — immutable after creation
+  currentVolume       Float        // µL — managed via usage events
+  concentration       Float?       // mg/mL
+  mw                  Float?       // kDa
+  extinctionCoeff     Float?       // M⁻¹cm⁻¹
+  a280                Float?       // A280/260 ratio
+  storageBuffer       String?
+  storageLocationText String?
+  lowThresholdType    String?      // "volume" | "mass" | "percentage"
+  lowThresholdAmber   Float?
+  lowThresholdRed     Float?
+  notes               String?
+  createdBy           String?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@index([stockId])
 }
 
 model ProteinUsageEvent {

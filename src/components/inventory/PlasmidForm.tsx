@@ -33,8 +33,9 @@ export default function PlasmidForm({
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch("/api/inventory/plasmids", {
-        method: "POST",
+      const url = existing ? `/api/inventory/plasmids/${existing.id}` : "/api/inventory/plasmids";
+      const res = await fetch(url, {
+        method: existing ? "PATCH" : "POST",
         headers: {
           "Content-Type": "application/json",
           "x-user-name": currentUser,
@@ -46,12 +47,12 @@ export default function PlasmidForm({
           insert: insert.trim() || null,
           promoter: hostOrganism.trim() || null,
           location: null,
-          owner: currentUser,
+          ...(existing ? {} : { owner: currentUser }),
           notes: notes.trim() || null,
           tags: [],
         }),
       });
-      if (!res.ok) throw new Error("Failed to create plasmid");
+      if (!res.ok) throw new Error(existing ? "Failed to update plasmid" : "Failed to create plasmid");
       const item = await res.json();
       onSuccess(item);
     } catch (err) {
@@ -197,7 +198,7 @@ export default function PlasmidForm({
               : "bg-purple-600 hover:bg-purple-700 text-white"
           }`}
         >
-          {submitting ? "Adding..." : "Add Plasmid"}
+          {submitting ? "Saving..." : existing ? "Save Changes" : "Add Plasmid"}
         </button>
       </div>
     </div>

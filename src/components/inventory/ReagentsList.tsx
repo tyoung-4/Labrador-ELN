@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import ArchiveButton from "./ArchiveButton";
 import MarkForArchiveButton from "./MarkForArchiveButton";
+import ReagentForm from "./ReagentForm";
 
 interface Reagent {
   id: string;
@@ -41,6 +42,7 @@ export default function ReagentsList({ search, currentUser, refetchTrigger }: { 
   const [reagents, setReagents] = useState<Reagent[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [editingItem, setEditingItem] = useState<Reagent | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -88,6 +90,7 @@ export default function ReagentsList({ search, currentUser, refetchTrigger }: { 
   }
 
   return (
+    <>
     <div className="space-y-3">
       {[...groups.entries()].map(([key, stocks]) => {
         const hasLow = stocks.some(isLowStock);
@@ -169,6 +172,14 @@ export default function ReagentsList({ search, currentUser, refetchTrigger }: { 
                             </div>
                           )}
                           <div className="flex items-center gap-4 mt-1 flex-wrap">
+                            {(currentUser === r.owner || currentUser === "Admin") && (
+                              <button
+                                onClick={() => setEditingItem(r)}
+                                className="text-xs text-gray-400 hover:text-white border border-white/10 rounded px-2 py-1 transition-colors"
+                              >
+                                Edit
+                              </button>
+                            )}
                             <MarkForArchiveButton
                               entityType="reagent"
                               entityId={r.id}
@@ -202,5 +213,34 @@ export default function ReagentsList({ search, currentUser, refetchTrigger }: { 
         );
       })}
     </div>
+
+      {/* Edit reagent modal */}
+      {editingItem && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-900 border border-white/10 rounded-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 flex-shrink-0">
+              <h2 className="text-white font-bold">Edit Reagent</h2>
+              <button
+                onClick={() => setEditingItem(null)}
+                className="text-gray-400 hover:text-white text-xl leading-none"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="px-6 py-4 overflow-y-auto flex-1">
+              <ReagentForm
+                currentUser={currentUser}
+                existing={editingItem}
+                onSuccess={() => {
+                  setEditingItem(null);
+                  load();
+                }}
+                onCancel={() => setEditingItem(null)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
