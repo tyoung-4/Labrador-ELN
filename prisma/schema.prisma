@@ -241,6 +241,20 @@ model InventoryReagent {
   researchNotes     ReagentResearchNote[]
   usageEvents       ReagentUsageEvent[]
   attachments       ReagentAttachment[]
+
+  // Archive fields
+  isArchived       Boolean   @default(false)
+  archivedAt       DateTime?
+  archivedBy       String?
+  archiveReason    String?
+  markedForArchive Boolean   @default(false)
+  markedBy         String?
+  markedNote       String?
+  markedAt         DateTime?
+
+  // Edit tracking
+  lastEditedBy  String?
+  lastEditedAt  DateTime?
 }
 
 model ReagentUsageEvent {
@@ -293,6 +307,20 @@ model CellLine {
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
   researchNotes CellLineResearchNote[]
+
+  // Archive fields
+  isArchived       Boolean   @default(false)
+  archivedAt       DateTime?
+  archivedBy       String?
+  archiveReason    String?
+  markedForArchive Boolean   @default(false)
+  markedBy         String?
+  markedNote       String?
+  markedAt         DateTime?
+
+  // Edit tracking
+  lastEditedBy  String?
+  lastEditedAt  DateTime?
 }
 
 model CellLineResearchNote {
@@ -320,6 +348,20 @@ model Plasmid {
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
   researchNotes PlasmidResearchNote[]
+
+  // Archive fields
+  isArchived       Boolean   @default(false)
+  archivedAt       DateTime?
+  archivedBy       String?
+  archiveReason    String?
+  markedForArchive Boolean   @default(false)
+  markedBy         String?
+  markedNote       String?
+  markedAt         DateTime?
+
+  // Edit tracking
+  lastEditedBy  String?
+  lastEditedAt  DateTime?
 }
 
 model PlasmidResearchNote {
@@ -349,6 +391,20 @@ model ProteinStock {
   updatedAt     DateTime                 @updatedAt
   researchNotes ProteinStockResearchNote[]
   usageEvents   ProteinUsageEvent[]
+
+  // Archive fields
+  isArchived       Boolean   @default(false)
+  archivedAt       DateTime?
+  archivedBy       String?
+  archiveReason    String?
+  markedForArchive Boolean   @default(false)
+  markedBy         String?
+  markedNote       String?
+  markedAt         DateTime?
+
+  // Edit tracking
+  lastEditedBy  String?
+  lastEditedAt  DateTime?
 }
 
 model ProteinUsageEvent {
@@ -372,4 +428,39 @@ model ProteinStockResearchNote {
   createdAt DateTime     @default(now())
 
   @@index([stockId])
+}
+
+model InventoryEditLog {
+  id           String   @id @default(cuid())
+  entityType   String   // "REAGENT" | "CELL_LINE" | "PLASMID" | "PROTEIN_STOCK" | "PROTEIN_BATCH"
+  entityId     String
+  editedBy     String
+  editedAt     DateTime @default(now())
+  fieldName    String
+  oldValue     String?
+  newValue     String?
+  warningShown Boolean  @default(false)
+
+  @@index([entityType, entityId])
+  @@index([editedBy])
+  @@index([editedAt])
+}
+
+model DashboardNotification {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String   @default("ARCHIVE_REQUEST")
+  entityType  String
+  entityId    String
+  entityName  String
+  message     String
+  fromUser    String
+  note        String?
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  readAt      DateTime?
+
+  @@index([userId, isRead])
+  @@index([userId])
+  @@index([createdAt])
 }

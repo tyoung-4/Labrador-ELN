@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import ArchiveButton from "./ArchiveButton";
+import MarkForArchiveButton from "./MarkForArchiveButton";
 
 interface Reagent {
   id: string;
@@ -20,6 +22,7 @@ interface Reagent {
   notes: string | null;
   tags: string[];
   lowStockThreshold: number | null;
+  markedForArchive: boolean;
   _count: { researchNotes: number; usageEvents: number };
 }
 
@@ -88,15 +91,19 @@ export default function ReagentsList({ search, currentUser }: { search: string; 
     <div className="space-y-3">
       {[...groups.entries()].map(([key, stocks]) => {
         const hasLow = stocks.some(isLowStock);
+        const anyMarked = stocks.some((s) => s.markedForArchive);
         const groupExpanded = stocks.some((s) => expandedIds.has(s.id));
         return (
-          <div key={key} className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+          <div key={key} className={`bg-white/5 border rounded-xl overflow-hidden ${anyMarked ? "border-orange-500/40" : "border-white/10"}`}>
             {/* Group header */}
             <div
               className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/5 transition-colors"
               onClick={() => stocks.forEach((s) => toggleExpand(s.id))}
             >
-              <span className="text-white font-semibold flex-1">{stocks[0].name}</span>
+              <span className="text-white font-semibold flex-1">
+                {stocks[0].name}
+                {anyMarked && <span className="ml-2 text-orange-400/70 text-xs font-normal">⚑ flagged</span>}
+              </span>
               <div className="flex items-center gap-2">
                 {hasLow && <span className="text-amber-400 text-xs">Low stock</span>}
                 <span className="text-white/30 text-xs">{stocks.length} stock{stocks.length !== 1 ? "s" : ""}</span>
@@ -161,12 +168,29 @@ export default function ReagentsList({ search, currentUser }: { search: string; 
                               ))}
                             </div>
                           )}
-                          <button
-                            onClick={() => handleDelete(r.id)}
-                            className="text-red-400/60 hover:text-red-400 transition-colors mt-1"
-                          >
-                            Delete
-                          </button>
+                          <div className="flex items-center gap-4 mt-1 flex-wrap">
+                            <MarkForArchiveButton
+                              entityType="reagent"
+                              entityId={r.id}
+                              entityName={r.name}
+                              currentUser={currentUser}
+                              alreadyMarked={r.markedForArchive}
+                              onMarked={load}
+                            />
+                            <ArchiveButton
+                              entityType="reagent"
+                              entityId={r.id}
+                              entityName={r.name}
+                              currentUser={currentUser}
+                              onArchived={load}
+                            />
+                            <button
+                              onClick={() => handleDelete(r.id)}
+                              className="text-red-400/60 hover:text-red-400 transition-colors"
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>

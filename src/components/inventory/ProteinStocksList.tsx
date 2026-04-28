@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import ArchiveButton from "./ArchiveButton";
+import MarkForArchiveButton from "./MarkForArchiveButton";
 
 interface ProteinStock {
   id: string;
@@ -14,6 +16,7 @@ interface ProteinStock {
   owner: string | null;
   notes: string | null;
   tags: string[];
+  markedForArchive: boolean;
   _count: { researchNotes: number; usageEvents: number };
 }
 
@@ -24,9 +27,15 @@ export default function ProteinStocksList({ search, currentUser }: { search: str
 
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await fetch(`/api/inventory/proteinstocks?search=${encodeURIComponent(search)}`);
-    setItems(await res.json());
-    setLoading(false);
+    try {
+      const res = await fetch(`/api/inventory/proteinstocks?search=${encodeURIComponent(search)}`);
+      const data = await res.json();
+      if (Array.isArray(data)) setItems(data);
+    } catch {
+      // leave items as-is on error
+    } finally {
+      setLoading(false);
+    }
   }, [search]);
 
   useEffect(() => { load(); }, [load]);
@@ -52,8 +61,12 @@ export default function ProteinStocksList({ search, currentUser }: { search: str
     <div className="space-y-3">
       {[...groups.entries()].map(([key, stocks]) => {
         const groupExpanded = stocks.some((s) => expandedIds.has(s.id));
+        const anyMarked = stocks.some((s) => s.markedForArchive);
         return (
-          <div key={key} className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+          <div
+            key={key}
+            className={`bg-white/5 border rounded-xl overflow-hidden ${anyMarked ? "border-orange-500/40" : "border-white/10"}`}
+          >
             <div
               className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/5"
               onClick={() => {
@@ -69,7 +82,10 @@ export default function ProteinStocksList({ search, currentUser }: { search: str
                 });
               }}
             >
-              <span className="text-white font-semibold flex-1">{stocks[0].name}</span>
+              <span className="text-white font-semibold flex-1">
+                {stocks[0].name}
+                {anyMarked && <span className="ml-2 text-orange-400/70 text-xs font-normal">⚑ flagged</span>}
+              </span>
               <span className="text-white/30 text-xs">{stocks.length} stock{stocks.length !== 1 ? "s" : ""}</span>
               <span className="text-white/30 text-sm">{groupExpanded ? "▲" : "▼"}</span>
             </div>
@@ -89,6 +105,7 @@ export default function ProteinStocksList({ search, currentUser }: { search: str
                           )}
                           {item.purity && <span>Purity: {item.purity}</span>}
                           {item.location && <span>&#x1F4CD; {item.location}</span>}
+                          {item.markedForArchive && <span className="text-orange-400/60">⚑ flagged</span>}
                         </div>
                         <button
                           onClick={() => setExpandedIds((prev) => { const n = new Set(prev); if (n.has(item.id)) n.delete(item.id); else n.add(item.id); return n; })}
@@ -106,7 +123,24 @@ export default function ProteinStocksList({ search, currentUser }: { search: str
                               {item.tags.map((t) => <span key={t} className="bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded-full">{t}</span>)}
                             </div>
                           )}
-                          <button onClick={() => handleDelete(item.id)} className="text-red-400/60 hover:text-red-400 transition-colors">Delete</button>
+                          <div className="flex items-center gap-4 mt-1 flex-wrap">
+                            <MarkForArchiveButton
+                              entityType="protein_stock"
+                              entityId={item.id}
+                              entityName={item.name}
+                              currentUser={currentUser}
+                              alreadyMarked={item.markedForArchive}
+                              onMarked={load}
+                            />
+                            <ArchiveButton
+                              entityType="protein_stock"
+                              entityId={item.id}
+                              entityName={item.name}
+                              currentUser={currentUser}
+                              onArchived={load}
+                            />
+                            <button onClick={() => handleDelete(item.id)} className="text-red-400/60 hover:text-red-400 transition-colors">Delete</button>
+                          </div>
                         </div>
                       )}
                     </div>
