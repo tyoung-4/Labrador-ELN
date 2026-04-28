@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import ArchiveButton from "./ArchiveButton";
 import MarkForArchiveButton from "./MarkForArchiveButton";
+import PlasmidForm from "./PlasmidForm";
 
 interface Plasmid {
   id: string;
@@ -19,10 +20,11 @@ interface Plasmid {
   _count: { researchNotes: number };
 }
 
-export default function PlasmidsList({ search, currentUser }: { search: string; currentUser: string }) {
+export default function PlasmidsList({ search, currentUser, refetchTrigger }: { search: string; currentUser: string; refetchTrigger?: number }) {
   const [items, setItems] = useState<Plasmid[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [editingItem, setEditingItem] = useState<Plasmid | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -37,7 +39,7 @@ export default function PlasmidsList({ search, currentUser }: { search: string; 
     }
   }, [search]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, refetchTrigger]);
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this plasmid?")) return;
@@ -49,6 +51,7 @@ export default function PlasmidsList({ search, currentUser }: { search: string; 
   if (!items.length) return <div className="text-white/40 text-sm py-12 text-center">No plasmids yet.</div>;
 
   return (
+    <>
     <div className="space-y-2">
       {items.map((item) => {
         const expanded = expandedIds.has(item.id);
@@ -86,6 +89,14 @@ export default function PlasmidsList({ search, currentUser }: { search: string; 
                   </div>
                 )}
                 <div className="flex items-center gap-4 mt-1 flex-wrap">
+                  {(currentUser === item.owner || currentUser === "Admin") && (
+                    <button
+                      onClick={() => setEditingItem(item)}
+                      className="text-xs text-gray-400 hover:text-white border border-white/10 rounded px-2 py-1 transition-colors"
+                    >
+                      Edit
+                    </button>
+                  )}
                   <MarkForArchiveButton
                     entityType="plasmid"
                     entityId={item.id}
@@ -109,5 +120,35 @@ export default function PlasmidsList({ search, currentUser }: { search: string; 
         );
       })}
     </div>
+
+      {/* Edit plasmid modal */}
+      {editingItem && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-900 border border-white/10 rounded-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 flex-shrink-0">
+              <h2 className="text-white font-bold">Edit Plasmid</h2>
+              <button
+                onClick={() => setEditingItem(null)}
+                className="text-gray-400 hover:text-white text-xl leading-none"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="px-6 py-4 overflow-y-auto flex-1">
+              <PlasmidForm
+                currentUser={currentUser}
+                existing={editingItem}
+                availableRuns={[]}
+                onSuccess={() => {
+                  setEditingItem(null);
+                  load();
+                }}
+                onCancel={() => setEditingItem(null)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
