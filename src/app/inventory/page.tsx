@@ -7,6 +7,7 @@ import CellLinesList from "@/components/inventory/CellLinesList";
 import PlasmidsList from "@/components/inventory/PlasmidsList";
 import ProteinStocksList from "@/components/inventory/ProteinStocksList";
 import ArchivedList from "@/components/inventory/ArchivedList";
+import CreateItemModal from "@/components/inventory/CreateItemModal";
 import AppTopNav, { ELN_USERS } from "@/components/AppTopNav";
 import type { TemplateType } from "@/lib/inventoryTemplates";
 
@@ -41,7 +42,12 @@ export default function InventoryPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [showImport, setShowImport] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [currentUser, setCurrentUser] = useState("Unknown");
+  const [refetchTrigger, setRefetchTrigger] = useState(0);
+  const [availableRuns, setAvailableRuns] = useState<Array<{ id: string; title: string; runId: string }>>([]);
+  const [availablePlasmids, setAvailablePlasmids] = useState<Array<{ id: string; name: string }>>([]);
+  const [allCellLines, setAllCellLines] = useState<Array<{ id: string; name: string }>>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -62,6 +68,27 @@ export default function InventoryPage() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [search]);
+
+  // Fetch shared data for create modal
+  useEffect(() => {
+    // Fetch plasmids
+    fetch("/api/inventory/plasmids")
+      .then((r) => r.json())
+      .then((data) => {
+        const plasmids = Array.isArray(data) ? data : [];
+        setAvailablePlasmids(plasmids.map((p: any) => ({ id: p.id, name: p.name })));
+      })
+      .catch(() => {});
+
+    // Fetch cell lines
+    fetch("/api/inventory/celllines")
+      .then((r) => r.json())
+      .then((data) => {
+        const cls = Array.isArray(data) ? data : [];
+        setAllCellLines(cls.map((cl: any) => ({ id: cl.id, name: cl.name })));
+      })
+      .catch(() => {});
+  }, []);
 
   const goToTab = useCallback((t: Tab) => {
     setTab(t);
@@ -89,13 +116,22 @@ export default function InventoryPage() {
               Reagents, cell lines, plasmids, and protein stocks
             </p>
           </div>
-          <button
-            onClick={() => setShowImport(true)}
-            className="flex items-center gap-2 bg-teal-500 hover:bg-teal-400 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors shadow-lg shadow-teal-500/20"
-          >
-            <span>📊</span>
-            <span>Import Stocks</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="rounded-lg bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2 flex-shrink-0"
+            >
+              <span>+</span>
+              <span>Create Item</span>
+            </button>
+            <button
+              onClick={() => setShowImport(true)}
+              className="flex items-center gap-2 bg-teal-500 hover:bg-teal-400 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors shadow-lg shadow-teal-500/20"
+            >
+              <span>📊</span>
+              <span>Import Stocks</span>
+            </button>
+          </div>
         </div>
 
         {/* Search */}
@@ -131,10 +167,10 @@ export default function InventoryPage() {
 
         {/* Content */}
         <div>
-          {tab === "reagents"  && <ReagentsList search={debouncedSearch} currentUser={currentUser} />}
-          {tab === "cellLines" && <CellLinesList search={debouncedSearch} currentUser={currentUser} />}
-          {tab === "plasmids"  && <PlasmidsList search={debouncedSearch} currentUser={currentUser} />}
-          {tab === "proteins"  && <ProteinStocksList search={debouncedSearch} currentUser={currentUser} />}
+          {tab === "reagents"  && <ReagentsList search={debouncedSearch} currentUser={currentUser} refetchTrigger={refetchTrigger} />}
+          {tab === "cellLines" && <CellLinesList search={debouncedSearch} currentUser={currentUser} refetchTrigger={refetchTrigger} />}
+          {tab === "plasmids"  && <PlasmidsList search={debouncedSearch} currentUser={currentUser} refetchTrigger={refetchTrigger} />}
+          {tab === "proteins"  && <ProteinStocksList search={debouncedSearch} currentUser={currentUser} refetchTrigger={refetchTrigger} />}
           {tab === "archived"  && <ArchivedList search={debouncedSearch} currentUser={currentUser} />}
         </div>
 
@@ -149,6 +185,28 @@ export default function InventoryPage() {
             onImportComplete(type);
             setShowImport(false);
           }}
+        />
+      )}
+
+      {/* Create Item Modal */}
+      {showCreateModal && (
+        <CreateItemModal
+          currentUser={currentUser}
+          availableRuns={availableRuns}
+          availablePlasmids={availablePlasmids}
+          allCellLines={allCellLines}
+          onSuccess={(category, item) => {
+            setShowCreateModal(false);
+            const tabMap: Record<string, Tab> = {
+              proteinStock: "proteins",
+              reagent: "reagents",
+              cellLine: "cellLines",
+              plasmid: "plasmids",
+            };
+            goToTab(tabMap[category]);
+            setRefetchTrigger((prev) => prev + 1);
+          }}
+          onCancel={() => setShowCreateModal(false)}
         />
       )}
     </div>

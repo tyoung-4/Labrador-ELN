@@ -19,7 +19,7 @@ interface Plasmid {
   _count: { researchNotes: number };
 }
 
-export default function PlasmidsList({ search, currentUser }: { search: string; currentUser: string }) {
+export default function PlasmidsList({ search, currentUser, refetchTrigger }: { search: string; currentUser: string; refetchTrigger?: number }) {
   const [items, setItems] = useState<Plasmid[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -37,7 +37,7 @@ export default function PlasmidsList({ search, currentUser }: { search: string; 
     }
   }, [search]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, refetchTrigger]);
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this plasmid?")) return;

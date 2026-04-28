@@ -37,7 +37,7 @@ function isLowStock(r: Reagent) {
   return threshold !== null && r.quantity <= threshold;
 }
 
-export default function ReagentsList({ search, currentUser }: { search: string; currentUser: string }) {
+export default function ReagentsList({ search, currentUser, refetchTrigger }: { search: string; currentUser: string; refetchTrigger?: number }) {
   const [reagents, setReagents] = useState<Reagent[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -55,7 +55,7 @@ export default function ReagentsList({ search, currentUser }: { search: string; 
     }
   }, [search]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, refetchTrigger]);
 
   const toggleExpand = (id: string) => {
     setExpandedIds((prev) => {

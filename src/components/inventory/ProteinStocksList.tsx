@@ -20,7 +20,7 @@ interface ProteinStock {
   _count: { researchNotes: number; usageEvents: number };
 }
 
-export default function ProteinStocksList({ search, currentUser }: { search: string; currentUser: string }) {
+export default function ProteinStocksList({ search, currentUser, refetchTrigger }: { search: string; currentUser: string; refetchTrigger?: number }) {
   const [items, setItems] = useState<ProteinStock[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -38,7 +38,7 @@ export default function ProteinStocksList({ search, currentUser }: { search: str
     }
   }, [search]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, refetchTrigger]);
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this protein stock?")) return;
