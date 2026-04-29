@@ -1246,29 +1246,6 @@ function ProtocolPicker({
   );
 }
 
-// ─── Inventory placeholder modal ──────────────────────────────────────────────
-
-function InventoryPicker({ onClose }: { onClose: () => void }) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="w-full max-w-sm rounded-xl border border-blue-700/40 bg-zinc-950 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
-          <p className="text-sm font-semibold text-blue-300">Link to Inventory</p>
-          <button onClick={onClose} className="text-sm text-zinc-500 hover:text-zinc-300">✕</button>
-        </div>
-        <div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
-          <span className="text-4xl">📦</span>
-          <p className="text-sm font-semibold text-blue-300">Inventory Module</p>
-          <p className="text-xs text-zinc-500">In development — coming soon</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Equipment booking modal ──────────────────────────────────────────────────
 
 function EquipmentPicker({
@@ -1479,7 +1456,6 @@ function EditItemModal({
   const [showEndTime,   setShowEndTime]   = useState(!!item.endTime);
   const [links,         setLinks]         = useState<LinkRef[]>(item.links);
   const [showProtoPicker, setShowProtoPicker] = useState(false);
-  const [showInvPicker,   setShowInvPicker]   = useState(false);
   const [showEquipPicker, setShowEquipPicker] = useState(false);
 
   function handleSave() {
@@ -1510,7 +1486,6 @@ function EditItemModal({
           onClose={() => setShowProtoPicker(false)}
         />
       )}
-      {showInvPicker && <InventoryPicker onClose={() => setShowInvPicker(false)} />}
       {showEquipPicker && (
         <EquipmentPicker
           todoTitle={text.trim()}
@@ -1606,14 +1581,9 @@ function EditItemModal({
             <div>
               <p className="mb-1.5 text-[10px] text-zinc-500">Link to…</p>
               <div className="flex flex-col gap-1.5">
-                <div className="flex gap-1.5">
-                  <button onClick={() => setShowProtoPicker(true)} className="flex-1 rounded border border-emerald-500/40 bg-emerald-500/10 py-1.5 text-[10px] font-semibold text-emerald-300 transition hover:bg-emerald-500/20">
-                    Protocols
-                  </button>
-                  <button onClick={() => setShowInvPicker(true)} className="flex-1 rounded border border-blue-500/40 bg-blue-500/10 py-1.5 text-[10px] font-semibold text-blue-300 transition hover:bg-blue-500/20">
-                    Inventory
-                  </button>
-                </div>
+                <button onClick={() => setShowProtoPicker(true)} className="flex-1 rounded border border-emerald-500/40 bg-emerald-500/10 py-1.5 text-[10px] font-semibold text-emerald-300 transition hover:bg-emerald-500/20">
+                  Protocols
+                </button>
                 <button onClick={() => setShowEquipPicker(true)} className="w-full rounded border border-purple-500/40 bg-purple-500/10 py-1.5 text-[10px] font-semibold text-purple-300 transition hover:bg-purple-500/20">
                   Equipment
                 </button>
@@ -1912,7 +1882,6 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
   const [newEndTime,      setNewEndTime]      = useState("");
   const [newLinks,        setNewLinks]        = useState<LinkRef[]>([]);
   const [showProtoPicker, setShowProtoPicker] = useState(false);
-  const [showInvPicker,   setShowInvPicker]   = useState(false);
   const [showEquipPicker, setShowEquipPicker] = useState(false);
   const [showFeatureEquipPicker, setShowFeatureEquipPicker] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -2210,7 +2179,6 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
           onClose={() => setShowProtoPicker(false)}
         />
       )}
-      {showInvPicker && <InventoryPicker onClose={() => setShowInvPicker(false)} />}
       {showEquipPicker && (
         <EquipmentPicker
           todoTitle={newText.trim()}
@@ -2568,24 +2536,13 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
                   </div>
                 )}
 
-                {/* Link to — Protocols / Inventory buttons */}
-                <div>
-                  <p className="mb-1.5 text-[10px] text-zinc-500">Link to…</p>
-                  <div className="flex gap-1.5">
-                    <button
-                      onClick={() => setShowProtoPicker(true)}
-                      className="flex-1 rounded border border-emerald-500/40 bg-emerald-500/10 py-1.5 text-[10px] font-semibold text-emerald-300 transition hover:bg-emerald-500/20"
-                    >
-                      Protocols
-                    </button>
-                    <button
-                      onClick={() => setShowInvPicker(true)}
-                      className="flex-1 rounded border border-blue-500/40 bg-blue-500/10 py-1.5 text-[10px] font-semibold text-blue-300 transition hover:bg-blue-500/20"
-                    >
-                      Inventory
-                    </button>
-                  </div>
-                </div>
+                {/* Link to Protocols */}
+                <button
+                  onClick={() => setShowProtoPicker(true)}
+                  className="flex-1 rounded border border-emerald-500/40 bg-emerald-500/10 py-1.5 text-[10px] font-semibold text-emerald-300 transition hover:bg-emerald-500/20"
+                >
+                  Protocols
+                </button>
 
                 {/* Chosen link chips */}
                 {newLinks.length > 0 && (
