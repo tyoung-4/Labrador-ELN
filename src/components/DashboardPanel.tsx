@@ -801,10 +801,10 @@ function DailySchedulePanel({
   const nowMin      = now_.getMinutes();
 
   return (
-    <div className="space-y-1">
+    <div className="flex h-full flex-col gap-1">
       {/* All-day row */}
       {allDayItems.length > 0 && (
-        <div className="mb-1.5 rounded border border-zinc-700/40 bg-zinc-800/30 p-1.5">
+        <div className="mb-1.5 shrink-0 rounded border border-zinc-700/40 bg-zinc-800/30 p-1.5">
           <p className="mb-1 text-[9px] font-semibold uppercase tracking-widest text-zinc-500">
             All day
           </p>
@@ -819,7 +819,7 @@ function DailySchedulePanel({
 
       {/* Pixel-grid time column — 18rem = 6 h × 48 px/h, the default −1 h / +5 h window */}
       {/* Double-click anywhere on the grid to open the quick-add dialog */}
-      <div ref={scrollRef} className="overflow-y-auto" style={{ maxHeight: "18rem" }} onDoubleClick={handleGridDoubleClick}>
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto" onDoubleClick={handleGridDoubleClick}>
         <div className="relative" style={{ height: totalHeight }}>
 
           {/* Hour drop zones (behind everything) */}
@@ -2451,7 +2451,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
         <div className="flex h-[502px] overflow-hidden">
 
           {/* ── Schedule panel ── */}
-          <div className={`w-2/5 shrink-0 border-r border-zinc-800 ${scheduleView === "daily" ? "overflow-y-auto p-3" : "overflow-hidden p-0"}`}>
+          <div className={`w-2/5 shrink-0 border-r border-zinc-800 ${scheduleView === "daily" ? "flex flex-col overflow-hidden p-3" : "overflow-hidden p-0"}`}>
             {scheduleView === "daily" ? (
               <DailySchedulePanel
                 items={items}
