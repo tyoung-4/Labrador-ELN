@@ -1819,7 +1819,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
   });
 
   // ── Equipment navigation state (for unified header) ──────────────────────
-  const [eqDate,          setEqDate]          = useState(localDateStr());
+  // eqDate removed — equipment column shares scheduleDate as single source of truth
   const [eqScrollTrigger, setEqScrollTrigger] = useState(0);
   const [eqCalOpen,       setEqCalOpen]       = useState(false);
   const [eqCalMonth,      setEqCalMonth]      = useState<Date>(() => new Date());
@@ -1840,8 +1840,8 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
   }, [eqCalOpen]);
 
   const eqDateLabel = (() => {
-    const isToday = eqDate === localDateStr();
-    const obj     = new Date(eqDate + "T00:00:00");
+    const isToday = scheduleDate === localDateStr();
+    const obj     = new Date(scheduleDate + "T00:00:00");
     const label   = obj.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
     return isToday ? `Today · ${label}` : label;
   })();
@@ -1860,15 +1860,16 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
   }, [eqCalMonth]);
 
   function eqNavPrev() {
-    const d = new Date(eqDate + "T00:00:00"); d.setDate(d.getDate() - 1);
-    setEqDate(localDateStr(d));
+    const d = new Date(scheduleDate + "T00:00:00"); d.setDate(d.getDate() - 1);
+    setScheduleDate(localDateStr(d));
   }
   function eqNavNext() {
-    const d = new Date(eqDate + "T00:00:00"); d.setDate(d.getDate() + 1);
-    setEqDate(localDateStr(d));
+    const d = new Date(scheduleDate + "T00:00:00"); d.setDate(d.getDate() + 1);
+    setScheduleDate(localDateStr(d));
   }
   function eqNavToday() {
-    setEqDate(localDateStr());
+    setScheduleDate(localDateStr());
+    setScrollTrigger(t => t + 1);
     setEqScrollTrigger(t => t + 1);
   }
 
@@ -2265,7 +2266,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
                     aria-label="Previous day"
                   >‹</button>
                   <button
-                    onClick={() => { setScheduleDate(localDateStr()); setScrollTrigger(t => t+1); }}
+                    onClick={() => { setScheduleDate(localDateStr()); setScrollTrigger(t => t+1); setEqScrollTrigger(t => t+1); }}
                     className="rounded px-1 py-0.5 text-[9px] text-zinc-600 hover:text-zinc-400"
                   >Today</button>
                   <button
@@ -2348,7 +2349,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
                 <button
                   onClick={() => {
                     setEqCalOpen(o => {
-                      if (!o) setEqCalMonth(new Date(eqDate + "T00:00:00"));
+                      if (!o) setEqCalMonth(new Date(scheduleDate + "T00:00:00"));
                       return !o;
                     });
                   }}
@@ -2383,12 +2384,12 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
                         if (!day) return <div key={i} />;
                         const ds         = localDateStr(day);
                         const isToday    = ds === localDateStr();
-                        const isSelected = ds === eqDate;
+                        const isSelected = ds === scheduleDate;
                         const inMonth    = day.getMonth() === eqCalMonth.getMonth();
                         return (
                           <button
                             key={i}
-                            onClick={() => { setEqDate(ds); setEqCalOpen(false); }}
+                            onClick={() => { setScheduleDate(ds); setEqCalOpen(false); }}
                             className={`rounded py-1 text-center text-[10px] transition ${
                               isSelected ? "bg-white/20 font-bold text-white"
                               : isToday ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
@@ -2633,8 +2634,8 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
                 equipmentCalendar as React.ReactElement<Record<string, unknown>>,
                 {
                   hideToolbar: true,
-                  controlledDate: eqDate,
-                  onDateChange: setEqDate,
+                  controlledDate: scheduleDate,
+                  onDateChange: setScheduleDate,
                   controlledScrollTrigger: eqScrollTrigger,
                   ref: eqOpenNewRef,
                 }
