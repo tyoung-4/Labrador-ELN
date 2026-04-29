@@ -133,11 +133,11 @@ const GRID_HOURS  = 24;   // number of hours shown (full day)
 const GRID_END    = 24;   // last hour (exclusive)
 
 // ─── Weekly grid constants ─────────────────────────────────────────────────────
-const WEEK_START_HOUR         = 8;
+const WEEK_START_HOUR         = 9;
 const WEEK_END_HOUR           = 18;
-const WEEK_TOTAL_MINUTES      = (WEEK_END_HOUR - WEEK_START_HOUR) * 60; // 600
-const WEEK_GRID_PX_PER_MINUTE = 1.5;
-const WEEK_GRID_HEIGHT        = WEEK_TOTAL_MINUTES * WEEK_GRID_PX_PER_MINUTE; // 900px
+const WEEK_TOTAL_MINUTES      = (WEEK_END_HOUR - WEEK_START_HOUR) * 60; // 540
+const WEEK_GRID_PX_PER_MINUTE = 0.85; // 540 * 0.85 ≈ 459px — fits ~462px scroll area without scroll
+const WEEK_GRID_HEIGHT        = WEEK_TOTAL_MINUTES * WEEK_GRID_PX_PER_MINUTE; // ~459px
 const WEEK_TIME_GUTTER_W      = 28; // px width of time-label gutter
 
 function getWeekItemTop(startMins: number): number {
@@ -1012,13 +1012,13 @@ function WeeklySchedulePanel({
     return () => clearInterval(id);
   }, []);
 
-  // Hour labels 8 am – 6 pm (one label per hour boundary)
+  // Hour labels 9 am – 6 pm — even hours only
   const hourLabels = Array.from({ length: WEEK_END_HOUR - WEEK_START_HOUR + 1 }, (_, i) => {
     const h     = WEEK_START_HOUR + i;
     const label = h === 12 ? "12p" : h > 12 ? `${h - 12}p` : `${h}a`;
     const topPx = i * 60 * WEEK_GRID_PX_PER_MINUTE;
-    return { label, topPx };
-  });
+    return { h, label, topPx };
+  }).filter(({ h }) => h % 2 === 0);
 
   return (
     <div className="flex h-full flex-col">
@@ -1065,7 +1065,7 @@ function WeeklySchedulePanel({
             {hourLabels.map(({ label, topPx }) => (
               <span
                 key={label}
-                className="absolute right-1 text-[8px] leading-none text-zinc-600"
+                className="absolute right-1 text-[9px] leading-none text-slate-400"
                 style={{ top: topPx - 4 }}
               >
                 {label}
@@ -1845,6 +1845,11 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
   }, [eqCalOpen]);
 
   const eqDateLabel = (() => {
+    if (scheduleView === "weekly") {
+      const dates = getWeekDates(weekOffset);
+      const fmt   = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      return `${fmt(dates[1])} – ${fmt(dates[5])}`; // Mon–Fri
+    }
     const isToday = scheduleDate === localDateStr();
     const obj     = new Date(scheduleDate + "T00:00:00");
     const label   = obj.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
@@ -1865,15 +1870,18 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
   }, [eqCalMonth]);
 
   function eqNavPrev() {
+    if (scheduleView === "weekly") { setWeekOffset(o => o - 1); return; }
     const d = new Date(scheduleDate + "T00:00:00"); d.setDate(d.getDate() - 1);
     setScheduleDate(localDateStr(d));
   }
   function eqNavNext() {
+    if (scheduleView === "weekly") { setWeekOffset(o => o + 1); return; }
     const d = new Date(scheduleDate + "T00:00:00"); d.setDate(d.getDate() + 1);
     setScheduleDate(localDateStr(d));
   }
   function eqNavToday() {
     setScheduleDate(localDateStr());
+    setWeekOffset(0);
     setScrollTrigger(t => t + 1);
     setEqScrollTrigger(t => t + 1);
   }
@@ -2250,7 +2258,19 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
                 >Weekly</button>
               </div>
 
-              {/* Date navigation — shared, always visible */}
+              {/* Weekends toggle — only visible in weekly mode */}
+              {scheduleView === "weekly" && (
+                <button
+                  onClick={() => setShowWeekends(v => !v)}
+                  className={`rounded border px-2 py-0.5 text-[9px] font-semibold transition ${
+                    showWeekends
+                      ? "border-zinc-700 bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+                      : "border-zinc-700 bg-zinc-800 text-zinc-600 hover:text-zinc-400"
+                  }`}
+                >{showWeekends ? "Hide weekends" : "Show weekends"}</button>
+              )}
+
+              {/* Date / week navigation — shared, always visible */}
               <div className="flex items-center gap-0.5">
                 <button
                   onClick={eqNavPrev}
@@ -2329,42 +2349,6 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
               </div>
             </div>
 
-            {/* Weekly mode only: weekends toggle + week navigation */}
-            {scheduleView === "weekly" && (
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => setShowWeekends(v => !v)}
-                  className={`rounded border px-2 py-0.5 text-[9px] font-semibold transition ${
-                    showWeekends
-                      ? "border-zinc-700 bg-zinc-800 text-zinc-400 hover:text-zinc-200"
-                      : "border-zinc-700 bg-zinc-800 text-zinc-600 hover:text-zinc-400"
-                  }`}
-                >{showWeekends ? "Hide weekends" : "Show weekends"}</button>
-                <div className="flex items-center gap-0.5">
-                  <button
-                    onClick={() => setWeekOffset(o => o-1)}
-                    className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-                    aria-label="Previous week"
-                  >‹</button>
-                  <button
-                    onClick={() => setWeekOffset(0)}
-                    className="rounded px-1 py-0.5 text-[9px] text-zinc-600 hover:text-zinc-400"
-                  >Today</button>
-                  <button
-                    onClick={() => setWeekOffset(o => o+1)}
-                    className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-                    aria-label="Next week"
-                  >›</button>
-                  <span className="ml-1 text-[9px] font-semibold uppercase tracking-widest text-zinc-600">
-                    {(() => {
-                      const dates = getWeekDates(weekOffset);
-                      const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-                      return `${fmt(dates[0])} – ${fmt(dates[6])}`;
-                    })()}
-                  </span>
-                </div>
-              </div>
-            )}
           </div>
 
           {/* CENTER — Add to list toggle */}
