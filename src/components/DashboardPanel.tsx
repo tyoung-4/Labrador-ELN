@@ -660,7 +660,7 @@ function ScheduleBlock({
   return (
     <div
       style={{ position: "absolute", top, height, zIndex: 3, ...colStyle }}
-      className="group/block rounded border border-indigo-500/50 bg-indigo-500/25 overflow-hidden select-none"
+      className="group/block rounded ring-2 ring-indigo-400 bg-indigo-500/25 overflow-hidden select-none"
     >
       {/* Top resize handle */}
       <div
@@ -672,11 +672,11 @@ function ScheduleBlock({
 
       {/* Content */}
       <div className="px-1.5 pt-2.5 pb-1">
-        <p className="text-[9px] text-indigo-300/70 leading-none">
+        <p className="text-[9px] text-indigo-300/60 leading-none">
           {formatTimeShort(item.time!)}
           {item.endTime ? `–${formatTimeShort(item.endTime)}` : ""}
         </p>
-        <p className="text-[10px] text-indigo-100 leading-tight truncate">{item.text}</p>
+        <p className="text-sm font-semibold text-indigo-100 leading-tight truncate">{item.text}</p>
       </div>
 
       {/* Bottom resize handle */}
@@ -845,8 +845,8 @@ function DailySchedulePanel({
                     !isEven
                       ? "invisible"
                       : isCurrent
-                      ? "text-sm font-bold text-indigo-400"
-                      : "text-sm font-bold text-slate-300"
+                      ? "text-xs text-indigo-400"
+                      : "text-xs text-slate-300"
                   }`}
                 >
                   {isEven ? label : ""}
