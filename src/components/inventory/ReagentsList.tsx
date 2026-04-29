@@ -96,7 +96,7 @@ function ReagentCard({
       : null;
 
   async function handleSaveQuantity() {
-    const newQuantity = parseFloat(quantityInput);
+    const newQuantity = Math.round(parseFloat(quantityInput));
     if (isNaN(newQuantity) || newQuantity < 0) return;
 
     setIsSavingQuantity(true);
@@ -124,23 +124,15 @@ function ReagentCard({
       <div className="flex items-center gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span
-              className={`text-sm font-medium ${
-                stockStatus === "red"
-                  ? "text-red-400"
-                  : stockStatus === "amber"
-                  ? "text-amber-400"
-                  : "text-white/80"
-              }`}
-            >
-              {stockStatus === "red" && <span className="mr-1">🔴</span>}
-              {stockStatus === "amber" && <span className="mr-1">⚠️</span>}
-              {item.quantity !== null
-                ? `${item.quantity.toLocaleString(undefined, {
-                    maximumFractionDigits: 4,
-                  })} ${item.unit ?? ""}`
-                : "No quantity set"}
-            </span>
+            {stockStatus && (
+              <span
+                className={`text-sm font-medium ${
+                  stockStatus === "red" ? "text-red-400" : "text-amber-400"
+                }`}
+              >
+                {stockStatus === "red" ? "🔴" : "⚠️"} Low stock
+              </span>
+            )}
             {item.concentration !== null && (
               <span className="text-white/40 text-xs">
                 {item.concentration.toLocaleString()} {item.concUnit ?? ""}
@@ -244,9 +236,15 @@ function ReagentCard({
                     <input
                       type="number"
                       min={0}
-                      step={0.1}
+                      step={1}
                       value={quantityInput}
-                      onChange={(e) => setQuantityInput(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const rounded = val.includes(".")
+                          ? String(Math.round(parseFloat(val)))
+                          : val;
+                        setQuantityInput(rounded);
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") handleSaveQuantity();
                         if (e.key === "Escape") setEditingQuantity(false);
