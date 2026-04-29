@@ -236,6 +236,9 @@ model InventoryReagent {
   notes             String?
   tags              String[]
   lowStockThreshold Float?
+  lowThresholdType  String?              // "volume" | "mass"
+  lowThresholdAmber Float?
+  lowThresholdRed   Float?
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
   researchNotes     ReagentResearchNote[]

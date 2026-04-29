@@ -62,7 +62,9 @@ export default function ReagentForm({
           catalogNumber: catalogNumber.trim() || null,
           lotNumber: lotNumber.trim() || null,
           expiryDate: expiryDate ? new Date(expiryDate) : null,
-          lowStockThreshold: null,
+          lowThresholdType: lowThresholdType === "none" ? null : lowThresholdType,
+          lowThresholdAmber: lowThresholdType !== "none" && lowThresholdAmber !== "" ? parseFloat(lowThresholdAmber) : null,
+          lowThresholdRed: lowThresholdType !== "none" && lowThresholdRed !== "" ? parseFloat(lowThresholdRed) : null,
           notes: notes.trim() || null,
           ...(existing ? {} : { owner: currentUser }),
         }),
@@ -206,6 +208,60 @@ export default function ReagentForm({
           onChange={(e) => setExpiryDate(e.target.value)}
           className="w-full rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 focus:outline-none focus:border-white/30"
         />
+      </div>
+
+      {/* Low Stock Thresholds */}
+      <div>
+        <label className="text-xs text-gray-400 uppercase tracking-wide mb-2 block">
+          Low Stock Alerts
+        </label>
+        <div className="flex gap-2 mb-2">
+          {["none", "volume", "mass"].map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setLowThresholdType(type)}
+              className={`text-sm rounded px-3 py-1 border transition-colors ${
+                lowThresholdType === type
+                  ? "bg-purple-500/20 border-purple-500 text-purple-300"
+                  : "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10"
+              }`}
+            >
+              {type === "none" ? "None" : type === "volume" ? "Volume (mL)" : "Mass (mg)"}
+            </button>
+          ))}
+        </div>
+        {lowThresholdType !== "none" && (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">⚠️ Amber threshold</label>
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={lowThresholdAmber}
+                onChange={(e) => setLowThresholdAmber(e.target.value)}
+                placeholder={`e.g. 20 ${unit || ""}`}
+                className="w-full rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 placeholder-gray-600 focus:outline-none focus:border-white/30"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">🔴 Red threshold</label>
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={lowThresholdRed}
+                onChange={(e) => setLowThresholdRed(e.target.value)}
+                placeholder={`e.g. 10 ${unit || ""}`}
+                className="w-full rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 placeholder-gray-600 focus:outline-none focus:border-white/30"
+              />
+            </div>
+          </div>
+        )}
+        {thresholdError && (
+          <p className="text-red-400 text-xs mt-1">Red threshold must be less than amber threshold.</p>
+        )}
       </div>
 
       {/* Notes */}

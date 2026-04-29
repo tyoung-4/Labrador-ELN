@@ -23,22 +23,306 @@ interface Reagent {
   notes: string | null;
   tags: string[];
   lowStockThreshold: number | null;
+  lowThresholdType: string | null;
+  lowThresholdAmber: number | null;
+  lowThresholdRed: number | null;
   markedForArchive: boolean;
   _count: { researchNotes: number; usageEvents: number };
 }
 
-function formatQty(n: number | null, unit: string | null) {
-  if (n === null) return "—";
-  return `${n.toLocaleString(undefined, { maximumFractionDigits: 4 })}${unit ? " " + unit : ""}`;
+function getReagentStockStatus(
+  quantity: number | null,
+  thresholdType: string | null,
+  amber: number | null,
+  red: number | null
+): "red" | "amber" | null {
+  if (
+    quantity === null ||
+    !thresholdType ||
+    thresholdType === "none" ||
+    (amber === null && red === null)
+  ) {
+    return null;
+  }
+  if (red !== null && quantity <= red) return "red";
+  if (amber !== null && quantity <= amber) return "amber";
+  return null;
 }
 
-function isLowStock(r: Reagent) {
-  if (r.quantity === null) return false;
-  const threshold = r.lowStockThreshold ?? (r.initialQuantity ? r.initialQuantity * 0.2 : null);
-  return threshold !== null && r.quantity <= threshold;
+// ── Per-card sub-component (owns quantity-editing state) ────────────────────
+
+function ReagentCard({
+  item,
+  currentUser,
+  expanded,
+  onToggle,
+  onQuantityUpdated,
+  onEdit,
+  onDelete,
+  onReload,
+}: {
+  item: Reagent;
+  currentUser: string;
+  expanded: boolean;
+  onToggle: () => void;
+  onQuantityUpdated: (id: string, qty: number) => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onReload: () => void;
+}) {
+  const [editingQuantity, setEditingQuantity] = useState(false);
+  const [quantityInput, setQuantityInput] = useState(item.quantity?.toString() ?? "");
+  const [isSavingQuantity, setIsSavingQuantity] = useState(false);
+
+  const isOwner = currentUser === item.owner || currentUser === "Admin";
+
+  const stockStatus = getReagentStockStatus(
+    item.quantity,
+    item.lowThresholdType,
+    item.lowThresholdAmber,
+    item.lowThresholdRed
+  );
+
+  // Keep input in sync when parent updates quantity without a full reload
+  useEffect(() => {
+    if (!editingQuantity) {
+      setQuantityInput(item.quantity?.toString() ?? "");
+    }
+  }, [item.quantity, editingQuantity]);
+
+  const pct =
+    item.initialQuantity && item.quantity !== null
+      ? Math.max(0, Math.min(100, (item.quantity / item.initialQuantity) * 100))
+      : null;
+
+  async function handleSaveQuantity() {
+    const newQuantity = parseFloat(quantityInput);
+    if (isNaN(newQuantity) || newQuantity < 0) return;
+
+    setIsSavingQuantity(true);
+    try {
+      const res = await fetch(`/api/inventory/reagents/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-user-name": currentUser },
+        body: JSON.stringify({ quantity: newQuantity }),
+      });
+      if (res.ok) {
+        setEditingQuantity(false);
+        onQuantityUpdated(item.id, newQuantity);
+      } else {
+        const data = await res.json();
+        console.error("Failed to update quantity:", data.error);
+      }
+    } finally {
+      setIsSavingQuantity(false);
+    }
+  }
+
+  return (
+    <div className="px-4 py-3">
+      {/* Summary row */}
+      <div className="flex items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className={`text-sm font-medium ${
+                stockStatus === "red"
+                  ? "text-red-400"
+                  : stockStatus === "amber"
+                  ? "text-amber-400"
+                  : "text-white/80"
+              }`}
+            >
+              {stockStatus === "red" && <span className="mr-1">🔴</span>}
+              {stockStatus === "amber" && <span className="mr-1">⚠️</span>}
+              {item.quantity !== null
+                ? `${item.quantity.toLocaleString(undefined, {
+                    maximumFractionDigits: 4,
+                  })} ${item.unit ?? ""}`
+                : "No quantity set"}
+            </span>
+            {item.concentration !== null && (
+              <span className="text-white/40 text-xs">
+                {item.concentration.toLocaleString()} {item.concUnit ?? ""}
+              </span>
+            )}
+            {item.location && (
+              <span className="text-white/40 text-xs">&#x1F4CD; {item.location}</span>
+            )}
+            <span className="text-white/30 text-xs bg-white/10 px-2 py-0.5 rounded-full">
+              {item.category}
+            </span>
+          </div>
+          {pct !== null && (
+            <div className="mt-1.5 h-1 bg-white/10 rounded-full overflow-hidden w-32">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  pct < 20 ? "bg-red-400" : pct < 40 ? "bg-amber-400" : "bg-teal-400"
+                }`}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          )}
+        </div>
+        <button
+          onClick={onToggle}
+          className="text-white/30 hover:text-white/70 text-xs transition-colors"
+        >
+          {expanded ? "▲ Less" : "▼ More"}
+        </button>
+      </div>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div className="mt-3 space-y-2 text-xs text-white/50">
+          {item.lotNumber && <p>Lot: {item.lotNumber}</p>}
+          {item.catalogNumber && <p>Catalog: {item.catalogNumber}</p>}
+          {item.vendor && <p>Vendor: {item.vendor}</p>}
+          {item.expiryDate && (
+            <p>Expires: {new Date(item.expiryDate).toLocaleDateString()}</p>
+          )}
+          {item.owner && <p>Owner: {item.owner}</p>}
+          {item.notes && <p className="text-white/40 whitespace-pre-wrap">{item.notes}</p>}
+          {item.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {item.tags.map((t) => (
+                <span
+                  key={t}
+                  className="bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded-full text-xs"
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Low stock threshold labels */}
+          {item.lowThresholdType && item.lowThresholdType !== "none" && (
+            <div className="flex items-center gap-3 text-xs text-gray-500">
+              <span>Low stock alerts:</span>
+              {item.lowThresholdAmber !== null && (
+                <span className="text-amber-400">
+                  ⚠️ {item.lowThresholdAmber} {item.unit ?? item.lowThresholdType}
+                </span>
+              )}
+              {item.lowThresholdRed !== null && (
+                <span className="text-red-400">
+                  🔴 {item.lowThresholdRed} {item.unit ?? item.lowThresholdType}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Inline quantity update — owner/Admin only */}
+          {isOwner && (
+            <div className="mt-3 pt-3 border-t border-white/10">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400 uppercase tracking-wide">
+                  Quantity
+                </span>
+                {!editingQuantity ? (
+                  <>
+                    <span className="text-white text-sm">
+                      {item.quantity !== null
+                        ? `${item.quantity.toLocaleString(undefined, {
+                            maximumFractionDigits: 4,
+                          })} ${item.unit ?? ""}`
+                        : "Not set"}
+                    </span>
+                    <button
+                      onClick={() => {
+                        setQuantityInput(item.quantity?.toString() ?? "");
+                        setEditingQuantity(true);
+                      }}
+                      className="text-xs text-gray-500 hover:text-white border border-white/10 rounded px-2 py-0.5 ml-1 transition-colors"
+                    >
+                      Update
+                    </button>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.1}
+                      value={quantityInput}
+                      onChange={(e) => setQuantityInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveQuantity();
+                        if (e.key === "Escape") setEditingQuantity(false);
+                      }}
+                      autoFocus
+                      className="w-24 rounded bg-white/10 border border-white/20 text-white text-sm px-2 py-1 focus:outline-none focus:border-purple-500"
+                    />
+                    <span className="text-gray-400 text-sm">{item.unit ?? ""}</span>
+                    <button
+                      onClick={handleSaveQuantity}
+                      disabled={isSavingQuantity || quantityInput === ""}
+                      className="text-xs rounded bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-2 py-1"
+                    >
+                      {isSavingQuantity ? "..." : "Save"}
+                    </button>
+                    <button
+                      onClick={() => setEditingQuantity(false)}
+                      className="text-xs text-gray-500 hover:text-white px-1"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-4 mt-1 flex-wrap">
+            {isOwner && (
+              <button
+                onClick={onEdit}
+                className="text-xs text-gray-400 hover:text-white border border-white/10 rounded px-2 py-1 transition-colors"
+              >
+                Edit
+              </button>
+            )}
+            <MarkForArchiveButton
+              entityType="reagent"
+              entityId={item.id}
+              entityName={item.name}
+              currentUser={currentUser}
+              alreadyMarked={item.markedForArchive}
+              onMarked={onReload}
+            />
+            <ArchiveButton
+              entityType="reagent"
+              entityId={item.id}
+              entityName={item.name}
+              currentUser={currentUser}
+              onArchived={onReload}
+            />
+            <button
+              onClick={onDelete}
+              className="text-red-400/60 hover:text-red-400 transition-colors"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
-export default function ReagentsList({ search, currentUser, refetchTrigger }: { search: string; currentUser: string; refetchTrigger?: number }) {
+// ── Parent list component ───────────────────────────────────────────────────
+
+export default function ReagentsList({
+  search,
+  currentUser,
+  refetchTrigger,
+}: {
+  search: string;
+  currentUser: string;
+  refetchTrigger?: number;
+}) {
   const [reagents, setReagents] = useState<Reagent[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -47,7 +331,9 @@ export default function ReagentsList({ search, currentUser, refetchTrigger }: { 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/inventory/reagents?search=${encodeURIComponent(search)}`);
+      const res = await fetch(
+        `/api/inventory/reagents?search=${encodeURIComponent(search)}`
+      );
       const data = await res.json();
       if (Array.isArray(data)) setReagents(data);
     } catch {
@@ -57,12 +343,15 @@ export default function ReagentsList({ search, currentUser, refetchTrigger }: { 
     }
   }, [search]);
 
-  useEffect(() => { load(); }, [load, refetchTrigger]);
+  useEffect(() => {
+    load();
+  }, [load, refetchTrigger]);
 
   const toggleExpand = (id: string) => {
     setExpandedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -73,13 +362,21 @@ export default function ReagentsList({ search, currentUser, refetchTrigger }: { 
     load();
   };
 
-  if (loading) return <div className="text-white/40 text-sm py-8 text-center">Loading…</div>;
-  if (!reagents.length) return (
-    <div className="text-white/40 text-sm py-12 text-center">
-      No reagents yet.{" "}
-      <span className="text-white/20">Import from Excel or add manually.</span>
-    </div>
-  );
+  function handleQuantityUpdated(id: string, newQuantity: number) {
+    setReagents((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, quantity: newQuantity } : r))
+    );
+  }
+
+  if (loading)
+    return <div className="text-white/40 text-sm py-8 text-center">Loading…</div>;
+  if (!reagents.length)
+    return (
+      <div className="text-white/40 text-sm py-12 text-center">
+        No reagents yet.{" "}
+        <span className="text-white/20">Import from Excel or add manually.</span>
+      </div>
+    );
 
   // Group by name
   const groups = new Map<string, Reagent[]>();
@@ -91,128 +388,95 @@ export default function ReagentsList({ search, currentUser, refetchTrigger }: { 
 
   return (
     <>
-    <div className="space-y-3">
-      {[...groups.entries()].map(([key, stocks]) => {
-        const hasLow = stocks.some(isLowStock);
-        const anyMarked = stocks.some((s) => s.markedForArchive);
-        const groupExpanded = stocks.some((s) => expandedIds.has(s.id));
-        return (
-          <div key={key} className={`bg-white/5 border rounded-xl overflow-hidden ${anyMarked ? "border-orange-500/40" : "border-white/10"}`}>
-            {/* Group header */}
+      <div className="space-y-3">
+        {[...groups.entries()].map(([key, stocks]) => {
+          // Worst status across all stocks in the group
+          const groupStatus = stocks.reduce<"red" | "amber" | null>((worst, s) => {
+            const st = getReagentStockStatus(
+              s.quantity,
+              s.lowThresholdType,
+              s.lowThresholdAmber,
+              s.lowThresholdRed
+            );
+            if (st === "red") return "red";
+            if (st === "amber" && worst !== "red") return "amber";
+            return worst;
+          }, null);
+          const anyMarked = stocks.some((s) => s.markedForArchive);
+          const groupExpanded = stocks.some((s) => expandedIds.has(s.id));
+
+          return (
             <div
-              className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/5 transition-colors"
-              onClick={() => stocks.forEach((s) => toggleExpand(s.id))}
+              key={key}
+              className={`bg-white/5 border rounded-xl overflow-hidden ${
+                anyMarked
+                  ? "border-orange-500/40"
+                  : groupStatus === "red"
+                  ? "border-red-500/60"
+                  : groupStatus === "amber"
+                  ? "border-amber-500/60"
+                  : "border-white/10"
+              }`}
             >
-              <span className="text-white font-semibold flex-1">
-                {stocks[0].name}
-                {anyMarked && <span className="ml-2 text-orange-400/70 text-xs font-normal">⚑ flagged</span>}
-              </span>
-              <div className="flex items-center gap-2">
-                {hasLow && <span className="text-amber-400 text-xs">Low stock</span>}
-                <span className="text-white/30 text-xs">{stocks.length} stock{stocks.length !== 1 ? "s" : ""}</span>
-                <span className="text-white/30 text-sm">{groupExpanded ? "▲" : "▼"}</span>
+              {/* Group header */}
+              <div
+                className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/5 transition-colors"
+                onClick={() => stocks.forEach((s) => toggleExpand(s.id))}
+              >
+                <span className="text-white font-semibold flex-1">
+                  {stocks[0].name}
+                  {anyMarked && (
+                    <span className="ml-2 text-orange-400/70 text-xs font-normal">
+                      ⚑ flagged
+                    </span>
+                  )}
+                </span>
+                <div className="flex items-center gap-2">
+                  {groupStatus === "red" && (
+                    <span className="text-red-400 text-xs">🔴 Low stock</span>
+                  )}
+                  {groupStatus === "amber" && !anyMarked && (
+                    <span className="text-amber-400 text-xs">⚠️ Low stock</span>
+                  )}
+                  <span className="text-white/30 text-xs">
+                    {stocks.length} stock{stocks.length !== 1 ? "s" : ""}
+                  </span>
+                  <span className="text-white/30 text-sm">
+                    {groupExpanded ? "▲" : "▼"}
+                  </span>
+                </div>
               </div>
+
+              {/* Stock cards */}
+              {groupExpanded && (
+                <div
+                  className={`border-t divide-y ${
+                    groupStatus === "red"
+                      ? "border-red-500/20 divide-red-500/10"
+                      : groupStatus === "amber"
+                      ? "border-amber-500/20 divide-amber-500/10"
+                      : "border-white/10 divide-white/5"
+                  }`}
+                >
+                  {stocks.map((r) => (
+                    <ReagentCard
+                      key={r.id}
+                      item={r}
+                      currentUser={currentUser}
+                      expanded={expandedIds.has(r.id)}
+                      onToggle={() => toggleExpand(r.id)}
+                      onQuantityUpdated={handleQuantityUpdated}
+                      onEdit={() => setEditingItem(r)}
+                      onDelete={() => handleDelete(r.id)}
+                      onReload={load}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
-
-            {/* Stocks */}
-            {groupExpanded && (
-              <div className="border-t border-white/10 divide-y divide-white/5">
-                {stocks.map((r) => {
-                  const expanded = expandedIds.has(r.id);
-                  const low = isLowStock(r);
-                  const pct = r.initialQuantity && r.quantity !== null
-                    ? Math.max(0, Math.min(100, (r.quantity / r.initialQuantity) * 100))
-                    : null;
-                  return (
-                    <div key={r.id} className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`text-sm font-medium ${low ? "text-amber-300" : "text-white/80"}`}>
-                              {formatQty(r.quantity, r.unit)}
-                            </span>
-                            {r.concentration && (
-                              <span className="text-white/40 text-xs">
-                                {r.concentration.toLocaleString()} {r.concUnit ?? ""}
-                              </span>
-                            )}
-                            {r.location && <span className="text-white/40 text-xs">&#x1F4CD; {r.location}</span>}
-                            <span className="text-white/30 text-xs bg-white/10 px-2 py-0.5 rounded-full">{r.category}</span>
-                          </div>
-                          {pct !== null && (
-                            <div className="mt-1.5 h-1 bg-white/10 rounded-full overflow-hidden w-32">
-                              <div
-                                className={`h-full rounded-full transition-all ${pct < 20 ? "bg-red-400" : pct < 40 ? "bg-amber-400" : "bg-teal-400"}`}
-                                style={{ width: `${pct}%` }}
-                              />
-                            </div>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => toggleExpand(r.id)}
-                          className="text-white/30 hover:text-white/70 text-xs transition-colors"
-                        >
-                          {expanded ? "▲ Less" : "▼ More"}
-                        </button>
-                      </div>
-
-                      {expanded && (
-                        <div className="mt-3 space-y-2 text-xs text-white/50">
-                          {r.lotNumber && <p>Lot: {r.lotNumber}</p>}
-                          {r.catalogNumber && <p>Catalog: {r.catalogNumber}</p>}
-                          {r.vendor && <p>Vendor: {r.vendor}</p>}
-                          {r.expiryDate && <p>Expires: {new Date(r.expiryDate).toLocaleDateString()}</p>}
-                          {r.owner && <p>Owner: {r.owner}</p>}
-                          {r.notes && <p className="text-white/40 whitespace-pre-wrap">{r.notes}</p>}
-                          {r.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {r.tags.map((t) => (
-                                <span key={t} className="bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded-full text-xs">{t}</span>
-                              ))}
-                            </div>
-                          )}
-                          <div className="flex items-center gap-4 mt-1 flex-wrap">
-                            {(currentUser === r.owner || currentUser === "Admin") && (
-                              <button
-                                onClick={() => setEditingItem(r)}
-                                className="text-xs text-gray-400 hover:text-white border border-white/10 rounded px-2 py-1 transition-colors"
-                              >
-                                Edit
-                              </button>
-                            )}
-                            <MarkForArchiveButton
-                              entityType="reagent"
-                              entityId={r.id}
-                              entityName={r.name}
-                              currentUser={currentUser}
-                              alreadyMarked={r.markedForArchive}
-                              onMarked={load}
-                            />
-                            <ArchiveButton
-                              entityType="reagent"
-                              entityId={r.id}
-                              entityName={r.name}
-                              currentUser={currentUser}
-                              onArchived={load}
-                            />
-                            <button
-                              onClick={() => handleDelete(r.id)}
-                              className="text-red-400/60 hover:text-red-400 transition-colors"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
+          );
+        })}
+      </div>
 
       {/* Edit reagent modal */}
       {editingItem && (
