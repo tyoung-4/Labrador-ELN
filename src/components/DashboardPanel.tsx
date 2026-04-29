@@ -2225,7 +2225,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
         <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
 
           {/* LEFT — personal schedule controls */}
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-1 flex-col gap-1">
             {/* Title + toggle + date nav — all on one line */}
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-indigo-300">
@@ -2380,7 +2380,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
           </div>
 
           {/* RIGHT — equipment actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-1 items-center justify-end gap-2">
             <button
               onClick={() => eqOpenNewRef.current?.openNew()}
               className="rounded border border-zinc-700 px-2.5 py-1 text-[10px] text-zinc-300 transition hover:bg-zinc-800 hover:text-zinc-100"
