@@ -2226,7 +2226,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
 
           {/* LEFT — personal schedule controls */}
           <div className="flex flex-col gap-1">
-            {/* Title + Daily/Weekly toggle on one line */}
+            {/* Title + toggle + date nav — all on one line */}
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-indigo-300">
                 {currentUser.name}&apos;s Dashboard
@@ -2248,6 +2248,84 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
                       : "text-zinc-500 hover:text-zinc-300"
                   }`}
                 >Weekly</button>
+              </div>
+
+              {/* Date navigation — shared, always visible */}
+              <div className="flex items-center gap-0.5">
+                <button
+                  onClick={eqNavPrev}
+                  className="rounded px-1.5 py-1 text-sm text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                  title="Previous"
+                >‹</button>
+                <button
+                  onClick={eqNavToday}
+                  className="rounded px-2 py-1 text-[10px] text-zinc-600 hover:text-zinc-400"
+                >Today</button>
+                <button
+                  onClick={eqNavNext}
+                  className="rounded px-1.5 py-1 text-sm text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                  title="Next"
+                >›</button>
+
+                {/* Clickable date label + calendar popup */}
+                <div ref={eqCalRef} className="relative ml-1">
+                  <button
+                    onClick={() => {
+                      setEqCalOpen(o => {
+                        if (!o) setEqCalMonth(new Date(scheduleDate + "T00:00:00"));
+                        return !o;
+                      });
+                    }}
+                    className="rounded px-1.5 py-1 text-[11px] font-semibold text-zinc-300 hover:bg-zinc-800"
+                  >{eqDateLabel}</button>
+
+                  {eqCalOpen && (
+                    <div className="absolute left-0 top-full z-50 mt-1 w-[280px] rounded-lg border border-white/10 bg-gray-900 p-3 shadow-xl">
+                      {/* Month header */}
+                      <div className="mb-2 flex items-center justify-between">
+                        <button
+                          onClick={() => setEqCalMonth(m => new Date(m.getFullYear(), m.getMonth()-1))}
+                          className="rounded p-1 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                        >‹</button>
+                        <span className="text-[11px] font-semibold text-zinc-200">
+                          {eqCalMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                        </span>
+                        <button
+                          onClick={() => setEqCalMonth(m => new Date(m.getFullYear(), m.getMonth()+1))}
+                          className="rounded p-1 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                        >›</button>
+                      </div>
+                      {/* Day-of-week headers */}
+                      <div className="mb-1 grid grid-cols-7">
+                        {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d => (
+                          <div key={d} className="py-0.5 text-center text-[9px] font-semibold text-zinc-600">{d}</div>
+                        ))}
+                      </div>
+                      {/* Day cells */}
+                      <div className="grid grid-cols-7 gap-y-0.5">
+                        {eqCalDays.map((day, i) => {
+                          if (!day) return <div key={i} />;
+                          const ds         = localDateStr(day);
+                          const isToday    = ds === localDateStr();
+                          const isSelected = ds === scheduleDate;
+                          const inMonth    = day.getMonth() === eqCalMonth.getMonth();
+                          return (
+                            <button
+                              key={i}
+                              onClick={() => { setScheduleDate(ds); setEqCalOpen(false); }}
+                              className={`rounded py-1 text-center text-[10px] transition ${
+                                isSelected ? "bg-white/20 font-bold text-white"
+                                : isToday ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                                : inMonth ? "text-zinc-300 hover:bg-zinc-700"
+                                : "text-zinc-700 hover:bg-zinc-800"
+                              }`}
+                            >{day.getDate()}</button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -2301,93 +2379,16 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
             </button>
           </div>
 
-          {/* RIGHT — equipment schedule controls */}
-          <div className="flex flex-col items-end gap-1">
-            <div className="flex items-center gap-0.5">
-              <button
-                onClick={eqNavPrev}
-                className="rounded px-1.5 py-1 text-sm text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-                title="Previous"
-              >‹</button>
-              <button
-                onClick={eqNavToday}
-                className="rounded px-2 py-1 text-[10px] text-zinc-600 hover:text-zinc-400"
-              >Today</button>
-              <button
-                onClick={eqNavNext}
-                className="rounded px-1.5 py-1 text-sm text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-                title="Next"
-              >›</button>
-
-              {/* Clickable date label + calendar popup */}
-              <div ref={eqCalRef} className="relative ml-1">
-                <button
-                  onClick={() => {
-                    setEqCalOpen(o => {
-                      if (!o) setEqCalMonth(new Date(scheduleDate + "T00:00:00"));
-                      return !o;
-                    });
-                  }}
-                  className="rounded px-1.5 py-1 text-[11px] font-semibold text-zinc-300 hover:bg-zinc-800"
-                >{eqDateLabel}</button>
-
-                {eqCalOpen && (
-                  <div className="absolute right-0 top-full z-50 mt-1 w-[280px] rounded-lg border border-white/10 bg-gray-900 p-3 shadow-xl">
-                    {/* Month header */}
-                    <div className="mb-2 flex items-center justify-between">
-                      <button
-                        onClick={() => setEqCalMonth(m => new Date(m.getFullYear(), m.getMonth()-1))}
-                        className="rounded p-1 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
-                      >‹</button>
-                      <span className="text-[11px] font-semibold text-zinc-200">
-                        {eqCalMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-                      </span>
-                      <button
-                        onClick={() => setEqCalMonth(m => new Date(m.getFullYear(), m.getMonth()+1))}
-                        className="rounded p-1 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
-                      >›</button>
-                    </div>
-                    {/* Day-of-week headers */}
-                    <div className="mb-1 grid grid-cols-7">
-                      {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d => (
-                        <div key={d} className="py-0.5 text-center text-[9px] font-semibold text-zinc-600">{d}</div>
-                      ))}
-                    </div>
-                    {/* Day cells */}
-                    <div className="grid grid-cols-7 gap-y-0.5">
-                      {eqCalDays.map((day, i) => {
-                        if (!day) return <div key={i} />;
-                        const ds         = localDateStr(day);
-                        const isToday    = ds === localDateStr();
-                        const isSelected = ds === scheduleDate;
-                        const inMonth    = day.getMonth() === eqCalMonth.getMonth();
-                        return (
-                          <button
-                            key={i}
-                            onClick={() => { setScheduleDate(ds); setEqCalOpen(false); }}
-                            className={`rounded py-1 text-center text-[10px] transition ${
-                              isSelected ? "bg-white/20 font-bold text-white"
-                              : isToday ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
-                              : inMonth ? "text-zinc-300 hover:bg-zinc-700"
-                              : "text-zinc-700 hover:bg-zinc-800"
-                            }`}
-                          >{day.getDate()}</button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={() => eqOpenNewRef.current?.openNew()}
-                className="ml-1 rounded border border-zinc-700 px-2.5 py-1 text-[10px] text-zinc-300 transition hover:bg-zinc-800 hover:text-zinc-100"
-              >+ Book</button>
-              <Link
-                href="/equipment"
-                className="ml-1 text-[10px] text-zinc-500 transition hover:text-zinc-300"
-              >See full schedule →</Link>
-            </div>
+          {/* RIGHT — equipment actions */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => eqOpenNewRef.current?.openNew()}
+              className="rounded border border-zinc-700 px-2.5 py-1 text-[10px] text-zinc-300 transition hover:bg-zinc-800 hover:text-zinc-100"
+            >+ Book</button>
+            <Link
+              href="/equipment"
+              className="text-[10px] text-zinc-500 transition hover:text-zinc-300"
+            >See full schedule →</Link>
           </div>
         </div>
 
