@@ -830,6 +830,7 @@ function DailySchedulePanel({
             const isPast     = isToday && h < nowH;
             const isCurrent  = isToday && h === nowH;
             const isWorkHour = h >= 8 && h <= 17;
+            const isEven     = h % 2 === 0;
             const h12        = h === 0 ? 12 : h > 12 ? h - 12 : h;
             const label      = `${h12}:00 ${h < 12 ? "am" : "pm"}`;
             const top        = h * PX_PER_HOUR;
@@ -840,11 +841,15 @@ function DailySchedulePanel({
                 className={`flex items-start pointer-events-none ${isPast ? "opacity-30" : ""} ${isWorkHour ? "bg-zinc-800/10" : ""}`}
               >
                 <span
-                  className={`w-16 shrink-0 pt-0.5 text-right text-[9px] leading-none pr-1.5 ${
-                    isCurrent ? "font-semibold text-indigo-400" : "text-zinc-500"
+                  className={`w-16 shrink-0 pt-0.5 text-right leading-none pr-1.5 ${
+                    !isEven
+                      ? "invisible"
+                      : isCurrent
+                      ? "text-sm font-bold text-indigo-400"
+                      : "text-sm font-bold text-slate-300"
                   }`}
                 >
-                  {label}
+                  {isEven ? label : ""}
                 </span>
                 <div
                   className={`flex-1 border-t ${
@@ -2217,15 +2222,15 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
       <section className="overflow-hidden rounded-xl border border-indigo-500/30 bg-zinc-900">
 
         {/* ── Unified header bar ─────────────────────────────────────────────── */}
-        <div className="flex items-start justify-between border-b border-zinc-800 px-4 py-3">
+        <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
 
           {/* LEFT — personal schedule controls */}
           <div className="flex flex-col gap-1">
-            <span className="text-sm font-semibold text-indigo-300">
-              {currentUser.name}&apos;s Dashboard
-            </span>
-            <div className="flex items-center gap-1.5">
-              {/* Daily / Weekly toggle */}
+            {/* Title + Daily/Weekly toggle on one line */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-indigo-300">
+                {currentUser.name}&apos;s Dashboard
+              </span>
               <div className="flex overflow-hidden rounded border border-zinc-700 bg-zinc-800">
                 <button
                   onClick={() => setScheduleView("daily")}
@@ -2244,9 +2249,11 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
                   }`}
                 >Weekly</button>
               </div>
+            </div>
 
-              {/* Weekends toggle — only in weekly mode */}
-              {scheduleView === "weekly" && (
+            {/* Weekly mode only: weekends toggle + week navigation */}
+            {scheduleView === "weekly" && (
+              <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => setShowWeekends(v => !v)}
                   className={`rounded border px-2 py-0.5 text-[9px] font-semibold transition ${
@@ -2255,38 +2262,6 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
                       : "border-zinc-700 bg-zinc-800 text-zinc-600 hover:text-zinc-400"
                   }`}
                 >{showWeekends ? "Hide weekends" : "Show weekends"}</button>
-              )}
-
-              {/* Day navigation — daily mode */}
-              {scheduleView === "daily" && (
-                <div className="flex items-center gap-0.5">
-                  <button
-                    onClick={() => { const d = new Date(scheduleDate + "T00:00:00"); d.setDate(d.getDate()-1); setScheduleDate(localDateStr(d)); }}
-                    className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-                    aria-label="Previous day"
-                  >‹</button>
-                  <button
-                    onClick={() => { setScheduleDate(localDateStr()); setScrollTrigger(t => t+1); setEqScrollTrigger(t => t+1); }}
-                    className="rounded px-1 py-0.5 text-[9px] text-zinc-600 hover:text-zinc-400"
-                  >Today</button>
-                  <button
-                    onClick={() => { const d = new Date(scheduleDate + "T00:00:00"); d.setDate(d.getDate()+1); setScheduleDate(localDateStr(d)); }}
-                    className="rounded px-1.5 py-0.5 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
-                    aria-label="Next day"
-                  >›</button>
-                  <span className="ml-1 text-[9px] font-semibold uppercase tracking-widest text-zinc-600">
-                    {(() => {
-                      const d = new Date(scheduleDate + "T00:00:00");
-                      const isToday = scheduleDate === localDateStr();
-                      const label = d.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
-                      return isToday ? `Today · ${label}` : label;
-                    })()}
-                  </span>
-                </div>
-              )}
-
-              {/* Week navigation — weekly mode */}
-              {scheduleView === "weekly" && (
                 <div className="flex items-center gap-0.5">
                   <button
                     onClick={() => setWeekOffset(o => o-1)}
@@ -2310,12 +2285,12 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
                     })()}
                   </span>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* CENTER — Add to list toggle */}
-          <div className="flex flex-1 items-start justify-center pt-1">
+          <div className="flex flex-1 items-center justify-center">
             <button
               onClick={togglePanel}
               className="flex items-center gap-1.5 rounded px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-zinc-500 transition hover:bg-zinc-800/60 hover:text-zinc-400"
