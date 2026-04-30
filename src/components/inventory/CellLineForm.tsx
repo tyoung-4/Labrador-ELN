@@ -26,6 +26,7 @@ export default function CellLineForm({
   const [passage, setPassage] = useState(existing?.passage ?? "");
   const [storageLocation, setStorageLocation] = useState(existing?.location ?? "");
   const [notes, setNotes] = useState(existing?.notes ?? "");
+  const [useParentThreshold, setUseParentThreshold] = useState(existing?.useParentThreshold ?? true);
   const [linkedRunIds, setLinkedRunIds] = useState<string[]>(existing?.linkedRunIds ?? []);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -50,6 +51,7 @@ export default function CellLineForm({
           passage: passage ? parseInt(passage) : null,
           location: storageLocation.trim() || null,
           ...(existing ? {} : { owner: currentUser }),
+          useParentThreshold,
           notes: notes.trim() || null,
           tags: [],
         }),
@@ -172,6 +174,25 @@ export default function CellLineForm({
               </label>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Threshold mode — owner/Admin only, edit mode only */}
+      {existing && (
+        <div className="flex items-center gap-2">
+          <input
+            id="cellUseParentThreshold"
+            type="checkbox"
+            checked={useParentThreshold}
+            onChange={(e) => setUseParentThreshold(e.target.checked)}
+            className="rounded border-white/20 bg-white/5 text-purple-500 focus:ring-purple-500"
+          />
+          <label htmlFor="cellUseParentThreshold" className="text-sm text-white/70 cursor-pointer">
+            Use item-level low stock threshold
+          </label>
+          {!useParentThreshold && (
+            <span className="text-xs text-white/30">— each passage can set its own</span>
+          )}
         </div>
       )}
 

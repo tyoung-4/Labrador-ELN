@@ -235,15 +235,17 @@ model InventoryReagent {
   owner             String?
   notes             String?
   tags              String[]
-  lowStockThreshold Float?
-  lowThresholdType  String?              // "volume" | "mass"
-  lowThresholdAmber Float?
-  lowThresholdRed   Float?
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
-  researchNotes     ReagentResearchNote[]
-  usageEvents       ReagentUsageEvent[]
-  attachments       ReagentAttachment[]
+  lowStockThreshold  Float?
+  lowThresholdType   String?              // "volume" | "mass"
+  lowThresholdAmber  Float?
+  lowThresholdRed    Float?
+  useParentThreshold Boolean              @default(true)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  researchNotes      ReagentResearchNote[]
+  usageEvents        ReagentUsageEvent[]
+  attachments        ReagentAttachment[]
+  lots               ReagentLot[]
 
   // Archive fields
   isArchived       Boolean   @default(false)
@@ -297,19 +299,24 @@ model ReagentAttachment {
 }
 
 model CellLine {
-  id            String                 @id @default(cuid())
-  name          String
-  species       String?
-  tissue        String?
-  morphology    String?
-  passage       Int?
-  location      String?
-  owner         String?
-  notes         String?
-  tags          String[]
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @updatedAt
-  researchNotes CellLineResearchNote[]
+  id                 String                 @id @default(cuid())
+  name               String
+  species            String?
+  tissue             String?
+  morphology         String?
+  passage            Int?
+  location           String?
+  owner              String?
+  notes              String?
+  tags               String[]
+  useParentThreshold Boolean                @default(true)
+  lowThresholdType   String?
+  lowThresholdAmber  Float?
+  lowThresholdRed    Float?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  researchNotes      CellLineResearchNote[]
+  passages           CellLinePassage[]
 
   // Archive fields
   isArchived       Boolean   @default(false)
@@ -338,19 +345,24 @@ model CellLineResearchNote {
 }
 
 model Plasmid {
-  id            String                @id @default(cuid())
-  name          String
-  backbone      String?
-  insert        String?
-  resistance    String?
-  promoter      String?
-  location      String?
-  owner         String?
-  notes         String?
-  tags          String[]
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
-  researchNotes PlasmidResearchNote[]
+  id                 String                @id @default(cuid())
+  name               String
+  backbone           String?
+  insert             String?
+  resistance         String?
+  promoter           String?
+  location           String?
+  owner              String?
+  notes              String?
+  tags               String[]
+  useParentThreshold Boolean               @default(true)
+  lowThresholdType   String?
+  lowThresholdAmber  Float?
+  lowThresholdRed    Float?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  researchNotes      PlasmidResearchNote[]
+  preps              PlasmidPrep[]
 
   // Archive fields
   isArchived       Boolean   @default(false)
@@ -379,22 +391,23 @@ model PlasmidResearchNote {
 }
 
 model ProteinStock {
-  id            String                   @id @default(cuid())
-  name          String
-  concentration Float?
-  concUnit      String?
-  volume        Float?
-  volUnit       String?
-  purity        String?
-  location      String?
-  owner         String?
-  notes         String?
-  tags          String[]
-  createdAt     DateTime                 @default(now())
-  updatedAt     DateTime                 @updatedAt
-  researchNotes ProteinStockResearchNote[]
-  usageEvents   ProteinUsageEvent[]
-  batches       ProteinBatch[]
+  id                 String                   @id @default(cuid())
+  name               String
+  concentration      Float?
+  concUnit           String?
+  volume             Float?
+  volUnit            String?
+  purity             String?
+  location           String?
+  owner              String?
+  notes              String?
+  tags               String[]
+  useParentThreshold Boolean                  @default(true)
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  researchNotes      ProteinStockResearchNote[]
+  usageEvents        ProteinUsageEvent[]
+  batches            ProteinBatch[]
 
   // Archive fields
   isArchived       Boolean   @default(false)
@@ -492,4 +505,92 @@ model DashboardNotification {
   @@index([userId, isRead])
   @@index([userId])
   @@index([createdAt])
+}
+
+// ─── Batch / lot models ────────────────────────────────────────────────────────
+
+model ReagentLot {
+  id              String           @id @default(cuid())
+  reagentId       String
+  reagent         InventoryReagent @relation(fields: [reagentId], references: [id], onDelete: Cascade)
+  lotNumber       String?
+  quantity        Float
+  unit            String
+  supplier        String?
+  catalogNumber   String?
+  expiryDate      DateTime?
+  receivedDate    DateTime?
+  receivedBy      String?
+  notes           String?
+  lowThresholdType  String?
+  lowThresholdAmber Float?
+  lowThresholdRed   Float?
+  attachments     InventoryAttachment[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([reagentId])
+}
+
+model CellLinePassage {
+  id               String    @id @default(cuid())
+  cellLineId       String
+  cellLine         CellLine  @relation(fields: [cellLineId], references: [id], onDelete: Cascade)
+  passage          Int?
+  vialCount        Int?
+  freezeBackDate   DateTime?
+  freezingSolution String?
+  frozenBy         String?
+  storageLocation  String?
+  notes            String?
+  lowThresholdType  String?
+  lowThresholdAmber Float?
+  lowThresholdRed   Float?
+  attachments      InventoryAttachment[]
+  createdBy        String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([cellLineId])
+}
+
+model PlasmidPrep {
+  id               String    @id @default(cuid())
+  plasmidId        String
+  plasmid          Plasmid   @relation(fields: [plasmidId], references: [id], onDelete: Cascade)
+  prepDate         DateTime?
+  prepType         String?
+  concentration    Float?
+  volume           Float?
+  preparedBy       String?
+  sequenceVerified Boolean   @default(false)
+  notes            String?
+  lowThresholdType  String?
+  lowThresholdAmber Float?
+  lowThresholdRed   Float?
+  attachments      InventoryAttachment[]
+  createdBy        String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([plasmidId])
+}
+
+model InventoryAttachment {
+  id                String           @id @default(cuid())
+  filename          String
+  path              String
+  mime              String
+  size              Int
+  reagentLotId      String?
+  reagentLot        ReagentLot?      @relation(fields: [reagentLotId], references: [id], onDelete: Cascade)
+  cellLinePassageId String?
+  cellLinePassage   CellLinePassage? @relation(fields: [cellLinePassageId], references: [id], onDelete: Cascade)
+  plasmidPrepId     String?
+  plasmidPrep       PlasmidPrep?     @relation(fields: [plasmidPrepId], references: [id], onDelete: Cascade)
+  createdAt         DateTime         @default(now())
+
+  @@index([reagentLotId])
+  @@index([cellLinePassageId])
+  @@index([plasmidPrepId])
 }

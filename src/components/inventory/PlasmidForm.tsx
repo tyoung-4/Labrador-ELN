@@ -24,6 +24,7 @@ export default function PlasmidForm({
   const [hostOrganism, setHostOrganism] = useState(existing?.hostOrganism ?? "");
   const [linkedRunIds, setLinkedRunIds] = useState<string[]>(existing?.linkedRunIds ?? []);
   const [notes, setNotes] = useState(existing?.notes ?? "");
+  const [useParentThreshold, setUseParentThreshold] = useState(existing?.useParentThreshold ?? true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -48,6 +49,7 @@ export default function PlasmidForm({
           promoter: hostOrganism.trim() || null,
           location: null,
           ...(existing ? {} : { owner: currentUser }),
+          useParentThreshold,
           notes: notes.trim() || null,
           tags: [],
         }),
@@ -158,6 +160,25 @@ export default function PlasmidForm({
               </label>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Threshold mode — edit mode only */}
+      {existing && (
+        <div className="flex items-center gap-2">
+          <input
+            id="plasmidUseParentThreshold"
+            type="checkbox"
+            checked={useParentThreshold}
+            onChange={(e) => setUseParentThreshold(e.target.checked)}
+            className="rounded border-white/20 bg-white/5 text-purple-500 focus:ring-purple-500"
+          />
+          <label htmlFor="plasmidUseParentThreshold" className="text-sm text-white/70 cursor-pointer">
+            Use item-level low stock threshold
+          </label>
+          {!useParentThreshold && (
+            <span className="text-xs text-white/30">— each prep can set its own</span>
+          )}
         </div>
       )}
 

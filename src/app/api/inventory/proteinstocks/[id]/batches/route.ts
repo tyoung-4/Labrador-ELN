@@ -24,7 +24,10 @@ async function generateBatchId(stockId: string, proteinName: string, purificatio
   return `${base}-${suffix}`;
 }
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+type Context = { params: Promise<{ id: string }> | { id: string } };
+
+export async function GET(_req: NextRequest, ctx: Context) {
+  const params = await ctx.params;
   try {
     const batches = await prisma.proteinBatch.findMany({
       where: { stockId: params.id },
@@ -37,7 +40,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   }
 }
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, ctx: Context) {
+  const params = await ctx.params;
   try {
     const body = await req.json();
     const createdBy = req.headers.get("x-user-name") ?? "Unknown";

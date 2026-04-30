@@ -37,7 +37,7 @@ function formatDuration(start: string, end: string | null | undefined): string {
   return `${m}m`;
 }
 
-export default function RunsPage() {
+function RunsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const currentUser = useMemo(() => {
@@ -260,5 +260,14 @@ export default function RunsPage() {
         </ul>
       )}
     </div>
+  );
+}
+
+import { Suspense } from "react";
+export default function RunsPage() {
+  return (
+    <Suspense>
+      <RunsPageContent />
+    </Suspense>
   );
 }
