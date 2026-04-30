@@ -19,7 +19,7 @@ const TemplateImportModal = dynamic(
 type Tab = "reagents" | "cellLines" | "plasmids" | "proteins" | "archived";
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: "reagents",  label: "Reagents" },
+  { id: "reagents",  label: "Reagents/Consumables" },
   { id: "cellLines", label: "Cell Lines" },
   { id: "plasmids",  label: "Plasmids" },
   { id: "proteins",  label: "Protein Stocks" },
@@ -113,7 +113,7 @@ export default function InventoryPage() {
           <div>
             <h1 className="text-2xl font-bold text-white">Inventory</h1>
             <p className="text-white/40 text-sm mt-0.5">
-              Reagents, cell lines, plasmids, and protein stocks
+              Reagents/Consumables, cell lines, plasmids, and protein stocks
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -139,7 +139,7 @@ export default function InventoryPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={tab === "archived" ? "Search archived items…" : `Search ${tab}…`}
+            placeholder={tab === "archived" ? "Search archived items…" : tab === "reagents" ? "Search reagents/consumables…" : `Search ${tab}…`}
             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 outline-none focus:border-teal-400/50 transition-colors text-sm"
           />
         </div>

@@ -263,15 +263,18 @@ model InventoryReagent {
 }
 
 model ReagentUsageEvent {
-  id         String           @id @default(cuid())
-  reagentId  String
-  reagent    InventoryReagent @relation(fields: [reagentId], references: [id], onDelete: Cascade)
-  amountUsed Float
-  usedBy     String
-  date       DateTime         @default(now())
-  notes      String?
+  id           String           @id @default(cuid())
+  reagentId    String
+  reagent      InventoryReagent @relation(fields: [reagentId], references: [id], onDelete: Cascade)
+  reagentLotId String?
+  reagentLot   ReagentLot?      @relation(fields: [reagentLotId], references: [id], onDelete: SetNull)
+  amountUsed   Float
+  usedBy       String
+  date         DateTime         @default(now())
+  notes        String?
 
   @@index([reagentId])
+  @@index([reagentLotId])
 }
 
 model ReagentResearchNote {
@@ -526,6 +529,8 @@ model ReagentLot {
   lowThresholdAmber Float?
   lowThresholdRed   Float?
   attachments     InventoryAttachment[]
+  usageEvents     ReagentUsageEvent[]
+  isArchived      Boolean          @default(false)
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
