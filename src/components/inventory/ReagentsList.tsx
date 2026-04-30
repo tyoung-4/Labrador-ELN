@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback } from "react";
 import ReagentForm from "./ReagentForm";
 import AddBatchModal from "./AddBatchModal";
 import KebabMenu, { KebabMenuItem, ArchiveConfirm, FlagPrompt } from "./KebabMenu";
+import EditLotModal from "./EditLotModal";
+import type { ReagentLotForEdit } from "./EditLotModal";
 
 interface Reagent {
   id: string;
@@ -31,19 +33,7 @@ interface Reagent {
   _count: { researchNotes: number; usageEvents: number };
 }
 
-interface ReagentLot {
-  id: string;
-  lotNumber: string | null;
-  quantity: number;
-  unit: string;
-  supplier: string | null;
-  expiryDate: string | null;
-  receivedDate: string | null;
-  receivedBy: string | null;
-  notes: string | null;
-  lowThresholdAmber: number | null;
-  lowThresholdRed: number | null;
-  createdAt: string;
+interface ReagentLot extends ReagentLotForEdit {
   attachments: { id: string }[];
 }
 
@@ -59,262 +49,421 @@ function getReagentStockStatus(
   return null;
 }
 
-// ── Per-card sub-component ────────────────────────────────────────────────────
+function expiryStatus(expiryDate: string | null): "expired" | "soon" | null {
+  if (!expiryDate) return null;
+  const now   = Date.now();
+  const expMs = new Date(expiryDate).getTime();
+  if (expMs < now) return "expired";
+  if (expMs - now < 30 * 24 * 60 * 60 * 1000) return "soon";
+  return null;
+}
+
+// ── LotCard ───────────────────────────────────────────────────────────────────
+
+function LotCard({
+  lot,
+  reagentId,
+  currentUser,
+  isOwner,
+  useParentThreshold,
+  onUpdated,
+  onDeleted,
+}: {
+  lot: ReagentLot;
+  reagentId: string;
+  currentUser: string;
+  isOwner: boolean;
+  useParentThreshold: boolean;
+  onUpdated: (updated: ReagentLot) => void;
+  onDeleted: () => void;
+}) {
+  const [editingLot,       setEditingLot]       = useState(false);
+  const [confirmDelete,    setConfirmDelete]     = useState(false);
+  const [deleting,         setDeleting]          = useState(false);
+  const [showUse,          setShowUse]           = useState(false);
+  const [useAmount,        setUseAmount]         = useState("");
+  const [usedBy,           setUsedBy]            = useState(currentUser);
+  const [useNotes,         setUseNotes]          = useState("");
+  const [useError,         setUseError]          = useState("");
+  const [submittingUse,    setSubmittingUse]     = useState(false);
+  const [showArchive,      setShowArchive]       = useState(false);
+  const [archiving,        setArchiving]         = useState(false);
+
+  const expiry = expiryStatus(lot.expiryDate);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await fetch(`/api/inventory/reagents/${reagentId}/lots/${lot.id}`, {
+        method: "DELETE",
+        headers: { "x-user-name": currentUser },
+      });
+      onDeleted();
+    } catch {
+      setDeleting(false);
+    }
+  };
+
+  const handleUseAmountChange = (val: string) => {
+    setUseAmount(val);
+    const n = parseFloat(val);
+    if (!isNaN(n) && n > lot.quantity) {
+      setUseError(`Cannot exceed available quantity (${lot.quantity} ${lot.unit})`);
+    } else {
+      setUseError("");
+    }
+  };
+
+  const handleLogUse = async () => {
+    const amount = parseFloat(useAmount);
+    if (isNaN(amount) || amount <= 0 || amount > lot.quantity) return;
+    setSubmittingUse(true);
+    setUseError("");
+    try {
+      // 1. Log usage event
+      await fetch(`/api/inventory/reagents/${reagentId}/lots/${lot.id}/usage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-user-name": currentUser },
+        body: JSON.stringify({ volumeUsed: amount, usedBy: usedBy || currentUser, notes: useNotes || null, date: new Date().toISOString() }),
+      });
+
+      // 2. Decrement quantity via PATCH
+      const newQty = lot.quantity - amount;
+      const patchRes = await fetch(`/api/inventory/reagents/${reagentId}/lots/${lot.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-user-name": currentUser },
+        body: JSON.stringify({ quantity: newQty }),
+      });
+      if (patchRes.ok) {
+        const updated = await patchRes.json();
+        onUpdated(updated);
+        setShowUse(false);
+        setUseAmount("");
+        setUseNotes("");
+        if (newQty === 0) setShowArchive(true);
+      } else {
+        setUseError("Failed to update quantity");
+      }
+    } catch {
+      setUseError("Network error — please try again");
+    } finally {
+      setSubmittingUse(false);
+    }
+  };
+
+  const handleArchiveLot = async () => {
+    setArchiving(true);
+    try {
+      await fetch("/api/inventory/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-user-name": currentUser },
+        body: JSON.stringify({ entityType: "reagent_lot", entityId: lot.id }),
+      });
+      onDeleted(); // remove from active list
+    } catch {
+      setArchiving(false);
+    }
+  };
+
+  const useAmountNum = parseFloat(useAmount);
+  const canLogUse = !isNaN(useAmountNum) && useAmountNum > 0 && useAmountNum <= lot.quantity;
+
+  return (
+    <div className="rounded-lg bg-white/5 border border-white/10 px-3 py-2.5 space-y-2">
+      {/* Main lot row */}
+      <div className="flex items-start gap-2">
+        {/* Left: quantity + metadata */}
+        <div className="flex-1 min-w-0 space-y-1">
+          {/* Quantity — large and bold */}
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-white font-bold text-base leading-none">
+              {lot.quantity.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+            </span>
+            <span className="text-white/50 text-xs">{lot.unit}</span>
+          </div>
+
+          {/* Dates */}
+          <div className="flex items-center gap-3 flex-wrap text-xs">
+            {lot.receivedDate && (
+              <span className="text-white/40">
+                Received {new Date(lot.receivedDate).toLocaleDateString()}
+              </span>
+            )}
+            {lot.expiryDate && (
+              <span className={
+                expiry === "expired" ? "text-red-400 font-medium"
+                : expiry === "soon"  ? "text-amber-400"
+                : "text-white/40"
+              }>
+                Exp {new Date(lot.expiryDate).toLocaleDateString()}
+                {expiry === "expired" && " · Expired"}
+                {expiry === "soon"    && " · Expiring soon"}
+              </span>
+            )}
+          </div>
+
+          {/* Lot number + supplier */}
+          {(lot.lotNumber || lot.supplier) && (
+            <div className="flex items-center gap-2 flex-wrap text-xs text-white/40">
+              {lot.lotNumber && <span>Lot #{lot.lotNumber}</span>}
+              {lot.supplier  && <span>{lot.supplier}</span>}
+            </div>
+          )}
+
+          {/* Received by + added */}
+          <p className="text-[11px] text-white/25">
+            {lot.receivedBy ? `Received by: ${lot.receivedBy} · ` : ""}
+            Added {new Date(lot.createdAt).toLocaleDateString()}
+          </p>
+
+          {lot.notes && <p className="text-xs text-white/40 whitespace-pre-wrap">{lot.notes}</p>}
+        </div>
+
+        {/* Right: action buttons */}
+        <div className="flex items-center gap-1 flex-shrink-0 pt-0.5">
+          <button
+            onClick={() => { setShowUse((v) => !v); setUseError(""); setUseAmount(""); setUseNotes(""); }}
+            className="rounded border border-teal-500/30 bg-teal-500/10 hover:bg-teal-500/20 text-teal-400 hover:text-teal-300 text-xs px-2 py-1 transition-colors"
+          >
+            − Use
+          </button>
+          <KebabMenu>
+            <KebabMenuItem onClick={() => setEditingLot(true)}>Edit</KebabMenuItem>
+            {isOwner && (
+              <KebabMenuItem
+                onClick={() => setConfirmDelete(true)}
+                className="text-red-400/70 hover:text-red-400"
+              >
+                Delete
+              </KebabMenuItem>
+            )}
+          </KebabMenu>
+        </div>
+      </div>
+
+      {/* − Use inline form */}
+      {showUse && (
+        <div className="bg-white/5 border border-white/10 rounded-lg p-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-white/50 text-xs">Amount used</label>
+              <div className="flex items-center gap-1 mt-1">
+                <input
+                  type="number" min={1} max={lot.quantity}
+                  value={useAmount}
+                  onChange={(e) => handleUseAmountChange(e.target.value)}
+                  className="w-20 rounded bg-white/10 border border-white/20 text-white text-sm px-2 py-1 focus:outline-none focus:border-teal-400/50"
+                />
+                <span className="text-white/40 text-xs">{lot.unit}</span>
+              </div>
+            </div>
+            <div>
+              <label className="text-white/50 text-xs">Used by</label>
+              <input
+                type="text" value={usedBy} onChange={(e) => setUsedBy(e.target.value)}
+                className="mt-1 w-full rounded bg-white/10 border border-white/20 text-white text-sm px-2 py-1 focus:outline-none focus:border-teal-400/50"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-white/50 text-xs">Notes (optional)</label>
+            <input
+              type="text" value={useNotes} onChange={(e) => setUseNotes(e.target.value)}
+              className="mt-1 w-full rounded bg-white/10 border border-white/20 text-white text-sm px-2 py-1 focus:outline-none focus:border-teal-400/50"
+            />
+          </div>
+          {useError && <p className="text-red-400 text-xs">{useError}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={handleLogUse}
+              disabled={submittingUse || !canLogUse}
+              className="bg-teal-600 hover:bg-teal-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+            >
+              {submittingUse ? "Logging…" : "Log Use"}
+            </button>
+            <button
+              onClick={() => { setShowUse(false); setUseAmount(""); setUseError(""); setUseNotes(""); }}
+              className="text-white/40 hover:text-white text-xs px-2 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      {confirmDelete && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 space-y-2">
+          <p className="text-red-300 text-xs font-semibold">Permanently delete this lot?</p>
+          <p className="text-white/50 text-xs">This cannot be undone.</p>
+          <div className="flex gap-2">
+            <button
+              onClick={handleDelete} disabled={deleting}
+              className="bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-xs font-semibold px-3 py-1 rounded-lg transition-colors"
+            >
+              {deleting ? "Deleting…" : "Confirm"}
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="text-white/40 hover:text-white text-xs px-2 py-1 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Archive prompt — shown after lot hits 0 */}
+      {showArchive && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 space-y-2">
+          <p className="text-amber-300 text-xs font-semibold">This lot is now empty. Archive it?</p>
+          <div className="flex gap-2">
+            <button
+              onClick={handleArchiveLot} disabled={archiving}
+              className="bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black text-xs font-semibold px-3 py-1 rounded-lg transition-colors"
+            >
+              {archiving ? "Archiving…" : "Archive Lot"}
+            </button>
+            <button
+              onClick={() => setShowArchive(false)}
+              className="text-white/40 hover:text-white text-xs px-2 py-1 transition-colors"
+            >
+              Keep
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Lot modal */}
+      {editingLot && (
+        <EditLotModal
+          reagentId={reagentId}
+          lot={lot}
+          currentUser={currentUser}
+          useParentThreshold={useParentThreshold}
+          onSaved={(updated) => { onUpdated(updated); setEditingLot(false); }}
+          onClose={() => setEditingLot(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── ReagentCard ───────────────────────────────────────────────────────────────
+// Step 3: no + Lot, no ⋮, no chevron — those live in the group header only.
+// Step 4: no quantity update row; TOTAL STOCK computed from lots.
+// Step 5/6/7: lot cards with Edit/Delete kebab and − Use popover.
 
 function ReagentCard({
   item,
   currentUser,
-  expanded,
   lots,
-  onToggle,
-  onQuantityUpdated,
-  onEdit,
-  onReload,
-  onAddBatch,
+  onLotsChanged,
 }: {
   item: Reagent;
   currentUser: string;
-  expanded: boolean;
   lots: ReagentLot[];
-  onToggle: () => void;
-  onQuantityUpdated: (id: string, qty: number) => void;
-  onEdit: () => void;
-  onReload: () => void;
-  onAddBatch: () => void;
+  onLotsChanged: (newLots: ReagentLot[]) => void;
 }) {
-  const [editingQuantity,  setEditingQuantity]  = useState(false);
-  const [quantityInput,    setQuantityInput]    = useState(item.quantity?.toString() ?? "");
-  const [isSavingQuantity, setIsSavingQuantity] = useState(false);
-  const [confirmArchive,   setConfirmArchive]   = useState(false);
-  const [flagging,         setFlagging]         = useState(false);
-  const [toast,            setToast]            = useState("");
-
   const isOwner = currentUser === item.owner || currentUser === "Admin";
 
   const stockStatus = getReagentStockStatus(
     item.quantity, item.lowThresholdType, item.lowThresholdAmber, item.lowThresholdRed
   );
 
-  useEffect(() => {
-    if (!editingQuantity) setQuantityInput(item.quantity?.toString() ?? "");
-  }, [item.quantity, editingQuantity]);
-
   const pct =
     item.initialQuantity && item.quantity !== null
       ? Math.max(0, Math.min(100, (item.quantity / item.initialQuantity) * 100))
       : null;
 
-  async function handleSaveQuantity() {
-    const newQuantity = Math.round(parseFloat(quantityInput));
-    if (isNaN(newQuantity) || newQuantity < 0) return;
-    setIsSavingQuantity(true);
-    try {
-      const res = await fetch(`/api/inventory/reagents/${item.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", "x-user-name": currentUser },
-        body: JSON.stringify({ quantity: newQuantity }),
-      });
-      if (res.ok) { setEditingQuantity(false); onQuantityUpdated(item.id, newQuantity); }
-      else { const d = await res.json(); console.error("Failed to update quantity:", d.error); }
-    } finally { setIsSavingQuantity(false); }
+  const totalStock = lots.reduce((sum, lot) => sum + lot.quantity, 0);
+  const totalUnit  = item.unit ?? (lots[0]?.unit ?? "");
+
+  function handleLotUpdated(updated: ReagentLot) {
+    onLotsChanged(lots.map((l) => (l.id === updated.id ? updated : l)));
   }
 
-  const handleArchive = async () => {
-    await fetch("/api/inventory/archive", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-user-name": currentUser },
-      body: JSON.stringify({ entityType: "reagent", entityId: item.id }),
-    });
-    setConfirmArchive(false);
-    onReload();
-  };
-
-  const handleFlag = async (note: string) => {
-    await fetch("/api/inventory/mark-for-archive", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-user-name": currentUser },
-      body: JSON.stringify({ entityType: "reagent", entityId: item.id, note: note || undefined }),
-    });
-    setFlagging(false);
-    setToast("Flagged for archive");
-    setTimeout(() => setToast(""), 3000);
-    onReload();
-  };
+  function handleLotDeleted(lotId: string) {
+    onLotsChanged(lots.filter((l) => l.id !== lotId));
+  }
 
   return (
     <div className="px-4 py-3">
-      {/* Summary row */}
-      <div className="flex items-center gap-2">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            {stockStatus && (
-              <span className={`text-sm font-medium ${stockStatus === "red" ? "text-red-400" : "text-amber-400"}`}>
-                {stockStatus === "red" ? "🔴" : "⚠️"} Low stock
-              </span>
-            )}
-            {item.concentration !== null && (
-              <span className="text-white/40 text-xs">{item.concentration.toLocaleString()} {item.concUnit ?? ""}</span>
-            )}
-            {item.location && <span className="text-white/40 text-xs">&#x1F4CD; {item.location}</span>}
-            <span className="text-white/30 text-xs bg-white/10 px-2 py-0.5 rounded-full">{item.category}</span>
-          </div>
-          {pct !== null && (
-            <div className="mt-1.5 h-1 bg-white/10 rounded-full overflow-hidden w-32">
-              <div
-                className={`h-full rounded-full transition-all ${pct < 20 ? "bg-red-400" : pct < 40 ? "bg-amber-400" : "bg-teal-400"}`}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* + Lot */}
-        <button
-          onClick={(e) => { e.stopPropagation(); onAddBatch(); }}
-          className="rounded border border-white/20 bg-white/5 hover:bg-white/15 px-2 py-0.5 text-white/60 hover:text-white text-xs transition-colors flex-shrink-0"
-        >
-          + Lot
-        </button>
-
-        {/* Kebab */}
-        <KebabMenu>
-          {isOwner ? (
-            <>
-              <KebabMenuItem onClick={onEdit}>Edit</KebabMenuItem>
-              <KebabMenuItem
-                onClick={() => setConfirmArchive(true)}
-                className="text-amber-400/70 hover:text-amber-400"
-              >
-                Archive
-              </KebabMenuItem>
-            </>
-          ) : item.markedForArchive ? (
-            <span className="px-3 py-1.5 text-sm text-orange-400/40 block">⚑ Already flagged</span>
-          ) : (
-            <KebabMenuItem
-              onClick={() => setFlagging(true)}
-              className="text-orange-400/70 hover:text-orange-400"
-            >
-              Flag for Archive
-            </KebabMenuItem>
-          )}
-        </KebabMenu>
-
-        {/* Expand */}
-        <button onClick={onToggle} className="text-white/30 hover:text-white/70 text-xs transition-colors flex-shrink-0">
-          {expanded ? "▲ Less" : "▼ More"}
-        </button>
+      {/* Metadata row — no action buttons (Step 3) */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {stockStatus && (
+          <span className={`text-xs font-medium ${stockStatus === "red" ? "text-red-400" : "text-amber-400"}`}>
+            {stockStatus === "red" ? "🔴" : "⚠️"} Low stock
+          </span>
+        )}
+        {item.concentration !== null && (
+          <span className="text-white/40 text-xs">{item.concentration.toLocaleString()} {item.concUnit ?? ""}</span>
+        )}
+        {item.location && <span className="text-white/40 text-xs">&#x1F4CD; {item.location}</span>}
+        <span className="text-white/30 text-xs bg-white/10 px-2 py-0.5 rounded-full">{item.category}</span>
       </div>
 
-      {/* Inline archive confirm */}
-      {confirmArchive && (
-        <ArchiveConfirm
-          name={item.name}
-          onConfirm={handleArchive}
-          onCancel={() => setConfirmArchive(false)}
-        />
-      )}
-
-      {/* Inline flag prompt */}
-      {flagging && (
-        <FlagPrompt
-          name={item.name}
-          onSubmit={handleFlag}
-          onCancel={() => setFlagging(false)}
-        />
-      )}
-
-      {toast && <p className="text-green-400/80 text-xs mt-1">{toast}</p>}
-
-      {/* Expanded detail */}
-      {expanded && (
-        <div className="mt-3 space-y-2 text-xs text-white/50">
-          {item.lotNumber    && <p>Lot: {item.lotNumber}</p>}
-          {item.catalogNumber && <p>Catalog: {item.catalogNumber}</p>}
-          {item.vendor       && <p>Vendor: {item.vendor}</p>}
-          {item.expiryDate   && <p>Expires: {new Date(item.expiryDate).toLocaleDateString()}</p>}
-          {item.owner        && <p>Owner: {item.owner}</p>}
-          {item.notes        && <p className="text-white/40 whitespace-pre-wrap">{item.notes}</p>}
-          {item.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {item.tags.map((t) => (
-                <span key={t} className="bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded-full text-xs">{t}</span>
-              ))}
-            </div>
-          )}
-
-          {item.lowThresholdType && item.lowThresholdType !== "none" && (
-            <div className="flex items-center gap-3 text-xs text-gray-500">
-              <span>Low stock alerts:</span>
-              {item.lowThresholdAmber !== null && <span className="text-amber-400">⚠️ {item.lowThresholdAmber} {item.unit ?? item.lowThresholdType}</span>}
-              {item.lowThresholdRed   !== null && <span className="text-red-400">🔴 {item.lowThresholdRed} {item.unit ?? item.lowThresholdType}</span>}
-            </div>
-          )}
-
-          {/* ── Lots ── */}
-          {lots.length > 0 && (
-            <div className="mt-3 space-y-1">
-              <p className="text-white/30 uppercase tracking-wide text-[10px] font-semibold mb-1">Lots ({lots.length})</p>
-              {lots.map((lot) => (
-                <div key={lot.id} className="rounded bg-white/5 border border-white/10 px-3 py-2 text-xs text-white/60 space-y-0.5">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    {lot.lotNumber     && <span className="font-medium text-white/80">{lot.lotNumber}</span>}
-                    <span>{lot.quantity.toLocaleString()} {lot.unit}</span>
-                    {lot.expiryDate    && <span>Exp {new Date(lot.expiryDate).toLocaleDateString()}</span>}
-                    {lot.supplier      && <span>{lot.supplier}</span>}
-                    {lot.attachments.length > 0 && <span className="text-white/30">📎 {lot.attachments.length}</span>}
-                    {lot.lowThresholdAmber != null && <span className="text-amber-400/70">⚠️ ≤{lot.lowThresholdAmber}</span>}
-                  </div>
-                  {lot.receivedBy   && <p className="text-white/30">Received by: {lot.receivedBy}{lot.receivedDate ? ` · ${new Date(lot.receivedDate).toLocaleDateString()}` : ""}</p>}
-                  {lot.notes        && <p className="whitespace-pre-wrap">{lot.notes}</p>}
-                  <p className="text-white/20">Added {new Date(lot.createdAt).toLocaleDateString()}</p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Inline quantity update — owner/Admin only */}
-          {isOwner && (
-            <div className="mt-3 pt-3 border-t border-white/10">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 uppercase tracking-wide">Quantity</span>
-                {!editingQuantity ? (
-                  <>
-                    <span className="text-white text-sm">
-                      {item.quantity !== null
-                        ? `${item.quantity.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${item.unit ?? ""}`
-                        : "Not set"}
-                    </span>
-                    <button
-                      onClick={() => { setQuantityInput(item.quantity?.toString() ?? ""); setEditingQuantity(true); }}
-                      className="text-xs text-gray-500 hover:text-white border border-white/10 rounded px-2 py-0.5 ml-1 transition-colors"
-                    >Update</button>
-                  </>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number" min={0} step={1} value={quantityInput}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setQuantityInput(val.includes(".") ? String(Math.round(parseFloat(val))) : val);
-                      }}
-                      onKeyDown={(e) => { if (e.key === "Enter") handleSaveQuantity(); if (e.key === "Escape") setEditingQuantity(false); }}
-                      autoFocus
-                      className="w-24 rounded bg-white/10 border border-white/20 text-white text-sm px-2 py-1 focus:outline-none focus:border-purple-500"
-                    />
-                    <span className="text-gray-400 text-sm">{item.unit ?? ""}</span>
-                    <button
-                      onClick={handleSaveQuantity} disabled={isSavingQuantity || quantityInput === ""}
-                      className="text-xs rounded bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-2 py-1"
-                    >{isSavingQuantity ? "..." : "Save"}</button>
-                    <button onClick={() => setEditingQuantity(false)} className="text-xs text-gray-500 hover:text-white px-1">Cancel</button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+      {pct !== null && (
+        <div className="mt-1.5 h-1 bg-white/10 rounded-full overflow-hidden w-32">
+          <div
+            className={`h-full rounded-full transition-all ${pct < 20 ? "bg-red-400" : pct < 40 ? "bg-amber-400" : "bg-teal-400"}`}
+            style={{ width: `${pct}%` }}
+          />
         </div>
       )}
+
+      {/* Item metadata */}
+      <div className="mt-3 space-y-1 text-xs text-white/50">
+        {item.catalogNumber && <p>Catalog: {item.catalogNumber}</p>}
+        {item.vendor        && <p>Vendor: {item.vendor}</p>}
+        {item.owner         && <p>Owner: {item.owner}</p>}
+        {item.notes         && <p className="text-white/40 whitespace-pre-wrap">{item.notes}</p>}
+        {item.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {item.tags.map((t) => (
+              <span key={t} className="bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded-full">{t}</span>
+            ))}
+          </div>
+        )}
+        {item.lowThresholdType && item.lowThresholdType !== "none" && (
+          <div className="flex items-center gap-3">
+            <span className="text-white/30">Low stock alerts:</span>
+            {item.lowThresholdAmber !== null && <span className="text-amber-400">⚠️ {item.lowThresholdAmber} {item.unit ?? ""}</span>}
+            {item.lowThresholdRed   !== null && <span className="text-red-400">🔴 {item.lowThresholdRed} {item.unit ?? ""}</span>}
+          </div>
+        )}
+      </div>
+
+      {/* Lots section (Step 5) */}
+      {lots.length > 0 && (
+        <div className="mt-3 space-y-1.5">
+          <p className="text-white/30 uppercase tracking-wide text-[10px] font-semibold">
+            Lots ({lots.length})
+          </p>
+          {lots.map((lot) => (
+            <LotCard
+              key={lot.id}
+              lot={lot}
+              reagentId={item.id}
+              currentUser={currentUser}
+              isOwner={isOwner}
+              useParentThreshold={item.useParentThreshold}
+              onUpdated={handleLotUpdated}
+              onDeleted={() => handleLotDeleted(lot.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* TOTAL STOCK — computed from active lots (Step 4) */}
+      <div className="mt-3 pt-3 border-t border-white/10 flex items-center gap-2">
+        <span className="text-white/30 uppercase tracking-wide text-[10px] font-semibold">Total Stock</span>
+        <span className="text-white/70 text-sm">
+          {lots.length > 0
+            ? `${totalStock.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${totalUnit}`
+            : "No active lots"}
+        </span>
+      </div>
     </div>
   );
 }
@@ -485,16 +634,12 @@ export default function ReagentsList({
     });
   };
 
-  function handleQuantityUpdated(id: string, newQuantity: number) {
-    setReagents((prev) => prev.map((r) => (r.id === id ? { ...r, quantity: newQuantity } : r)));
-  }
-
   const addBatchItem = addBatchItemId ? reagents.find((r) => r.id === addBatchItemId) : null;
 
   if (loading) return <div className="text-white/40 text-sm py-8 text-center">Loading…</div>;
   if (!reagents.length) return (
     <div className="text-white/40 text-sm py-12 text-center">
-      No reagents yet.{" "}
+      No reagents/consumables yet.{" "}
       <span className="text-white/20">Import from Excel or add manually.</span>
     </div>
   );
@@ -524,13 +669,13 @@ export default function ReagentsList({
             <div
               key={key}
               className={`bg-white/5 border rounded-xl overflow-hidden ${
-                anyMarked ? "border-orange-500/40"
+                anyMarked        ? "border-orange-500/40"
                 : groupStatus === "red"   ? "border-red-500/60"
                 : groupStatus === "amber" ? "border-amber-500/60"
                 : "border-white/10"
               }`}
             >
-              {/* Group header */}
+              {/* Group header — single source of + Lot, ⋮, chevron */}
               <ReagentGroupHeader
                 stocks={stocks}
                 currentUser={currentUser}
@@ -554,13 +699,8 @@ export default function ReagentsList({
                       key={r.id}
                       item={r}
                       currentUser={currentUser}
-                      expanded={expandedIds.has(r.id)}
                       lots={lotsMap[r.id] ?? []}
-                      onToggle={() => toggleExpand(r.id)}
-                      onQuantityUpdated={handleQuantityUpdated}
-                      onEdit={() => setEditingItem(r)}
-                      onReload={load}
-                      onAddBatch={() => setAddBatchItemId(r.id)}
+                      onLotsChanged={(newLots) => setLotsMap((prev) => ({ ...prev, [r.id]: newLots }))}
                     />
                   ))}
                 </div>

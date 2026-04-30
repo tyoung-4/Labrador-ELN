@@ -6,14 +6,12 @@ async function getParams(ctx: Context) { return await ctx.params; }
 
 export async function PATCH(req: NextRequest, ctx: Context) {
   const { id, lotId } = await getParams(ctx);
-  const user = req.headers.get("x-user-name") ?? "Unknown";
   try {
     const body = await req.json();
-    const reagent = await prisma.inventoryReagent.findUnique({ where: { id }, select: { owner: true } });
+    const reagent = await prisma.inventoryReagent.findUnique({ where: { id }, select: { id: true } });
     if (!reagent) return NextResponse.json({ error: "Reagent not found" }, { status: 404 });
-    if (reagent.owner && reagent.owner !== user && user !== "Admin")
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
+    // receivedBy and createdAt are immutable — never overwrite even if passed
     const updated = await prisma.reagentLot.update({
       where: { id: lotId },
       data: {
@@ -24,7 +22,6 @@ export async function PATCH(req: NextRequest, ctx: Context) {
         catalogNumber:   body.catalogNumber?.trim() || null,
         expiryDate:      body.expiryDate   ? new Date(body.expiryDate)   : null,
         receivedDate:    body.receivedDate ? new Date(body.receivedDate) : null,
-        receivedBy:      body.receivedBy?.trim()    || null,
         notes:           body.notes?.trim()         || null,
         lowThresholdType:  body.lowThresholdType  || null,
         lowThresholdAmber: body.lowThresholdAmber != null ? Number(body.lowThresholdAmber) : null,

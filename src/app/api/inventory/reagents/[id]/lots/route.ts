@@ -8,7 +8,7 @@ export async function GET(_req: NextRequest, ctx: Context) {
   const id = await getId(ctx);
   try {
     const lots = await prisma.reagentLot.findMany({
-      where: { reagentId: id },
+      where: { reagentId: id, isArchived: false },
       include: { attachments: true },
       orderBy: { createdAt: "desc" },
     });
