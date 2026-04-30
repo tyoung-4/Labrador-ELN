@@ -384,7 +384,7 @@ function buildFamilies(entries: Entry[]): ProtocolFamily[] {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function ProtocolsPage() {
+function ProtocolsPageContent() {
   const router       = useRouter();
   const searchParams = useSearchParams();
 
@@ -1099,5 +1099,14 @@ export default function ProtocolsPage() {
       )}
 
     </div>
+  );
+}
+
+import { Suspense } from "react";
+export default function ProtocolsPage() {
+  return (
+    <Suspense>
+      <ProtocolsPageContent />
+    </Suspense>
   );
 }

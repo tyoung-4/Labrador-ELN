@@ -20,6 +20,7 @@ export default function ProteinStockForm({
   const [name, setName] = useState(existing?.name ?? "");
   const [plasmidId, setPlasmidId] = useState(existing?.plasmidId ?? "");
   const [notes, setNotes] = useState(existing?.notes ?? "");
+  const [useParentThreshold, setUseParentThreshold] = useState(existing?.useParentThreshold ?? true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -39,6 +40,7 @@ export default function ProteinStockForm({
         body: JSON.stringify({
           name: name.trim(),
           ...(existing ? {} : { owner: currentUser }),
+          useParentThreshold,
           notes: notes.trim() || null,
           tags: [],
         }),
@@ -86,6 +88,25 @@ export default function ProteinStockForm({
           ))}
         </select>
       </div>
+
+      {/* Threshold mode — edit mode only */}
+      {existing && (
+        <div className="flex items-center gap-2">
+          <input
+            id="proteinUseParentThreshold"
+            type="checkbox"
+            checked={useParentThreshold}
+            onChange={(e) => setUseParentThreshold(e.target.checked)}
+            className="rounded border-white/20 bg-white/5 text-purple-500 focus:ring-purple-500"
+          />
+          <label htmlFor="proteinUseParentThreshold" className="text-sm text-white/70 cursor-pointer">
+            Use item-level low stock threshold
+          </label>
+          {!useParentThreshold && (
+            <span className="text-xs text-white/30">— each batch can set its own</span>
+          )}
+        </div>
+      )}
 
       {/* Notes */}
       <div>

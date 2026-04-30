@@ -38,6 +38,7 @@ interface ProteinStock {
   notes: string | null;
   tags: string[];
   markedForArchive: boolean;
+  useParentThreshold: boolean;
   _count: { researchNotes: number; usageEvents: number };
 }
 

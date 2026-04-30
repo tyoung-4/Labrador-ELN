@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import ArchiveButton from "./ArchiveButton";
 import MarkForArchiveButton from "./MarkForArchiveButton";
 import ReagentForm from "./ReagentForm";
+import AddBatchModal from "./AddBatchModal";
 
 interface Reagent {
   id: string;
@@ -26,8 +27,25 @@ interface Reagent {
   lowThresholdType: string | null;
   lowThresholdAmber: number | null;
   lowThresholdRed: number | null;
+  useParentThreshold: boolean;
   markedForArchive: boolean;
   _count: { researchNotes: number; usageEvents: number };
+}
+
+interface ReagentLot {
+  id: string;
+  lotNumber: string | null;
+  quantity: number;
+  unit: string;
+  supplier: string | null;
+  expiryDate: string | null;
+  receivedDate: string | null;
+  receivedBy: string | null;
+  notes: string | null;
+  lowThresholdAmber: number | null;
+  lowThresholdRed: number | null;
+  createdAt: string;
+  attachments: { id: string }[];
 }
 
 function getReagentStockStatus(
@@ -36,14 +54,7 @@ function getReagentStockStatus(
   amber: number | null,
   red: number | null
 ): "red" | "amber" | null {
-  if (
-    quantity === null ||
-    !thresholdType ||
-    thresholdType === "none" ||
-    (amber === null && red === null)
-  ) {
-    return null;
-  }
+  if (quantity === null || !thresholdType || thresholdType === "none" || (amber === null && red === null)) return null;
   if (red !== null && quantity <= red) return "red";
   if (amber !== null && quantity <= amber) return "amber";
   return null;
@@ -55,39 +66,37 @@ function ReagentCard({
   item,
   currentUser,
   expanded,
+  lots,
   onToggle,
   onQuantityUpdated,
   onEdit,
   onDelete,
   onReload,
+  onAddBatch,
 }: {
   item: Reagent;
   currentUser: string;
   expanded: boolean;
+  lots: ReagentLot[];
   onToggle: () => void;
   onQuantityUpdated: (id: string, qty: number) => void;
   onEdit: () => void;
   onDelete: () => void;
   onReload: () => void;
+  onAddBatch: () => void;
 }) {
-  const [editingQuantity, setEditingQuantity] = useState(false);
-  const [quantityInput, setQuantityInput] = useState(item.quantity?.toString() ?? "");
+  const [editingQuantity,  setEditingQuantity]  = useState(false);
+  const [quantityInput,    setQuantityInput]    = useState(item.quantity?.toString() ?? "");
   const [isSavingQuantity, setIsSavingQuantity] = useState(false);
 
   const isOwner = currentUser === item.owner || currentUser === "Admin";
 
   const stockStatus = getReagentStockStatus(
-    item.quantity,
-    item.lowThresholdType,
-    item.lowThresholdAmber,
-    item.lowThresholdRed
+    item.quantity, item.lowThresholdType, item.lowThresholdAmber, item.lowThresholdRed
   );
 
-  // Keep input in sync when parent updates quantity without a full reload
   useEffect(() => {
-    if (!editingQuantity) {
-      setQuantityInput(item.quantity?.toString() ?? "");
-    }
+    if (!editingQuantity) setQuantityInput(item.quantity?.toString() ?? "");
   }, [item.quantity, editingQuantity]);
 
   const pct =
@@ -98,7 +107,6 @@ function ReagentCard({
   async function handleSaveQuantity() {
     const newQuantity = Math.round(parseFloat(quantityInput));
     if (isNaN(newQuantity) || newQuantity < 0) return;
-
     setIsSavingQuantity(true);
     try {
       const res = await fetch(`/api/inventory/reagents/${item.id}`, {
@@ -106,16 +114,9 @@ function ReagentCard({
         headers: { "Content-Type": "application/json", "x-user-name": currentUser },
         body: JSON.stringify({ quantity: newQuantity }),
       });
-      if (res.ok) {
-        setEditingQuantity(false);
-        onQuantityUpdated(item.id, newQuantity);
-      } else {
-        const data = await res.json();
-        console.error("Failed to update quantity:", data.error);
-      }
-    } finally {
-      setIsSavingQuantity(false);
-    }
+      if (res.ok) { setEditingQuantity(false); onQuantityUpdated(item.id, newQuantity); }
+      else { const d = await res.json(); console.error("Failed to update quantity:", d.error); }
+    } finally { setIsSavingQuantity(false); }
   }
 
   return (
@@ -125,41 +126,30 @@ function ReagentCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             {stockStatus && (
-              <span
-                className={`text-sm font-medium ${
-                  stockStatus === "red" ? "text-red-400" : "text-amber-400"
-                }`}
-              >
+              <span className={`text-sm font-medium ${stockStatus === "red" ? "text-red-400" : "text-amber-400"}`}>
                 {stockStatus === "red" ? "🔴" : "⚠️"} Low stock
               </span>
             )}
             {item.concentration !== null && (
-              <span className="text-white/40 text-xs">
-                {item.concentration.toLocaleString()} {item.concUnit ?? ""}
-              </span>
+              <span className="text-white/40 text-xs">{item.concentration.toLocaleString()} {item.concUnit ?? ""}</span>
             )}
-            {item.location && (
-              <span className="text-white/40 text-xs">&#x1F4CD; {item.location}</span>
-            )}
-            <span className="text-white/30 text-xs bg-white/10 px-2 py-0.5 rounded-full">
-              {item.category}
-            </span>
+            {item.location && <span className="text-white/40 text-xs">&#x1F4CD; {item.location}</span>}
+            <span className="text-white/30 text-xs bg-white/10 px-2 py-0.5 rounded-full">{item.category}</span>
           </div>
           {pct !== null && (
             <div className="mt-1.5 h-1 bg-white/10 rounded-full overflow-hidden w-32">
               <div
-                className={`h-full rounded-full transition-all ${
-                  pct < 20 ? "bg-red-400" : pct < 40 ? "bg-amber-400" : "bg-teal-400"
-                }`}
+                className={`h-full rounded-full transition-all ${pct < 20 ? "bg-red-400" : pct < 40 ? "bg-amber-400" : "bg-teal-400"}`}
                 style={{ width: `${pct}%` }}
               />
             </div>
           )}
         </div>
         <button
-          onClick={onToggle}
-          className="text-white/30 hover:text-white/70 text-xs transition-colors"
-        >
+          onClick={(e) => { e.stopPropagation(); onAddBatch(); }}
+          className="rounded border border-white/20 bg-white/5 hover:bg-white/15 px-2 py-0.5 text-white/60 hover:text-white text-xs transition-colors"
+        >+ Lot</button>
+        <button onClick={onToggle} className="text-white/30 hover:text-white/70 text-xs transition-colors">
           {expanded ? "▲ Less" : "▼ More"}
         </button>
       </div>
@@ -167,41 +157,47 @@ function ReagentCard({
       {/* Expanded detail */}
       {expanded && (
         <div className="mt-3 space-y-2 text-xs text-white/50">
-          {item.lotNumber && <p>Lot: {item.lotNumber}</p>}
+          {item.lotNumber    && <p>Lot: {item.lotNumber}</p>}
           {item.catalogNumber && <p>Catalog: {item.catalogNumber}</p>}
-          {item.vendor && <p>Vendor: {item.vendor}</p>}
-          {item.expiryDate && (
-            <p>Expires: {new Date(item.expiryDate).toLocaleDateString()}</p>
-          )}
-          {item.owner && <p>Owner: {item.owner}</p>}
-          {item.notes && <p className="text-white/40 whitespace-pre-wrap">{item.notes}</p>}
+          {item.vendor       && <p>Vendor: {item.vendor}</p>}
+          {item.expiryDate   && <p>Expires: {new Date(item.expiryDate).toLocaleDateString()}</p>}
+          {item.owner        && <p>Owner: {item.owner}</p>}
+          {item.notes        && <p className="text-white/40 whitespace-pre-wrap">{item.notes}</p>}
           {item.tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1">
               {item.tags.map((t) => (
-                <span
-                  key={t}
-                  className="bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded-full text-xs"
-                >
-                  {t}
-                </span>
+                <span key={t} className="bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded-full text-xs">{t}</span>
               ))}
             </div>
           )}
 
-          {/* Low stock threshold labels */}
           {item.lowThresholdType && item.lowThresholdType !== "none" && (
             <div className="flex items-center gap-3 text-xs text-gray-500">
               <span>Low stock alerts:</span>
-              {item.lowThresholdAmber !== null && (
-                <span className="text-amber-400">
-                  ⚠️ {item.lowThresholdAmber} {item.unit ?? item.lowThresholdType}
-                </span>
-              )}
-              {item.lowThresholdRed !== null && (
-                <span className="text-red-400">
-                  🔴 {item.lowThresholdRed} {item.unit ?? item.lowThresholdType}
-                </span>
-              )}
+              {item.lowThresholdAmber !== null && <span className="text-amber-400">⚠️ {item.lowThresholdAmber} {item.unit ?? item.lowThresholdType}</span>}
+              {item.lowThresholdRed   !== null && <span className="text-red-400">🔴 {item.lowThresholdRed} {item.unit ?? item.lowThresholdType}</span>}
+            </div>
+          )}
+
+          {/* ── Lots ── */}
+          {lots.length > 0 && (
+            <div className="mt-3 space-y-1">
+              <p className="text-white/30 uppercase tracking-wide text-[10px] font-semibold mb-1">Lots ({lots.length})</p>
+              {lots.map((lot) => (
+                <div key={lot.id} className="rounded bg-white/5 border border-white/10 px-3 py-2 text-xs text-white/60 space-y-0.5">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {lot.lotNumber     && <span className="font-medium text-white/80">{lot.lotNumber}</span>}
+                    <span>{lot.quantity.toLocaleString()} {lot.unit}</span>
+                    {lot.expiryDate    && <span>Exp {new Date(lot.expiryDate).toLocaleDateString()}</span>}
+                    {lot.supplier      && <span>{lot.supplier}</span>}
+                    {lot.attachments.length > 0 && <span className="text-white/30">📎 {lot.attachments.length}</span>}
+                    {lot.lowThresholdAmber != null && <span className="text-amber-400/70">⚠️ ≤{lot.lowThresholdAmber}</span>}
+                  </div>
+                  {lot.receivedBy   && <p className="text-white/30">Received by: {lot.receivedBy}{lot.receivedDate ? ` · ${new Date(lot.receivedDate).toLocaleDateString()}` : ""}</p>}
+                  {lot.notes        && <p className="whitespace-pre-wrap">{lot.notes}</p>}
+                  <p className="text-white/20">Added {new Date(lot.createdAt).toLocaleDateString()}</p>
+                </div>
+              ))}
             </div>
           )}
 
@@ -209,100 +205,50 @@ function ReagentCard({
           {isOwner && (
             <div className="mt-3 pt-3 border-t border-white/10">
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400 uppercase tracking-wide">
-                  Quantity
-                </span>
+                <span className="text-xs text-gray-400 uppercase tracking-wide">Quantity</span>
                 {!editingQuantity ? (
                   <>
                     <span className="text-white text-sm">
                       {item.quantity !== null
-                        ? `${item.quantity.toLocaleString(undefined, {
-                            maximumFractionDigits: 4,
-                          })} ${item.unit ?? ""}`
+                        ? `${item.quantity.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${item.unit ?? ""}`
                         : "Not set"}
                     </span>
                     <button
-                      onClick={() => {
-                        setQuantityInput(item.quantity?.toString() ?? "");
-                        setEditingQuantity(true);
-                      }}
+                      onClick={() => { setQuantityInput(item.quantity?.toString() ?? ""); setEditingQuantity(true); }}
                       className="text-xs text-gray-500 hover:text-white border border-white/10 rounded px-2 py-0.5 ml-1 transition-colors"
-                    >
-                      Update
-                    </button>
+                    >Update</button>
                   </>
                 ) : (
                   <div className="flex items-center gap-2">
                     <input
-                      type="number"
-                      min={0}
-                      step={1}
-                      value={quantityInput}
+                      type="number" min={0} step={1} value={quantityInput}
                       onChange={(e) => {
                         const val = e.target.value;
-                        const rounded = val.includes(".")
-                          ? String(Math.round(parseFloat(val)))
-                          : val;
-                        setQuantityInput(rounded);
+                        setQuantityInput(val.includes(".") ? String(Math.round(parseFloat(val))) : val);
                       }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") handleSaveQuantity();
-                        if (e.key === "Escape") setEditingQuantity(false);
-                      }}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleSaveQuantity(); if (e.key === "Escape") setEditingQuantity(false); }}
                       autoFocus
                       className="w-24 rounded bg-white/10 border border-white/20 text-white text-sm px-2 py-1 focus:outline-none focus:border-purple-500"
                     />
                     <span className="text-gray-400 text-sm">{item.unit ?? ""}</span>
                     <button
-                      onClick={handleSaveQuantity}
-                      disabled={isSavingQuantity || quantityInput === ""}
+                      onClick={handleSaveQuantity} disabled={isSavingQuantity || quantityInput === ""}
                       className="text-xs rounded bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-2 py-1"
-                    >
-                      {isSavingQuantity ? "..." : "Save"}
-                    </button>
-                    <button
-                      onClick={() => setEditingQuantity(false)}
-                      className="text-xs text-gray-500 hover:text-white px-1"
-                    >
-                      Cancel
-                    </button>
+                    >{isSavingQuantity ? "..." : "Save"}</button>
+                    <button onClick={() => setEditingQuantity(false)} className="text-xs text-gray-500 hover:text-white px-1">Cancel</button>
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* Action buttons */}
           <div className="flex items-center gap-4 mt-1 flex-wrap">
             {isOwner && (
-              <button
-                onClick={onEdit}
-                className="text-xs text-gray-400 hover:text-white border border-white/10 rounded px-2 py-1 transition-colors"
-              >
-                Edit
-              </button>
+              <button onClick={onEdit} className="text-xs text-gray-400 hover:text-white border border-white/10 rounded px-2 py-1 transition-colors">Edit</button>
             )}
-            <MarkForArchiveButton
-              entityType="reagent"
-              entityId={item.id}
-              entityName={item.name}
-              currentUser={currentUser}
-              alreadyMarked={item.markedForArchive}
-              onMarked={onReload}
-            />
-            <ArchiveButton
-              entityType="reagent"
-              entityId={item.id}
-              entityName={item.name}
-              currentUser={currentUser}
-              onArchived={onReload}
-            />
-            <button
-              onClick={onDelete}
-              className="text-red-400/60 hover:text-red-400 transition-colors"
-            >
-              Delete
-            </button>
+            <MarkForArchiveButton entityType="reagent" entityId={item.id} entityName={item.name} currentUser={currentUser} alreadyMarked={item.markedForArchive} onMarked={onReload} />
+            <ArchiveButton entityType="reagent" entityId={item.id} entityName={item.name} currentUser={currentUser} onArchived={onReload} />
+            <button onClick={onDelete} className="text-red-400/60 hover:text-red-400 transition-colors">Delete</button>
           </div>
         </div>
       )}
@@ -313,43 +259,45 @@ function ReagentCard({
 // ── Parent list component ───────────────────────────────────────────────────
 
 export default function ReagentsList({
-  search,
-  currentUser,
-  refetchTrigger,
+  search, currentUser, refetchTrigger,
 }: {
-  search: string;
-  currentUser: string;
-  refetchTrigger?: number;
+  search: string; currentUser: string; refetchTrigger?: number;
 }) {
-  const [reagents, setReagents] = useState<Reagent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [editingItem, setEditingItem] = useState<Reagent | null>(null);
+  const [reagents,       setReagents]       = useState<Reagent[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [expandedIds,    setExpandedIds]    = useState<Set<string>>(new Set());
+  const [editingItem,    setEditingItem]    = useState<Reagent | null>(null);
+  const [addBatchItemId, setAddBatchItemId] = useState<string | null>(null);
+  const [lotsMap,        setLotsMap]        = useState<Record<string, ReagentLot[]>>({});
+  const [loadedIds,      setLoadedIds]      = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(
-        `/api/inventory/reagents?search=${encodeURIComponent(search)}`
-      );
+      const res = await fetch(`/api/inventory/reagents?search=${encodeURIComponent(search)}`);
       const data = await res.json();
       if (Array.isArray(data)) setReagents(data);
-    } catch {
-      // leave reagents as-is on network/parse error
-    } finally {
-      setLoading(false);
-    }
+    } catch { /* leave as-is */ } finally { setLoading(false); }
   }, [search]);
 
-  useEffect(() => {
-    load();
-  }, [load, refetchTrigger]);
+  useEffect(() => { load(); }, [load, refetchTrigger]);
+
+  async function loadLots(id: string) {
+    if (loadedIds.has(id)) return;
+    try {
+      const res = await fetch(`/api/inventory/reagents/${id}/lots`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setLotsMap((prev) => ({ ...prev, [id]: data }));
+        setLoadedIds((prev) => new Set([...prev, id]));
+      }
+    } catch { /* ignore */ }
+  }
 
   const toggleExpand = (id: string) => {
     setExpandedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) { next.delete(id); } else { next.add(id); loadLots(id); }
       return next;
     });
   };
@@ -361,20 +309,18 @@ export default function ReagentsList({
   };
 
   function handleQuantityUpdated(id: string, newQuantity: number) {
-    setReagents((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, quantity: newQuantity } : r))
-    );
+    setReagents((prev) => prev.map((r) => (r.id === id ? { ...r, quantity: newQuantity } : r)));
   }
 
-  if (loading)
-    return <div className="text-white/40 text-sm py-8 text-center">Loading…</div>;
-  if (!reagents.length)
-    return (
-      <div className="text-white/40 text-sm py-12 text-center">
-        No reagents yet.{" "}
-        <span className="text-white/20">Import from Excel or add manually.</span>
-      </div>
-    );
+  const addBatchItem = addBatchItemId ? reagents.find((r) => r.id === addBatchItemId) : null;
+
+  if (loading) return <div className="text-white/40 text-sm py-8 text-center">Loading…</div>;
+  if (!reagents.length) return (
+    <div className="text-white/40 text-sm py-12 text-center">
+      No reagents yet.{" "}
+      <span className="text-white/20">Import from Excel or add manually.</span>
+    </div>
+  );
 
   // Group by name
   const groups = new Map<string, Reagent[]>();
@@ -388,32 +334,23 @@ export default function ReagentsList({
     <>
       <div className="space-y-3">
         {[...groups.entries()].map(([key, stocks]) => {
-          // Worst status across all stocks in the group
           const groupStatus = stocks.reduce<"red" | "amber" | null>((worst, s) => {
-            const st = getReagentStockStatus(
-              s.quantity,
-              s.lowThresholdType,
-              s.lowThresholdAmber,
-              s.lowThresholdRed
-            );
+            const st = getReagentStockStatus(s.quantity, s.lowThresholdType, s.lowThresholdAmber, s.lowThresholdRed);
             if (st === "red") return "red";
             if (st === "amber" && worst !== "red") return "amber";
             return worst;
           }, null);
-          const anyMarked = stocks.some((s) => s.markedForArchive);
+          const anyMarked    = stocks.some((s) => s.markedForArchive);
           const groupExpanded = stocks.some((s) => expandedIds.has(s.id));
 
           return (
             <div
               key={key}
               className={`bg-white/5 border rounded-xl overflow-hidden ${
-                anyMarked
-                  ? "border-orange-500/40"
-                  : groupStatus === "red"
-                  ? "border-red-500/60"
-                  : groupStatus === "amber"
-                  ? "border-amber-500/60"
-                  : "border-white/10"
+                anyMarked ? "border-orange-500/40"
+                : groupStatus === "red"   ? "border-red-500/60"
+                : groupStatus === "amber" ? "border-amber-500/60"
+                : "border-white/10"
               }`}
             >
               {/* Group header */}
@@ -423,50 +360,35 @@ export default function ReagentsList({
               >
                 <span className="text-white font-semibold flex-1">
                   {stocks[0].name}
-                  {anyMarked && (
-                    <span className="ml-2 text-orange-400/70 text-xs font-normal">
-                      ⚑ flagged
-                    </span>
-                  )}
+                  {anyMarked && <span className="ml-2 text-orange-400/70 text-xs font-normal">⚑ flagged</span>}
                 </span>
                 <div className="flex items-center gap-2">
-                  {groupStatus === "red" && (
-                    <span className="text-red-400 text-xs">🔴 Low stock</span>
-                  )}
-                  {groupStatus === "amber" && !anyMarked && (
-                    <span className="text-amber-400 text-xs">⚠️ Low stock</span>
-                  )}
-                  <span className="text-white/30 text-xs">
-                    {stocks.length} stock{stocks.length !== 1 ? "s" : ""}
-                  </span>
-                  <span className="text-white/30 text-sm">
-                    {groupExpanded ? "▲" : "▼"}
-                  </span>
+                  {groupStatus === "red"   && <span className="text-red-400 text-xs">🔴 Low stock</span>}
+                  {groupStatus === "amber" && !anyMarked && <span className="text-amber-400 text-xs">⚠️ Low stock</span>}
+                  <span className="text-white/30 text-xs">{stocks.length} stock{stocks.length !== 1 ? "s" : ""}</span>
+                  <span className="text-white/30 text-sm">{groupExpanded ? "▲" : "▼"}</span>
                 </div>
               </div>
 
-              {/* Stock cards */}
               {groupExpanded && (
-                <div
-                  className={`border-t divide-y ${
-                    groupStatus === "red"
-                      ? "border-red-500/20 divide-red-500/10"
-                      : groupStatus === "amber"
-                      ? "border-amber-500/20 divide-amber-500/10"
-                      : "border-white/10 divide-white/5"
-                  }`}
-                >
+                <div className={`border-t divide-y ${
+                  groupStatus === "red"   ? "border-red-500/20 divide-red-500/10"
+                  : groupStatus === "amber" ? "border-amber-500/20 divide-amber-500/10"
+                  : "border-white/10 divide-white/5"
+                }`}>
                   {stocks.map((r) => (
                     <ReagentCard
                       key={r.id}
                       item={r}
                       currentUser={currentUser}
                       expanded={expandedIds.has(r.id)}
+                      lots={lotsMap[r.id] ?? []}
                       onToggle={() => toggleExpand(r.id)}
                       onQuantityUpdated={handleQuantityUpdated}
                       onEdit={() => setEditingItem(r)}
                       onDelete={() => handleDelete(r.id)}
                       onReload={load}
+                      onAddBatch={() => setAddBatchItemId(r.id)}
                     />
                   ))}
                 </div>
@@ -476,27 +398,39 @@ export default function ReagentsList({
         })}
       </div>
 
+      {/* Add Lot modal */}
+      {addBatchItem && (
+        <AddBatchModal
+          itemType="reagent"
+          itemId={addBatchItem.id}
+          itemName={addBatchItem.name}
+          currentUser={currentUser}
+          parentUnit={addBatchItem.unit ?? undefined}
+          useParentThreshold={addBatchItem.useParentThreshold ?? true}
+          onSuccess={(lot) => {
+            setLotsMap((prev) => ({
+              ...prev,
+              [addBatchItem.id]: [lot, ...(prev[addBatchItem.id] ?? [])],
+            }));
+            setAddBatchItemId(null);
+          }}
+          onClose={() => setAddBatchItemId(null)}
+        />
+      )}
+
       {/* Edit reagent modal */}
       {editingItem && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
           <div className="bg-gray-900 border border-white/10 rounded-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 flex-shrink-0">
               <h2 className="text-white font-bold">Edit Reagent</h2>
-              <button
-                onClick={() => setEditingItem(null)}
-                className="text-gray-400 hover:text-white text-xl leading-none"
-              >
-                ✕
-              </button>
+              <button onClick={() => setEditingItem(null)} className="text-gray-400 hover:text-white text-xl leading-none">✕</button>
             </div>
             <div className="px-6 py-4 overflow-y-auto flex-1">
               <ReagentForm
                 currentUser={currentUser}
                 existing={editingItem}
-                onSuccess={() => {
-                  setEditingItem(null);
-                  load();
-                }}
+                onSuccess={() => { setEditingItem(null); load(); }}
                 onCancel={() => setEditingItem(null)}
               />
             </div>

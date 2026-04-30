@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
+type Context = { params: Promise<{ id: string; batchId: string }> | { id: string; batchId: string } };
+
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string; batchId: string } }
+  ctx: Context
 ) {
+  const params = await ctx.params;
   try {
     const body = await req.json();
     const editedBy = req.headers.get("x-user-name") ?? "Unknown";
@@ -49,8 +52,9 @@ export async function PATCH(
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string; batchId: string } }
+  ctx: Context
 ) {
+  const params = await ctx.params;
   try {
     await prisma.proteinBatch.delete({ where: { id: params.batchId } });
     return NextResponse.json({ ok: true });
