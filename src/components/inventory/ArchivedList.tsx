@@ -36,17 +36,31 @@ const ENTITY_COLORS: Record<EntityType, string> = {
   protein_stock: "text-pink-400",
 };
 
+const ENTITY_ROUTES: Record<EntityType, string> = {
+  reagent: "reagents",
+  cell_line: "celllines",
+  plasmid: "plasmids",
+  protein_stock: "proteinstocks",
+};
+
 function ArchivedItemCard({
   item,
   currentUser,
   onRestored,
+  onDeleted,
 }: {
   item: ArchivedItem;
   currentUser: string;
   onRestored: () => void;
+  onDeleted: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const [restoring, setRestoring] = useState(false);
+  const [expanded,    setExpanded]    = useState(false);
+  const [restoring,   setRestoring]   = useState(false);
+  const [deleteStep,  setDeleteStep]  = useState<0 | 1 | 2>(0);
+  const [deleteInput, setDeleteInput] = useState("");
+  const [deleting,    setDeleting]    = useState(false);
+
+  const isOwner = currentUser === item.owner || currentUser === "Admin";
 
   const handleRestore = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -61,6 +75,20 @@ function ArchivedItemCard({
       onRestored();
     } catch {
       setRestoring(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (deleteInput !== "DELETE") return;
+    setDeleting(true);
+    try {
+      await fetch(`/api/inventory/${ENTITY_ROUTES[item.entityType]}/${item.id}`, {
+        method: "DELETE",
+        headers: { "x-user-name": currentUser },
+      });
+      onDeleted();
+    } catch {
+      setDeleting(false);
     }
   };
 
@@ -110,14 +138,87 @@ function ArchivedItemCard({
           )}
           {item.owner && <p>Owner: {item.owner}</p>}
           {item.notes && <p className="whitespace-pre-wrap text-white/40">{item.notes}</p>}
-          <div className="pt-1">
-            <button
-              onClick={handleRestore}
-              disabled={restoring}
-              className="text-teal-400/70 hover:text-teal-400 transition-colors disabled:opacity-50"
-            >
-              {restoring ? "Restoring…" : "Restore to inventory"}
-            </button>
+
+          {/* Actions */}
+          <div className="pt-1 space-y-2">
+            {/* Restore */}
+            <div>
+              <button
+                onClick={handleRestore}
+                disabled={restoring}
+                className="text-teal-400/70 hover:text-teal-400 transition-colors disabled:opacity-50"
+              >
+                {restoring ? "Restoring…" : "Restore to inventory"}
+              </button>
+            </div>
+
+            {/* Delete — owner/Admin only, two-step */}
+            {isOwner && deleteStep === 0 && (
+              <div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setDeleteStep(1); }}
+                  className="text-red-400/50 hover:text-red-400 transition-colors text-xs"
+                >
+                  Delete permanently
+                </button>
+              </div>
+            )}
+
+            {isOwner && deleteStep === 1 && (
+              <div
+                className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 space-y-2"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <p className="text-red-300 text-xs font-semibold">Permanently delete &ldquo;{item.name}&rdquo;?</p>
+                <p className="text-white/50 text-xs">This cannot be undone. The item and all associated data will be permanently removed.</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setDeleteStep(2)}
+                    className="bg-red-600 hover:bg-red-500 text-white text-xs font-semibold px-3 py-1 rounded-lg transition-colors"
+                  >
+                    Yes, delete
+                  </button>
+                  <button
+                    onClick={() => setDeleteStep(0)}
+                    className="text-white/40 hover:text-white/70 text-xs px-2 py-1 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {isOwner && deleteStep === 2 && (
+              <div
+                className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 space-y-2"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <p className="text-red-300 text-xs font-semibold">Type DELETE to confirm</p>
+                <input
+                  type="text"
+                  value={deleteInput}
+                  onChange={(e) => setDeleteInput(e.target.value)}
+                  placeholder="DELETE"
+                  autoFocus
+                  className="w-full rounded bg-white/5 border border-white/10 text-white text-xs px-2 py-1.5 focus:outline-none focus:border-red-400/50 font-mono"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleteInput !== "DELETE" || deleting}
+                    className="bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1 rounded-lg transition-colors"
+                  >
+                    {deleting ? "Deleting…" : "Confirm Delete"}
+                  </button>
+                  <button
+                    onClick={() => { setDeleteStep(0); setDeleteInput(""); }}
+                    className="text-white/40 hover:text-white/70 text-xs px-2 py-1 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -126,8 +227,8 @@ function ArchivedItemCard({
 }
 
 export default function ArchivedList({ search, currentUser }: { search: string; currentUser: string }) {
-  const [items, setItems] = useState<ArchivedItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items,      setItems]      = useState<ArchivedItem[]>([]);
+  const [loading,    setLoading]    = useState(true);
   const [filterType, setFilterType] = useState<EntityType | "all">("all");
 
   const load = useCallback(async () => {
@@ -190,6 +291,7 @@ export default function ArchivedList({ search, currentUser }: { search: string; 
               item={item}
               currentUser={currentUser}
               onRestored={load}
+              onDeleted={load}
             />
           ))}
         </div>

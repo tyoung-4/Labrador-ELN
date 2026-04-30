@@ -1,10 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import ArchiveButton from "./ArchiveButton";
-import MarkForArchiveButton from "./MarkForArchiveButton";
 import ReagentForm from "./ReagentForm";
 import AddBatchModal from "./AddBatchModal";
+import KebabMenu, { KebabMenuItem, ArchiveConfirm, FlagPrompt } from "./KebabMenu";
 
 interface Reagent {
   id: string;
@@ -60,7 +59,7 @@ function getReagentStockStatus(
   return null;
 }
 
-// ── Per-card sub-component (owns quantity-editing state) ────────────────────
+// ── Per-card sub-component ────────────────────────────────────────────────────
 
 function ReagentCard({
   item,
@@ -70,7 +69,6 @@ function ReagentCard({
   onToggle,
   onQuantityUpdated,
   onEdit,
-  onDelete,
   onReload,
   onAddBatch,
 }: {
@@ -81,13 +79,15 @@ function ReagentCard({
   onToggle: () => void;
   onQuantityUpdated: (id: string, qty: number) => void;
   onEdit: () => void;
-  onDelete: () => void;
   onReload: () => void;
   onAddBatch: () => void;
 }) {
   const [editingQuantity,  setEditingQuantity]  = useState(false);
   const [quantityInput,    setQuantityInput]    = useState(item.quantity?.toString() ?? "");
   const [isSavingQuantity, setIsSavingQuantity] = useState(false);
+  const [confirmArchive,   setConfirmArchive]   = useState(false);
+  const [flagging,         setFlagging]         = useState(false);
+  const [toast,            setToast]            = useState("");
 
   const isOwner = currentUser === item.owner || currentUser === "Admin";
 
@@ -119,10 +119,32 @@ function ReagentCard({
     } finally { setIsSavingQuantity(false); }
   }
 
+  const handleArchive = async () => {
+    await fetch("/api/inventory/archive", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-user-name": currentUser },
+      body: JSON.stringify({ entityType: "reagent", entityId: item.id }),
+    });
+    setConfirmArchive(false);
+    onReload();
+  };
+
+  const handleFlag = async (note: string) => {
+    await fetch("/api/inventory/mark-for-archive", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-user-name": currentUser },
+      body: JSON.stringify({ entityType: "reagent", entityId: item.id, note: note || undefined }),
+    });
+    setFlagging(false);
+    setToast("Flagged for archive");
+    setTimeout(() => setToast(""), 3000);
+    onReload();
+  };
+
   return (
     <div className="px-4 py-3">
       {/* Summary row */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             {stockStatus && (
@@ -145,14 +167,64 @@ function ReagentCard({
             </div>
           )}
         </div>
+
+        {/* + Lot */}
         <button
           onClick={(e) => { e.stopPropagation(); onAddBatch(); }}
-          className="rounded border border-white/20 bg-white/5 hover:bg-white/15 px-2 py-0.5 text-white/60 hover:text-white text-xs transition-colors"
-        >+ Lot</button>
-        <button onClick={onToggle} className="text-white/30 hover:text-white/70 text-xs transition-colors">
+          className="rounded border border-white/20 bg-white/5 hover:bg-white/15 px-2 py-0.5 text-white/60 hover:text-white text-xs transition-colors flex-shrink-0"
+        >
+          + Lot
+        </button>
+
+        {/* Kebab */}
+        <KebabMenu>
+          {isOwner ? (
+            <>
+              <KebabMenuItem onClick={onEdit}>Edit</KebabMenuItem>
+              <KebabMenuItem
+                onClick={() => setConfirmArchive(true)}
+                className="text-amber-400/70 hover:text-amber-400"
+              >
+                Archive
+              </KebabMenuItem>
+            </>
+          ) : item.markedForArchive ? (
+            <span className="px-3 py-1.5 text-sm text-orange-400/40 block">⚑ Already flagged</span>
+          ) : (
+            <KebabMenuItem
+              onClick={() => setFlagging(true)}
+              className="text-orange-400/70 hover:text-orange-400"
+            >
+              Flag for Archive
+            </KebabMenuItem>
+          )}
+        </KebabMenu>
+
+        {/* Expand */}
+        <button onClick={onToggle} className="text-white/30 hover:text-white/70 text-xs transition-colors flex-shrink-0">
           {expanded ? "▲ Less" : "▼ More"}
         </button>
       </div>
+
+      {/* Inline archive confirm */}
+      {confirmArchive && (
+        <ArchiveConfirm
+          name={item.name}
+          onConfirm={handleArchive}
+          onCancel={() => setConfirmArchive(false)}
+        />
+      )}
+
+      {/* Inline flag prompt */}
+      {flagging && (
+        <FlagPrompt
+          name={item.name}
+          onSubmit={handleFlag}
+          onCancel={() => setFlagging(false)}
+        />
+      )}
+
+      {toast && <p className="text-green-400/80 text-xs mt-1">{toast}</p>}
 
       {/* Expanded detail */}
       {expanded && (
@@ -241,22 +313,13 @@ function ReagentCard({
               </div>
             </div>
           )}
-
-          <div className="flex items-center gap-4 mt-1 flex-wrap">
-            {isOwner && (
-              <button onClick={onEdit} className="text-xs text-gray-400 hover:text-white border border-white/10 rounded px-2 py-1 transition-colors">Edit</button>
-            )}
-            <MarkForArchiveButton entityType="reagent" entityId={item.id} entityName={item.name} currentUser={currentUser} alreadyMarked={item.markedForArchive} onMarked={onReload} />
-            <ArchiveButton entityType="reagent" entityId={item.id} entityName={item.name} currentUser={currentUser} onArchived={onReload} />
-            <button onClick={onDelete} className="text-red-400/60 hover:text-red-400 transition-colors">Delete</button>
-          </div>
         </div>
       )}
     </div>
   );
 }
 
-// ── Parent list component ───────────────────────────────────────────────────
+// ── Parent list component ─────────────────────────────────────────────────────
 
 export default function ReagentsList({
   search, currentUser, refetchTrigger,
@@ -300,12 +363,6 @@ export default function ReagentsList({
       if (next.has(id)) { next.delete(id); } else { next.add(id); loadLots(id); }
       return next;
     });
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete this reagent?")) return;
-    await fetch(`/api/inventory/reagents/${id}`, { method: "DELETE" });
-    load();
   };
 
   function handleQuantityUpdated(id: string, newQuantity: number) {
@@ -386,7 +443,6 @@ export default function ReagentsList({
                       onToggle={() => toggleExpand(r.id)}
                       onQuantityUpdated={handleQuantityUpdated}
                       onEdit={() => setEditingItem(r)}
-                      onDelete={() => handleDelete(r.id)}
                       onReload={load}
                       onAddBatch={() => setAddBatchItemId(r.id)}
                     />
