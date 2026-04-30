@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import ProteinStockForm from "./ProteinStockForm";
 import ProteinBatchForm from "./ProteinBatchForm";
+import AddBatchModal from "./AddBatchModal";
 import KebabMenu, { KebabMenuItem, ArchiveConfirm, FlagPrompt } from "./KebabMenu";
 
 interface ProteinBatch {
@@ -287,6 +288,135 @@ function ProteinStockCard({
   );
 }
 
+// ── Group header sub-component (always-visible row with + Add Batch and kebab) ─
+
+function ProteinGroupHeader({
+  stocks,
+  currentUser,
+  anyMarked,
+  groupExpanded,
+  onToggleGroup,
+  onEdit,
+  onReload,
+  onBatchCreated,
+}: {
+  stocks: ProteinStock[];
+  currentUser: string;
+  anyMarked: boolean;
+  groupExpanded: boolean;
+  onToggleGroup: () => void;
+  onEdit: (item: ProteinStock) => void;
+  onReload: () => void;
+  onBatchCreated: (stockId: string) => void;
+}) {
+  const primaryStock = stocks[0];
+  const isOwner = currentUser === primaryStock.owner || currentUser === "Admin";
+  const [showBatchModal,  setShowBatchModal]  = useState(false);
+  const [confirmArchive,  setConfirmArchive]  = useState(false);
+  const [flagging,        setFlagging]        = useState(false);
+  const [toast,           setToast]           = useState("");
+
+  const handleArchive = async () => {
+    await fetch("/api/inventory/archive", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-user-name": currentUser },
+      body: JSON.stringify({ entityType: "protein_stock", entityId: primaryStock.id }),
+    });
+    setConfirmArchive(false);
+    onReload();
+  };
+
+  const handleFlag = async (note: string) => {
+    await fetch("/api/inventory/mark-for-archive", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-user-name": currentUser },
+      body: JSON.stringify({ entityType: "protein_stock", entityId: primaryStock.id, note: note || undefined }),
+    });
+    setFlagging(false);
+    setToast("Flagged for archive");
+    setTimeout(() => setToast(""), 3000);
+    onReload();
+  };
+
+  return (
+    <>
+      <div
+        className="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-white/5"
+        onClick={onToggleGroup}
+      >
+        <span className="text-white font-semibold flex-1">
+          {primaryStock.name}
+          {anyMarked && (
+            <span className="ml-2 text-orange-400/70 text-xs font-normal">⚑ flagged</span>
+          )}
+        </span>
+
+        <span className="text-white/30 text-xs">
+          {stocks.length} stock{stocks.length !== 1 ? "s" : ""}
+        </span>
+
+        {/* + Add Batch */}
+        <button
+          onClick={(e) => { e.stopPropagation(); setShowBatchModal(true); }}
+          className="rounded border border-white/20 bg-white/5 hover:bg-white/15 px-2 py-0.5 text-white/60 hover:text-white text-xs transition-colors flex-shrink-0"
+        >
+          + Add Batch
+        </button>
+
+        {/* Kebab */}
+        <KebabMenu>
+          {isOwner ? (
+            <>
+              <KebabMenuItem onClick={() => onEdit(primaryStock)}>Edit</KebabMenuItem>
+              <KebabMenuItem
+                onClick={() => setConfirmArchive(true)}
+                className="text-amber-400/70 hover:text-amber-400"
+              >
+                Archive
+              </KebabMenuItem>
+            </>
+          ) : anyMarked ? (
+            <span className="px-3 py-1.5 text-sm text-orange-400/40 block">⚑ Already flagged</span>
+          ) : (
+            <KebabMenuItem
+              onClick={() => setFlagging(true)}
+              className="text-orange-400/70 hover:text-orange-400"
+            >
+              Flag for Archive
+            </KebabMenuItem>
+          )}
+        </KebabMenu>
+
+        {/* Chevron */}
+        <span className="text-white/30 text-sm flex-shrink-0">{groupExpanded ? "▲" : "▼"}</span>
+      </div>
+
+      {confirmArchive && (
+        <div className="px-4">
+          <ArchiveConfirm name={primaryStock.name} onConfirm={handleArchive} onCancel={() => setConfirmArchive(false)} />
+        </div>
+      )}
+      {flagging && (
+        <div className="px-4">
+          <FlagPrompt name={primaryStock.name} onSubmit={handleFlag} onCancel={() => setFlagging(false)} />
+        </div>
+      )}
+      {toast && <p className="px-4 pb-2 text-green-400/80 text-xs">{toast}</p>}
+
+      {showBatchModal && (
+        <AddBatchModal
+          itemType="proteinstock"
+          itemId={primaryStock.id}
+          itemName={primaryStock.name}
+          currentUser={currentUser}
+          onSuccess={() => { setShowBatchModal(false); onBatchCreated(primaryStock.id); }}
+          onClose={() => setShowBatchModal(false)}
+        />
+      )}
+    </>
+  );
+}
+
 // ── Parent list component ─────────────────────────────────────────────────────
 
 export default function ProteinStocksList({
@@ -378,9 +508,12 @@ export default function ProteinStocksList({
               }`}
             >
               {/* Group header */}
-              <div
-                className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/5"
-                onClick={() => {
+              <ProteinGroupHeader
+                stocks={stocks}
+                currentUser={currentUser}
+                anyMarked={anyMarked}
+                groupExpanded={groupExpanded}
+                onToggleGroup={() => {
                   const allExpanded = stocks.every((s) => expandedIds.has(s.id));
                   if (allExpanded) {
                     setExpandedIds((prev) => {
@@ -394,18 +527,10 @@ export default function ProteinStocksList({
                     });
                   }
                 }}
-              >
-                <span className="text-white font-semibold flex-1">
-                  {stocks[0].name}
-                  {anyMarked && (
-                    <span className="ml-2 text-orange-400/70 text-xs font-normal">⚑ flagged</span>
-                  )}
-                </span>
-                <span className="text-white/30 text-xs">
-                  {stocks.length} stock{stocks.length !== 1 ? "s" : ""}
-                </span>
-                <span className="text-white/30 text-sm">{groupExpanded ? "▲" : "▼"}</span>
-              </div>
+                onEdit={(item) => setEditingItem(item)}
+                onReload={load}
+                onBatchCreated={(stockId) => loadBatches(stockId)}
+              />
 
               {/* Expanded stocks */}
               {groupExpanded && (

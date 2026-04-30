@@ -319,6 +319,126 @@ function ReagentCard({
   );
 }
 
+// ── Group header sub-component (always-visible row with + Lot and kebab) ──────
+
+function ReagentGroupHeader({
+  stocks,
+  currentUser,
+  groupStatus,
+  anyMarked,
+  groupExpanded,
+  onToggleGroup,
+  onAddBatch,
+  onEdit,
+  onReload,
+}: {
+  stocks: Reagent[];
+  currentUser: string;
+  groupStatus: "red" | "amber" | null;
+  anyMarked: boolean;
+  groupExpanded: boolean;
+  onToggleGroup: () => void;
+  onAddBatch: (id: string) => void;
+  onEdit: (item: Reagent) => void;
+  onReload: () => void;
+}) {
+  const primaryStock = stocks[0];
+  const isOwner = currentUser === primaryStock.owner || currentUser === "Admin";
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const [flagging,       setFlagging]       = useState(false);
+  const [toast,          setToast]          = useState("");
+
+  const handleArchive = async () => {
+    await fetch("/api/inventory/archive", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-user-name": currentUser },
+      body: JSON.stringify({ entityType: "reagent", entityId: primaryStock.id }),
+    });
+    setConfirmArchive(false);
+    onReload();
+  };
+
+  const handleFlag = async (note: string) => {
+    await fetch("/api/inventory/mark-for-archive", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-user-name": currentUser },
+      body: JSON.stringify({ entityType: "reagent", entityId: primaryStock.id, note: note || undefined }),
+    });
+    setFlagging(false);
+    setToast("Flagged for archive");
+    setTimeout(() => setToast(""), 3000);
+    onReload();
+  };
+
+  return (
+    <>
+      <div
+        className="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-white/5 transition-colors"
+        onClick={onToggleGroup}
+      >
+        <span className="text-white font-semibold flex-1">
+          {primaryStock.name}
+          {anyMarked && <span className="ml-2 text-orange-400/70 text-xs font-normal">⚑ flagged</span>}
+        </span>
+
+        {/* Status badges + count */}
+        <div className="flex items-center gap-2">
+          {groupStatus === "red"   && <span className="text-red-400 text-xs">🔴 Low stock</span>}
+          {groupStatus === "amber" && !anyMarked && <span className="text-amber-400 text-xs">⚠️ Low stock</span>}
+          <span className="text-white/30 text-xs">{stocks.length} stock{stocks.length !== 1 ? "s" : ""}</span>
+        </div>
+
+        {/* + Lot */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onAddBatch(primaryStock.id); }}
+          className="rounded border border-white/20 bg-white/5 hover:bg-white/15 px-2 py-0.5 text-white/60 hover:text-white text-xs transition-colors flex-shrink-0"
+        >
+          + Lot
+        </button>
+
+        {/* Kebab */}
+        <KebabMenu>
+          {isOwner ? (
+            <>
+              <KebabMenuItem onClick={() => onEdit(primaryStock)}>Edit</KebabMenuItem>
+              <KebabMenuItem
+                onClick={() => setConfirmArchive(true)}
+                className="text-amber-400/70 hover:text-amber-400"
+              >
+                Archive
+              </KebabMenuItem>
+            </>
+          ) : anyMarked ? (
+            <span className="px-3 py-1.5 text-sm text-orange-400/40 block">⚑ Already flagged</span>
+          ) : (
+            <KebabMenuItem
+              onClick={() => setFlagging(true)}
+              className="text-orange-400/70 hover:text-orange-400"
+            >
+              Flag for Archive
+            </KebabMenuItem>
+          )}
+        </KebabMenu>
+
+        {/* Chevron */}
+        <span className="text-white/30 text-sm flex-shrink-0">{groupExpanded ? "▲" : "▼"}</span>
+      </div>
+
+      {confirmArchive && (
+        <div className="px-4">
+          <ArchiveConfirm name={primaryStock.name} onConfirm={handleArchive} onCancel={() => setConfirmArchive(false)} />
+        </div>
+      )}
+      {flagging && (
+        <div className="px-4">
+          <FlagPrompt name={primaryStock.name} onSubmit={handleFlag} onCancel={() => setFlagging(false)} />
+        </div>
+      )}
+      {toast && <p className="px-4 pb-2 text-green-400/80 text-xs">{toast}</p>}
+    </>
+  );
+}
+
 // ── Parent list component ─────────────────────────────────────────────────────
 
 export default function ReagentsList({
@@ -411,21 +531,17 @@ export default function ReagentsList({
               }`}
             >
               {/* Group header */}
-              <div
-                className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-white/5 transition-colors"
-                onClick={() => stocks.forEach((s) => toggleExpand(s.id))}
-              >
-                <span className="text-white font-semibold flex-1">
-                  {stocks[0].name}
-                  {anyMarked && <span className="ml-2 text-orange-400/70 text-xs font-normal">⚑ flagged</span>}
-                </span>
-                <div className="flex items-center gap-2">
-                  {groupStatus === "red"   && <span className="text-red-400 text-xs">🔴 Low stock</span>}
-                  {groupStatus === "amber" && !anyMarked && <span className="text-amber-400 text-xs">⚠️ Low stock</span>}
-                  <span className="text-white/30 text-xs">{stocks.length} stock{stocks.length !== 1 ? "s" : ""}</span>
-                  <span className="text-white/30 text-sm">{groupExpanded ? "▲" : "▼"}</span>
-                </div>
-              </div>
+              <ReagentGroupHeader
+                stocks={stocks}
+                currentUser={currentUser}
+                groupStatus={groupStatus}
+                anyMarked={anyMarked}
+                groupExpanded={groupExpanded}
+                onToggleGroup={() => stocks.forEach((s) => toggleExpand(s.id))}
+                onAddBatch={(id) => setAddBatchItemId(id)}
+                onEdit={(item) => setEditingItem(item)}
+                onReload={load}
+              />
 
               {groupExpanded && (
                 <div className={`border-t divide-y ${
