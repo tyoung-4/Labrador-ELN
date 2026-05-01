@@ -82,8 +82,6 @@ function LotCard({
   const [deleting,         setDeleting]          = useState(false);
   const [showUse,          setShowUse]           = useState(false);
   const [useAmount,        setUseAmount]         = useState("");
-  const [usedBy,           setUsedBy]            = useState(currentUser);
-  const [useNotes,         setUseNotes]          = useState("");
   const [useError,         setUseError]          = useState("");
   const [submittingUse,    setSubmittingUse]     = useState(false);
   const [showArchive,      setShowArchive]       = useState(false);
@@ -106,7 +104,7 @@ function LotCard({
 
   const handleUseAmountChange = (val: string) => {
     setUseAmount(val);
-    const n = parseFloat(val);
+    const n = parseInt(val, 10);
     if (!isNaN(n) && n > lot.quantity) {
       setUseError(`Cannot exceed available quantity (${lot.quantity} ${lot.unit})`);
     } else {
@@ -115,7 +113,7 @@ function LotCard({
   };
 
   const handleLogUse = async () => {
-    const amount = parseFloat(useAmount);
+    const amount = parseInt(useAmount, 10);
     if (isNaN(amount) || amount <= 0 || amount > lot.quantity) return;
     setSubmittingUse(true);
     setUseError("");
@@ -124,7 +122,7 @@ function LotCard({
       await fetch(`/api/inventory/reagents/${reagentId}/lots/${lot.id}/usage`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-user-name": currentUser },
-        body: JSON.stringify({ volumeUsed: amount, usedBy: usedBy || currentUser, notes: useNotes || null, date: new Date().toISOString() }),
+        body: JSON.stringify({ volumeUsed: amount, usedBy: currentUser, date: new Date().toISOString() }),
       });
 
       // 2. Decrement quantity via PATCH
@@ -139,7 +137,6 @@ function LotCard({
         onUpdated(updated);
         setShowUse(false);
         setUseAmount("");
-        setUseNotes("");
         if (newQty === 0) setShowArchive(true);
       } else {
         setUseError("Failed to update quantity");
@@ -165,7 +162,7 @@ function LotCard({
     }
   };
 
-  const useAmountNum = parseFloat(useAmount);
+  const useAmountNum = parseInt(useAmount, 10);
   const canLogUse = !isNaN(useAmountNum) && useAmountNum > 0 && useAmountNum <= lot.quantity;
 
   return (
@@ -222,7 +219,7 @@ function LotCard({
         {/* Right: action buttons */}
         <div className="flex items-center gap-1 flex-shrink-0 pt-0.5">
           <button
-            onClick={() => { setShowUse((v) => !v); setUseError(""); setUseAmount(""); setUseNotes(""); }}
+            onClick={() => { setShowUse((v) => !v); setUseError(""); setUseAmount(""); }}
             className="rounded border border-teal-500/30 bg-teal-500/10 hover:bg-teal-500/20 text-teal-400 hover:text-teal-300 text-xs px-2 py-1 transition-colors"
           >
             − Use
@@ -244,33 +241,15 @@ function LotCard({
       {/* − Use inline form */}
       {showUse && (
         <div className="bg-white/5 border border-white/10 rounded-lg p-3 space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-white/50 text-xs">Amount used</label>
-              <div className="flex items-center gap-1 mt-1">
-                <input
-                  type="number" min={1} max={lot.quantity}
-                  value={useAmount}
-                  onChange={(e) => handleUseAmountChange(e.target.value)}
-                  className="w-20 rounded bg-white/10 border border-white/20 text-white text-sm px-2 py-1 focus:outline-none focus:border-teal-400/50"
-                />
-                <span className="text-white/40 text-xs">{lot.unit}</span>
-              </div>
-            </div>
-            <div>
-              <label className="text-white/50 text-xs">Used by</label>
-              <input
-                type="text" value={usedBy} onChange={(e) => setUsedBy(e.target.value)}
-                className="mt-1 w-full rounded bg-white/10 border border-white/20 text-white text-sm px-2 py-1 focus:outline-none focus:border-teal-400/50"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="text-white/50 text-xs">Notes (optional)</label>
+          <div className="flex items-center gap-2">
             <input
-              type="text" value={useNotes} onChange={(e) => setUseNotes(e.target.value)}
-              className="mt-1 w-full rounded bg-white/10 border border-white/20 text-white text-sm px-2 py-1 focus:outline-none focus:border-teal-400/50"
+              type="number" min={1} max={lot.quantity} step={1}
+              value={useAmount}
+              onChange={(e) => handleUseAmountChange(e.target.value)}
+              autoFocus
+              className="w-20 rounded bg-white/10 border border-white/20 text-white text-sm px-2 py-1 focus:outline-none focus:border-teal-400/50"
             />
+            <span className="text-white/40 text-xs">{lot.unit}</span>
           </div>
           {useError && <p className="text-red-400 text-xs">{useError}</p>}
           <div className="flex gap-2">
@@ -282,7 +261,7 @@ function LotCard({
               {submittingUse ? "Logging…" : "Log Use"}
             </button>
             <button
-              onClick={() => { setShowUse(false); setUseAmount(""); setUseError(""); setUseNotes(""); }}
+              onClick={() => { setShowUse(false); setUseAmount(""); setUseError(""); }}
               className="text-white/40 hover:text-white text-xs px-2 transition-colors"
             >
               Cancel
