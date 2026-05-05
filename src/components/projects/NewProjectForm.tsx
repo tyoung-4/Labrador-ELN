@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { capitalizeTag } from "@/utils/capitalizeTag";
+import ShortTagModal from "@/components/projects/ShortTagModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -67,6 +68,7 @@ export default function NewProjectForm({
   const [nameChecking, setNameChecking] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [createdTag, setCreatedTag] = useState<Tag | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -163,7 +165,7 @@ export default function NewProjectForm({
       });
       const data = (await res.json()) as { success?: boolean; tag?: Tag; error?: string };
       if (res.ok && data.tag) {
-        onSuccess(data.tag);
+        setCreatedTag(data.tag);
       } else {
         setSubmitError(data.error ?? "Failed to create project");
       }
@@ -175,6 +177,20 @@ export default function NewProjectForm({
   }
 
   const canSubmit = name.trim() !== "" && color !== "" && !nameConflict && !nameChecking && !isSubmitting;
+
+  if (createdTag) {
+    return (
+      <ShortTagModal
+        projectName={createdTag.name}
+        projectTagId={createdTag.id}
+        projectColor={createdTag.color}
+        currentUser={currentUser}
+        onComplete={() => {
+          onSuccess(createdTag);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">

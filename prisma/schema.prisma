@@ -79,6 +79,11 @@ model Tag {
   description String?         // project overview / short description
   startDate   DateTime?       // user-set display date, overrides createdAt for display
   members     ProjectMember[] // only populated for PROJECT-type tags
+
+  // Short tag self-referential relation
+  shortTagId    String? @unique
+  shortTag      Tag?    @relation("ProjectShortTag", fields: [shortTagId], references: [id])
+  parentProject Tag?    @relation("ProjectShortTag")
 }
 
 model TagAssignment {

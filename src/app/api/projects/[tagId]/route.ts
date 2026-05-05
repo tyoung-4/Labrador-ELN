@@ -25,6 +25,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         createdAt: true,
         description: true,
         startDate: true,
+        shortTagId: true,
         members: {
           select: {
             id: true,
@@ -40,8 +41,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       return new NextResponse(null, { status: 404 });
     }
 
+    // Collect items tagged with either the project tag or its short tag
+    const tagIds = [tagId, ...(tag.shortTagId ? [tag.shortTagId] : [])];
     const assignments = await prisma.tagAssignment.findMany({
-      where: { tagId },
+      where: { tagId: { in: tagIds } },
       select: { entityType: true, entityId: true, assignedAt: true },
     });
 
@@ -117,6 +120,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         createdAt: tag.createdAt.toISOString(),
         description: tag.description ?? null,
         startDate: tag.startDate?.toISOString() ?? null,
+        shortTagId: tag.shortTagId ?? null,
         members: tag.members.map((m) => ({
           id: m.id,
           addedAt: m.addedAt.toISOString(),
