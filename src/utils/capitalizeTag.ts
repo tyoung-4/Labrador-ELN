@@ -16,6 +16,19 @@
  *   capitalizeTag("v1")           → "V1"
  *   capitalizeTag("2")            → "2"
  */
+/**
+ * Generates a short-tag suggestion from a project name.
+ * Takes the first 5 characters of each whitespace-delimited word, uppercased, joined with '-'.
+ * Example: "CD38 Antibody Optimization Phase 2" → "CD38A-ANTIB-OPTIM-PHASE-2"
+ */
+export function suggestShortTag(projectName: string): string {
+  return projectName
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.slice(0, 5).toUpperCase())
+    .join("-");
+}
+
 export function capitalizeTag(input: string): string {
   // Split on delimiters keeping them as separate tokens
   const parts = input.split(/([-.])/);
