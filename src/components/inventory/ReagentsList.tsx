@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import ReagentForm from "./ReagentForm";
 import AddBatchModal from "./AddBatchModal";
 import KebabMenu, { KebabMenuItem, ArchiveConfirm, FlagPrompt } from "./KebabMenu";
@@ -86,13 +87,22 @@ function LotCard({
   const [confirmDelete,    setConfirmDelete]     = useState(false);
   const [deleting,         setDeleting]          = useState(false);
   const [showUse,          setShowUse]           = useState(false);
+  const [usePopoverPos,    setUsePopoverPos]     = useState<{ top: number; right: number }>({ top: 0, right: 0 });
   const [useAmount,        setUseAmount]         = useState("");
   const [useError,         setUseError]          = useState("");
   const [submittingUse,    setSubmittingUse]     = useState(false);
   const [showArchive,      setShowArchive]       = useState(false);
   const [archiving,        setArchiving]         = useState(false);
+  const useBtnRef = useRef<HTMLButtonElement>(null);
 
   const expiry = expiryStatus(lot.expiryDate);
+
+  useEffect(() => {
+    if (!showUse) return;
+    const close = () => { setShowUse(false); setUseAmount(""); setUseError(""); };
+    const id = setTimeout(() => document.addEventListener("mousedown", close), 0);
+    return () => { clearTimeout(id); document.removeEventListener("mousedown", close); };
+  }, [showUse]);
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -224,7 +234,17 @@ function LotCard({
         {/* Right: action buttons */}
         <div className="flex items-center gap-1 flex-shrink-0 pt-0.5">
           <button
-            onClick={() => { setShowUse((v) => !v); setUseError(""); setUseAmount(""); }}
+            ref={useBtnRef}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!showUse && useBtnRef.current) {
+                const rect = useBtnRef.current.getBoundingClientRect();
+                setUsePopoverPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+              }
+              setShowUse((v) => !v);
+              setUseError("");
+              setUseAmount("");
+            }}
             className="rounded border border-teal-500/30 bg-teal-500/10 hover:bg-teal-500/20 text-teal-400 hover:text-teal-300 text-xs px-2 py-1 transition-colors"
           >
             − Use
@@ -243,9 +263,13 @@ function LotCard({
         </div>
       </div>
 
-      {/* − Use inline form */}
-      {showUse && (
-        <div className="bg-white/5 border border-white/10 rounded-lg p-3 space-y-2">
+      {/* − Use floating popover (portal) */}
+      {showUse && typeof document !== "undefined" && createPortal(
+        <div
+          style={{ position: "fixed", top: usePopoverPos.top, right: usePopoverPos.right, zIndex: 9999 }}
+          className="bg-gray-900 border border-white/10 rounded-lg shadow-xl p-3 space-y-2"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
           <div className="flex items-center gap-2">
             <input
               type="number" min={1} max={lot.quantity} step={1}
@@ -256,7 +280,7 @@ function LotCard({
             />
             <span className="text-white/40 text-xs">{lot.unit}</span>
           </div>
-          {useError && <p className="text-red-400 text-xs">{useError}</p>}
+          {useError && <p className="text-red-400 text-xs max-w-[180px]">{useError}</p>}
           <div className="flex gap-2">
             <button
               onClick={handleLogUse}
@@ -272,7 +296,8 @@ function LotCard({
               Cancel
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Delete confirmation */}
