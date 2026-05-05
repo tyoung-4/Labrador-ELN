@@ -5,6 +5,8 @@ import ProteinStockForm from "./ProteinStockForm";
 import ProteinBatchForm from "./ProteinBatchForm";
 import AddBatchModal from "./AddBatchModal";
 import KebabMenu, { KebabMenuItem, ArchiveConfirm, FlagPrompt } from "./KebabMenu";
+import InlineTagPills from "./InlineTagPills";
+import type { TagAssignmentSummary } from "./InlineTagPills";
 
 interface ProteinBatch {
   id: string;
@@ -40,6 +42,7 @@ interface ProteinStock {
   markedForArchive: boolean;
   useParentThreshold: boolean;
   _count: { researchNotes: number; usageEvents: number };
+  tagAssignments: TagAssignmentSummary[];
 }
 
 interface StockUIState {
@@ -351,9 +354,12 @@ function ProteinGroupHeader({
           )}
         </span>
 
-        <span className="text-white/30 text-xs">
-          {stocks.length} stock{stocks.length !== 1 ? "s" : ""}
-        </span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-white/30 text-xs">
+            {stocks.length} stock{stocks.length !== 1 ? "s" : ""}
+          </span>
+          <InlineTagPills tagAssignments={primaryStock.tagAssignments} />
+        </div>
 
         {/* + Add Batch */}
         <button

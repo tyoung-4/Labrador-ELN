@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback } from "react";
 import CellLineForm from "./CellLineForm";
 import AddBatchModal from "./AddBatchModal";
 import KebabMenu, { KebabMenuItem, ArchiveConfirm, FlagPrompt } from "./KebabMenu";
+import InlineTagPills from "./InlineTagPills";
+import type { TagAssignmentSummary } from "./InlineTagPills";
 
 interface CellLine {
   id: string;
@@ -19,10 +21,13 @@ interface CellLine {
   markedForArchive: boolean;
   useParentThreshold: boolean;
   _count: { researchNotes: number };
+  passageSummary: { count: number; totalVials: number };
+  tagAssignments: TagAssignmentSummary[];
 }
 
 interface CellLinePassage {
   id: string;
+  cellLineId: string;
   passage: number | null;
   vialCount: number | null;
   freezeBackDate: string | null;
@@ -37,6 +42,150 @@ interface CellLinePassage {
   attachments: { id: string }[];
 }
 
+// ── PassageCard sub-component ─────────────────────────────────────────────────
+
+function PassageCard({
+  passage,
+  cellLineId,
+  currentUser,
+  onUpdated,
+  onDeleted,
+}: {
+  passage: CellLinePassage;
+  cellLineId: string;
+  currentUser: string;
+  onUpdated: (updated: CellLinePassage) => void;
+  onDeleted: () => void;
+}) {
+  const [showThaw,      setShowThaw]      = useState(false);
+  const [thawing,       setThawing]       = useState(false);
+  const [showArchive,   setShowArchive]   = useState(false);
+  const [archiving,     setArchiving]     = useState(false);
+  const [thawError,     setThawError]     = useState("");
+
+  const handleThaw = async () => {
+    if ((passage.vialCount ?? 0) <= 0) return;
+    setThawing(true);
+    setThawError("");
+    try {
+      const newVials = (passage.vialCount ?? 1) - 1;
+      const res = await fetch(`/api/inventory/celllines/${cellLineId}/passages/${passage.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-user-name": currentUser },
+        body: JSON.stringify({ vialCount: newVials }),
+      });
+      if (!res.ok) { setThawError("Failed to update vial count"); return; }
+      const updated = await res.json();
+      onUpdated(updated);
+      setShowThaw(false);
+      if (newVials === 0) setShowArchive(true);
+    } catch {
+      setThawError("Network error — please try again");
+    } finally {
+      setThawing(false);
+    }
+  };
+
+  const handleArchive = async () => {
+    setArchiving(true);
+    try {
+      await fetch("/api/inventory/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-user-name": currentUser },
+        body: JSON.stringify({ entityType: "cell_line_passage", entityId: passage.id }),
+      });
+      onDeleted();
+    } catch {
+      setArchiving(false);
+    }
+  };
+
+  const vialCount = passage.vialCount ?? 0;
+
+  return (
+    <div className="rounded bg-white/5 border border-white/10 px-3 py-2 text-xs text-white/60 space-y-1.5">
+      {/* Main row */}
+      <div className="flex items-start gap-2">
+        <div className="flex-1 space-y-0.5">
+          <div className="flex items-center gap-3 flex-wrap">
+            {passage.passage    != null && <span className="font-semibold text-white/80 text-sm">P{passage.passage}</span>}
+            <span className={`font-medium ${vialCount === 0 ? "text-red-400/70" : vialCount <= (passage.lowThresholdAmber ?? Infinity) ? "text-amber-400" : "text-white/70"}`}>
+              {vialCount} vial{vialCount !== 1 ? "s" : ""}
+            </span>
+            {passage.freezeBackDate  && <span className="text-white/40">Frozen {new Date(passage.freezeBackDate).toLocaleDateString()}</span>}
+            {passage.storageLocation && <span className="text-white/40">📍 {passage.storageLocation}</span>}
+            {passage.attachments.length > 0 && (
+              <span className="text-white/30">📎 {passage.attachments.length}</span>
+            )}
+            {passage.lowThresholdAmber != null && (
+              <span className="text-amber-400/70">⚠️ ≤{passage.lowThresholdAmber}</span>
+            )}
+          </div>
+          {passage.frozenBy && <p className="text-white/30">Frozen by: {passage.frozenBy}</p>}
+          {passage.notes    && <p className="whitespace-pre-wrap text-white/40">{passage.notes}</p>}
+          <p className="text-white/20 text-[10px]">
+            Added {new Date(passage.createdAt).toLocaleDateString()}{passage.createdBy ? ` by ${passage.createdBy}` : ""}
+          </p>
+        </div>
+
+        {/* − Thaw button */}
+        <button
+          onClick={() => { setShowThaw((v) => !v); setThawError(""); }}
+          disabled={vialCount <= 0}
+          className="rounded border border-teal-500/30 bg-teal-500/10 hover:bg-teal-500/20 text-teal-400 hover:text-teal-300 disabled:opacity-40 disabled:cursor-not-allowed text-xs px-2 py-1 transition-colors flex-shrink-0"
+        >
+          − Thaw
+        </button>
+      </div>
+
+      {/* Thaw confirm */}
+      {showThaw && (
+        <div className="bg-white/5 border border-white/10 rounded-lg p-3 space-y-2">
+          <p className="text-white/60 text-xs">Thaw 1 vial from P{passage.passage ?? "?"}? ({vialCount} → {vialCount - 1})</p>
+          {thawError && <p className="text-red-400 text-xs">{thawError}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={handleThaw}
+              disabled={thawing}
+              className="bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+            >
+              {thawing ? "Logging…" : "Confirm Thaw"}
+            </button>
+            <button
+              onClick={() => { setShowThaw(false); setThawError(""); }}
+              className="text-white/40 hover:text-white text-xs px-2 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Archive prompt — shown after all vials are thawed */}
+      {showArchive && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 space-y-2">
+          <p className="text-amber-300 text-xs font-semibold">This passage is now empty. Remove it?</p>
+          <div className="flex gap-2">
+            <button
+              onClick={handleArchive}
+              disabled={archiving}
+              className="bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black text-xs font-semibold px-3 py-1 rounded-lg transition-colors"
+            >
+              {archiving ? "Removing…" : "Remove Passage"}
+            </button>
+            <button
+              onClick={() => setShowArchive(false)}
+              className="text-white/40 hover:text-white text-xs px-2 py-1 transition-colors"
+            >
+              Keep
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Per-card sub-component ────────────────────────────────────────────────────
 
 function CellLineCard({
@@ -44,19 +193,23 @@ function CellLineCard({
   currentUser,
   expanded,
   passages,
+  passagesLoaded,
   onToggle,
   onEdit,
   onReload,
   onAddBatch,
+  onPassagesChanged,
 }: {
   item: CellLine;
   currentUser: string;
   expanded: boolean;
   passages: CellLinePassage[];
+  passagesLoaded: boolean;
   onToggle: () => void;
   onEdit: () => void;
   onReload: () => void;
   onAddBatch: () => void;
+  onPassagesChanged: (newPassages: CellLinePassage[]) => void;
 }) {
   const isOwner = currentUser === item.owner || currentUser === "Admin";
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -85,6 +238,12 @@ function CellLineCard({
     onReload();
   };
 
+  // Determine displayed passage summary: use loaded data if available, else API summary
+  const passageCount = passagesLoaded ? passages.length : item.passageSummary.count;
+  const totalVials = passagesLoaded
+    ? passages.reduce((s, p) => s + (p.vialCount ?? 0), 0)
+    : item.passageSummary.totalVials;
+
   return (
     <div className={`bg-white/5 border rounded-xl overflow-hidden ${item.markedForArchive ? "border-orange-500/40" : "border-white/10"}`}>
       {/* Header row */}
@@ -100,10 +259,17 @@ function CellLineCard({
         </span>
 
         {/* Summary metadata */}
-        <div className="flex items-center gap-2 text-white/40 text-xs">
+        <div className="flex items-center gap-2 flex-wrap text-white/40 text-xs">
           {item.species && <span>{item.species}</span>}
           {item.passage !== null && <span>P{item.passage}</span>}
           {item.location && <span>&#x1F4CD; {item.location}</span>}
+          {/* Passage / vial summary */}
+          {passageCount > 0
+            ? <span className="text-white/30">{passageCount} passage{passageCount !== 1 ? "s" : ""} · {totalVials} vial{totalVials !== 1 ? "s" : ""}</span>
+            : <span className="text-white/20">No passages</span>
+          }
+          {/* Tag pills */}
+          <InlineTagPills tagAssignments={item.tagAssignments} />
         </div>
 
         {/* + Passage */}
@@ -173,39 +339,32 @@ function CellLineCard({
           {item.morphology && <p>Morphology: {item.morphology}</p>}
           {item.owner      && <p>Owner: {item.owner}</p>}
           {item.notes      && <p className="whitespace-pre-wrap">{item.notes}</p>}
-          {item.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {item.tags.map((t) => (
-                <span key={t} className="bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded-full">{t}</span>
-              ))}
-            </div>
-          )}
 
           {/* ── Passages ── */}
-          {passages.length > 0 && (
-            <div className="mt-3 space-y-1">
-              <p className="text-white/30 uppercase tracking-wide text-[10px] font-semibold mb-1">Passages ({passages.length})</p>
-              {passages.map((p) => (
-                <div key={p.id} className="rounded bg-white/5 border border-white/10 px-3 py-2 text-xs text-white/60 space-y-0.5">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    {p.passage    != null && <span className="font-medium text-white/80">P{p.passage}</span>}
-                    {p.vialCount  != null && <span>{p.vialCount} vials</span>}
-                    {p.freezeBackDate     && <span>Frozen {new Date(p.freezeBackDate).toLocaleDateString()}</span>}
-                    {p.storageLocation    && <span>📍 {p.storageLocation}</span>}
-                    {p.attachments.length > 0 && (
-                      <span className="text-white/30">📎 {p.attachments.length}</span>
-                    )}
-                    {p.lowThresholdAmber != null && (
-                      <span className="text-amber-400/70">⚠️ ≤{p.lowThresholdAmber}</span>
-                    )}
-                  </div>
-                  {p.frozenBy  && <p className="text-white/30">Frozen by: {p.frozenBy}</p>}
-                  {p.notes     && <p className="whitespace-pre-wrap">{p.notes}</p>}
-                  <p className="text-white/20">Added {new Date(p.createdAt).toLocaleDateString()}{p.createdBy ? ` by ${p.createdBy}` : ""}</p>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="mt-3 space-y-1.5">
+            {passages.length > 0 && (
+              <p className="text-white/30 uppercase tracking-wide text-[10px] font-semibold mb-1">
+                Passages ({passages.length})
+              </p>
+            )}
+            {passages.map((p) => (
+              <PassageCard
+                key={p.id}
+                passage={p}
+                cellLineId={item.id}
+                currentUser={currentUser}
+                onUpdated={(updated) =>
+                  onPassagesChanged(passages.map((x) => (x.id === updated.id ? updated : x)))
+                }
+                onDeleted={() =>
+                  onPassagesChanged(passages.filter((x) => x.id !== p.id))
+                }
+              />
+            ))}
+            {passagesLoaded && passages.length === 0 && (
+              <p className="text-white/20 italic text-xs">No passages yet.</p>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -269,10 +428,14 @@ export default function CellLinesList({ search, currentUser, refetchTrigger }: {
             currentUser={currentUser}
             expanded={expandedIds.has(item.id)}
             passages={passagesMap[item.id] ?? []}
+            passagesLoaded={loadedIds.has(item.id)}
             onToggle={() => toggleExpand(item.id)}
             onEdit={() => setEditingItem(item)}
             onReload={load}
             onAddBatch={() => setAddBatchItemId(item.id)}
+            onPassagesChanged={(newPassages) =>
+              setPassagesMap((prev) => ({ ...prev, [item.id]: newPassages }))
+            }
           />
         ))}
       </div>
@@ -290,6 +453,7 @@ export default function CellLinesList({ search, currentUser, refetchTrigger }: {
               ...prev,
               [addBatchItem.id]: [passage, ...(prev[addBatchItem.id] ?? [])],
             }));
+            setLoadedIds((prev) => new Set([...prev, addBatchItem.id]));
             setAddBatchItemId(null);
           }}
           onClose={() => setAddBatchItemId(null)}

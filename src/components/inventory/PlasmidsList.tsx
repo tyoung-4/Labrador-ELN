@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback } from "react";
 import PlasmidForm from "./PlasmidForm";
 import AddBatchModal from "./AddBatchModal";
 import KebabMenu, { KebabMenuItem, ArchiveConfirm, FlagPrompt } from "./KebabMenu";
+import InlineTagPills from "./InlineTagPills";
+import type { TagAssignmentSummary } from "./InlineTagPills";
 
 interface Plasmid {
   id: string;
@@ -19,6 +21,7 @@ interface Plasmid {
   markedForArchive: boolean;
   useParentThreshold: boolean;
   _count: { researchNotes: number };
+  tagAssignments: TagAssignmentSummary[];
 }
 
 interface PlasmidPrep {
@@ -101,10 +104,11 @@ function PlasmidCard({
         </span>
 
         {/* Summary metadata */}
-        <div className="flex items-center gap-2 text-white/40 text-xs">
+        <div className="flex items-center gap-2 flex-wrap text-white/40 text-xs">
           {item.backbone   && <span>{item.backbone}</span>}
           {item.resistance && <span className="bg-white/10 px-2 py-0.5 rounded-full">{item.resistance}</span>}
           {item.location   && <span>&#x1F4CD; {item.location}</span>}
+          <InlineTagPills tagAssignments={item.tagAssignments} />
         </div>
 
         {/* + Prep */}

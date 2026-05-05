@@ -8,7 +8,7 @@ const ELN_USERS = [
   { id: "admin-user", name: "Admin" },
 ];
 
-type EntityType = "reagent" | "cell_line" | "plasmid" | "protein_stock" | "reagent_lot";
+type EntityType = "reagent" | "cell_line" | "plasmid" | "protein_stock" | "reagent_lot" | "cell_line_passage";
 
 async function archiveEntity(
   entityType: EntityType,
@@ -32,6 +32,10 @@ async function archiveEntity(
       // Lots are child items — soft-delete only, no top-level archive entry or notification
       await prisma.reagentLot.update({ where: { id: entityId }, data: { isArchived: true } });
       return { name: "lot", isLot: true };
+    case "cell_line_passage":
+      // Passages are child items — hard DELETE (no isArchived field on schema)
+      await prisma.cellLinePassage.delete({ where: { id: entityId } });
+      return { name: "passage", isLot: true };
     default:
       throw new Error(`Unknown entity type: ${entityType}`);
   }

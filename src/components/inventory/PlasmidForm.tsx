@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import TagInput from "@/components/tags/TagInput";
 
 type PlasmidFormProps = {
   currentUser: string;
@@ -194,6 +195,20 @@ export default function PlasmidForm({
           className="w-full rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 placeholder-gray-600 focus:outline-none focus:border-white/30 resize-none"
         />
       </div>
+
+      {/* Tags — edit mode only */}
+      {existing && (
+        <div>
+          <label className="text-xs text-gray-400 uppercase tracking-wide mb-2 block">Tags</label>
+          <TagInput
+            entityType="INVENTORY"
+            entityId={existing.id}
+            currentUser={currentUser}
+            entityOwner={existing.owner ?? ""}
+            existingAssignments={existing.tagAssignments ?? []}
+          />
+        </div>
+      )}
 
       {/* Attachment note */}
       <p className="text-xs text-gray-500 italic">

@@ -6,13 +6,10 @@ async function getParams(ctx: Context) { return await ctx.params; }
 
 export async function PATCH(req: NextRequest, ctx: Context) {
   const { id, passageId } = await getParams(ctx);
-  const user = req.headers.get("x-user-name") ?? "Unknown";
   try {
     const body     = await req.json();
-    const cellLine = await prisma.cellLine.findUnique({ where: { id }, select: { owner: true } });
+    const cellLine = await prisma.cellLine.findUnique({ where: { id }, select: { id: true } });
     if (!cellLine) return NextResponse.json({ error: "Cell line not found" }, { status: 404 });
-    if (cellLine.owner && cellLine.owner !== user && user !== "Admin")
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const updated = await prisma.cellLinePassage.update({
       where: { id: passageId },

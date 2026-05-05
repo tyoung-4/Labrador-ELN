@@ -6,6 +6,9 @@ import AddBatchModal from "./AddBatchModal";
 import KebabMenu, { KebabMenuItem, ArchiveConfirm, FlagPrompt } from "./KebabMenu";
 import EditLotModal from "./EditLotModal";
 import type { ReagentLotForEdit } from "./EditLotModal";
+import InlineTagPills from "./InlineTagPills";
+import type { TagAssignmentSummary } from "./InlineTagPills";
+import TagInput from "@/components/tags/TagInput";
 
 interface Reagent {
   id: string;
@@ -31,6 +34,8 @@ interface Reagent {
   useParentThreshold: boolean;
   markedForArchive: boolean;
   _count: { researchNotes: number; usageEvents: number };
+  lotSummary: { count: number; totalQuantity: number };
+  tagAssignments: TagAssignmentSummary[];
 }
 
 interface ReagentLot extends ReagentLotForEdit {
@@ -509,11 +514,24 @@ function ReagentGroupHeader({
           {anyMarked && <span className="ml-2 text-orange-400/70 text-xs font-normal">⚑ flagged</span>}
         </span>
 
-        {/* Status badges + count */}
-        <div className="flex items-center gap-2">
+        {/* Status + lot summary + tags */}
+        <div className="flex items-center gap-2 flex-wrap">
           {groupStatus === "red"   && <span className="text-red-400 text-xs">🔴 Low stock</span>}
           {groupStatus === "amber" && !anyMarked && <span className="text-amber-400 text-xs">⚠️ Low stock</span>}
-          <span className="text-white/30 text-xs">{stocks.length} stock{stocks.length !== 1 ? "s" : ""}</span>
+          {(() => {
+            const totalLots = stocks.reduce((s, r) => s + (r.lotSummary?.count ?? 0), 0);
+            const totalQty  = stocks.reduce((s, r) => s + (r.lotSummary?.totalQuantity ?? 0), 0);
+            const unit = primaryStock.unit ?? "";
+            if (totalLots > 0) {
+              return (
+                <span className="text-white/30 text-xs">
+                  {totalLots} lot{totalLots !== 1 ? "s" : ""} · {totalQty.toLocaleString(undefined, { maximumFractionDigits: 4 })} {unit}
+                </span>
+              );
+            }
+            return <span className="text-white/20 text-xs">No lots</span>;
+          })()}
+          <InlineTagPills tagAssignments={primaryStock.tagAssignments} />
         </div>
 
         {/* + Lot */}
