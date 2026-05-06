@@ -41,7 +41,7 @@ export default function ReagentForm({
 
   const handleSubmit = async () => {
     if (!name.trim()) return;
-    if (thresholdError) return;
+    if (existing && thresholdError) return;
 
     setSubmitting(true);
     setError("");
@@ -57,12 +57,12 @@ export default function ReagentForm({
         body: JSON.stringify({
           name: name.trim(),
           category,
-          quantity: quantity ? parseFloat(quantity) : null,
+          ...(existing ? { quantity: quantity ? parseFloat(quantity) : null } : {}),
           unit: unit.trim() || null,
           location: location.trim() || null,
           vendor: supplier.trim() || null,
           catalogNumber: catalogNumber.trim() || null,
-          lotNumber: lotNumber.trim() || null,
+          ...(existing ? { lotNumber: lotNumber.trim() || null } : {}),
           expiryDate: expiryDate ? new Date(expiryDate) : null,
           lowThresholdType: lowThresholdType === "none" ? null : lowThresholdType,
           lowThresholdAmber: lowThresholdType !== "none" && lowThresholdAmber !== "" ? parseFloat(lowThresholdAmber) : null,
@@ -120,19 +120,34 @@ export default function ReagentForm({
       </div>
 
       {/* Quantity & Unit */}
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="text-xs text-gray-400 uppercase tracking-wide mb-1 block">
-            Quantity
-          </label>
-          <input
-            type="number"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-            min="0"
-            className="w-full rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 placeholder-gray-600 focus:outline-none focus:border-white/30"
-          />
+      {existing ? (
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs text-gray-400 uppercase tracking-wide mb-1 block">
+              Quantity
+            </label>
+            <input
+              type="number"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              min="0"
+              className="w-full rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 placeholder-gray-600 focus:outline-none focus:border-white/30"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-400 uppercase tracking-wide mb-1 block">
+              Unit
+            </label>
+            <input
+              type="text"
+              value={unit}
+              onChange={(e) => setUnit(e.target.value)}
+              placeholder="mL, mg, boxes..."
+              className="w-full rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 placeholder-gray-600 focus:outline-none focus:border-white/30"
+            />
+          </div>
         </div>
+      ) : (
         <div>
           <label className="text-xs text-gray-400 uppercase tracking-wide mb-1 block">
             Unit
@@ -145,7 +160,7 @@ export default function ReagentForm({
             className="w-full rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 placeholder-gray-600 focus:outline-none focus:border-white/30"
           />
         </div>
-      </div>
+      )}
 
       {/* Location */}
       <div>
@@ -175,7 +190,32 @@ export default function ReagentForm({
       </div>
 
       {/* Catalog & Lot */}
-      <div className="grid grid-cols-2 gap-4">
+      {existing ? (
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs text-gray-400 uppercase tracking-wide mb-1 block">
+              Catalog Number
+            </label>
+            <input
+              type="text"
+              value={catalogNumber}
+              onChange={(e) => setCatalogNumber(e.target.value)}
+              className="w-full rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 placeholder-gray-600 focus:outline-none focus:border-white/30"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-400 uppercase tracking-wide mb-1 block">
+              Lot Number
+            </label>
+            <input
+              type="text"
+              value={lotNumber}
+              onChange={(e) => setLotNumber(e.target.value)}
+              className="w-full rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 placeholder-gray-600 focus:outline-none focus:border-white/30"
+            />
+          </div>
+        </div>
+      ) : (
         <div>
           <label className="text-xs text-gray-400 uppercase tracking-wide mb-1 block">
             Catalog Number
@@ -187,18 +227,7 @@ export default function ReagentForm({
             className="w-full rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 placeholder-gray-600 focus:outline-none focus:border-white/30"
           />
         </div>
-        <div>
-          <label className="text-xs text-gray-400 uppercase tracking-wide mb-1 block">
-            Lot Number
-          </label>
-          <input
-            type="text"
-            value={lotNumber}
-            onChange={(e) => setLotNumber(e.target.value)}
-            className="w-full rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 placeholder-gray-600 focus:outline-none focus:border-white/30"
-          />
-        </div>
-      </div>
+      )}
 
       {/* Expiry Date */}
       <div>
@@ -237,46 +266,96 @@ export default function ReagentForm({
         )}
         {(useParentThreshold || !existing) && (
           <>
-            <div className="flex gap-2 mb-2">
-              {["none", "volume", "mass"].map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => setLowThresholdType(type)}
-                  className={`text-sm rounded px-3 py-1 border transition-colors ${
-                    lowThresholdType === type
-                      ? "bg-purple-500/20 border-purple-500 text-purple-300"
-                      : "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10"
-                  }`}
-                >
-                  {type === "none" ? "None" : type === "volume" ? "Volume (mL)" : "Mass (mg)"}
-                </button>
-              ))}
-            </div>
-            {lowThresholdType !== "none" && (
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">⚠️ Amber threshold</label>
-                  <input
-                    type="number" min="0" step="0.1" value={lowThresholdAmber}
-                    onChange={(e) => setLowThresholdAmber(e.target.value)}
-                    placeholder={`e.g. 20 ${unit || ""}`}
-                    className="w-full rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 placeholder-gray-600 focus:outline-none focus:border-white/30"
-                  />
+            {existing ? (
+              /* Edit mode: volume / mass / none */
+              <>
+                <div className="flex gap-2 mb-2">
+                  {["none", "volume", "mass"].map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setLowThresholdType(type)}
+                      className={`text-sm rounded px-3 py-1 border transition-colors ${
+                        lowThresholdType === type
+                          ? "bg-purple-500/20 border-purple-500 text-purple-300"
+                          : "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10"
+                      }`}
+                    >
+                      {type === "none" ? "None" : type === "volume" ? "Volume (mL)" : "Mass (mg)"}
+                    </button>
+                  ))}
                 </div>
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">🔴 Red threshold</label>
-                  <input
-                    type="number" min="0" step="0.1" value={lowThresholdRed}
-                    onChange={(e) => setLowThresholdRed(e.target.value)}
-                    placeholder={`e.g. 10 ${unit || ""}`}
-                    className="w-full rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 placeholder-gray-600 focus:outline-none focus:border-white/30"
-                  />
+                {lowThresholdType !== "none" && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">⚠️ Amber threshold</label>
+                      <input
+                        type="number" min="0" step="0.1" value={lowThresholdAmber}
+                        onChange={(e) => setLowThresholdAmber(e.target.value)}
+                        placeholder={`e.g. 20 ${unit || ""}`}
+                        className="w-full rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 placeholder-gray-600 focus:outline-none focus:border-white/30"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">🔴 Red threshold</label>
+                      <input
+                        type="number" min="0" step="0.1" value={lowThresholdRed}
+                        onChange={(e) => setLowThresholdRed(e.target.value)}
+                        placeholder={`e.g. 10 ${unit || ""}`}
+                        className="w-full rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 placeholder-gray-600 focus:outline-none focus:border-white/30"
+                      />
+                    </div>
+                  </div>
+                )}
+                {thresholdError && (
+                  <p className="text-red-400 text-xs mt-1">Red threshold must be less than amber threshold.</p>
+                )}
+              </>
+            ) : (
+              /* Create mode: none / units only */
+              <>
+                <div className="flex gap-2 mb-2">
+                  {["none", "count"].map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setLowThresholdType(type)}
+                      className={`text-sm rounded px-3 py-1 border transition-colors ${
+                        lowThresholdType === type
+                          ? "bg-purple-500/20 border-purple-500 text-purple-300"
+                          : "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10"
+                      }`}
+                    >
+                      {type === "none" ? "None" : "Units"}
+                    </button>
+                  ))}
                 </div>
-              </div>
-            )}
-            {thresholdError && (
-              <p className="text-red-400 text-xs mt-1">Red threshold must be less than amber threshold.</p>
+                {lowThresholdType !== "none" && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-gray-500 w-28 shrink-0">⚠️ Amber alert at ≤</label>
+                      <input
+                        type="number" min="0" step="1" value={lowThresholdAmber}
+                        onChange={(e) => setLowThresholdAmber(e.target.value)}
+                        className="w-24 rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-1.5 placeholder-gray-600 focus:outline-none focus:border-white/30"
+                      />
+                      <span className="text-xs text-gray-500">units</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-gray-500 w-28 shrink-0">🔴 Red alert at ≤</label>
+                      <input
+                        type="number" min="0" step="1" value={lowThresholdRed}
+                        onChange={(e) => setLowThresholdRed(e.target.value)}
+                        className="w-24 rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-1.5 placeholder-gray-600 focus:outline-none focus:border-white/30"
+                      />
+                      <span className="text-xs text-gray-500">units</span>
+                    </div>
+                  </div>
+                )}
+                {thresholdError && (
+                  <p className="text-amber-400 text-xs mt-1">Red threshold should be lower than Amber.</p>
+                )}
+              </>
             )}
           </>
         )}
