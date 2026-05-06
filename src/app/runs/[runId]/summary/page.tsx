@@ -9,6 +9,7 @@ import type { ProtocolRun, StepResult } from "@/models/protocolRun";
 import TagInput from "@/components/tags/TagInput";
 import { assembleRunExport } from "@/utils/assembleRunExport";
 import { exportRun } from "@/utils/exportRun";
+import ProtocolsRunsSubNav from "@/components/ProtocolsRunsSubNav";
 
 type ParsedStep = {
   id: string;
@@ -200,6 +201,7 @@ export default function RunSummaryPage() {
   return (
     <div className="min-h-screen bg-zinc-950 p-6 text-zinc-100">
       <AppTopNav />
+      <ProtocolsRunsSubNav />
 
       {/* Breadcrumb */}
       <div className="mb-4 flex items-center gap-2 text-xs text-zinc-500">
