@@ -414,7 +414,9 @@ function ProtocolsPageContent() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [loading, setLoading]       = useState(false);
   const [saveError, setSaveError]   = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [isDirty, setIsDirty]       = useState(false);
+  const [tagsModified, setTagsModified] = useState(false);
 
   // Pending payload waiting for version bump decision
   const [pendingPayload, setPendingPayload] = useState<Partial<Entry> | null>(null);
@@ -482,10 +484,11 @@ function ProtocolsPageContent() {
   // ── Core save logic ────────────────────────────────────────────────────────
 
   /** Final save — called after version bump is decided (or null for new entries) */
-  async function doSave(payload: Partial<Entry>, bumpType: "major" | "minor" | null) {
+  async function doSave(payload: Partial<Entry>, bumpType: "major" | "minor" | null, isTagOnly = false) {
     setPendingPayload(null);
     setLoading(true);
     setSaveError(null);
+    setSaveSuccess(null);
 
     let finalPayload = { ...payload };
     const isUpdate = editorMode === "edit" && Boolean(finalPayload.id);
@@ -534,6 +537,10 @@ function ProtocolsPageContent() {
       setEditorMode("edit");
       setSelected(mergedSaved);
       setIsDirty(false);
+      setTagsModified(false);
+      if (isTagOnly) {
+        setSaveSuccess("Tags updated successfully");
+      }
       // Show nudge banner if protocol has no PROJECT tag
       const hasProjectTag = existingTagAssignments.some((a) => a.tag.type === "PROJECT");
       setShowTagNudge(!hasProjectTag);
@@ -547,7 +554,7 @@ function ProtocolsPageContent() {
     const isUpdate = editorMode === "edit" && Boolean(payload.id);
 
     // Block save if nothing changed
-    if (isUpdate && !isDirty) {
+    if (isUpdate && !isDirty && !tagsModified) {
       setSaveError("No changes detected — modify the protocol before saving.");
       return;
     }
@@ -558,7 +565,13 @@ function ProtocolsPageContent() {
       return;
     }
 
-    // Existing protocols: show version bump modal
+    // Tag-only change on existing protocol: save without bumping version
+    if (!isDirty && tagsModified) {
+      await doSave(payload, null, true);
+      return;
+    }
+
+    // Existing protocols with content changes: show version bump modal
     setPendingPayload(payload);
   }
 
@@ -590,8 +603,10 @@ function ProtocolsPageContent() {
     setSelected(null);
     setEditorMode("create");
     setIsDirty(false);
+    setTagsModified(false);
     setEditorOpen(false);
     setSaveError(null);
+    setSaveSuccess(null);
     setPendingPayload(null);
     setShowTagNudge(false);
   }
@@ -599,6 +614,8 @@ function ProtocolsPageContent() {
   async function handleSelect(id: string) {
     setLoading(true);
     setSaveError(null);
+    setSaveSuccess(null);
+    setTagsModified(false);
 
     // Inner fetch with one auto-retry for Turbopack dev cold-start (308 mismatch)
     async function attempt(): Promise<boolean> {
@@ -994,6 +1011,13 @@ function ProtocolsPageContent() {
               </div>
             )}
 
+            {/* Success banner */}
+            {saveSuccess && (
+              <div className="mx-5 mt-3 rounded border border-emerald-500/40 bg-emerald-950/50 px-3 py-2 text-sm text-emerald-200">
+                {saveSuccess}
+              </div>
+            )}
+
             {/* Editor */}
             <div className="p-4">
               <Editor
@@ -1021,6 +1045,7 @@ function ProtocolsPageContent() {
                           onAssignmentsChange={(updated) => {
                             setSelected((prev) => prev ? { ...prev, tagAssignments: updated } : prev);
                             setShowTagNudge(false);
+                            setTagsModified(true);
                           }}
                         />
                       ) : (
