@@ -7,6 +7,7 @@ import AppTopNav from "@/components/AppTopNav";
 import { getCurrentUser } from "@/components/AppTopNav";
 import type { ProtocolRun } from "@/models/protocolRun";
 import TagDisplay from "@/components/tags/TagDisplay";
+import ProtocolsRunsSubNav from "@/components/ProtocolsRunsSubNav";
 
 type ViewMode = "active" | "history";
 
@@ -54,7 +55,9 @@ function RunsPageContent() {
     [currentUser]
   );
 
-  const [viewMode, setViewMode] = useState<ViewMode>("active");
+  const [viewMode, setViewMode] = useState<ViewMode>(() =>
+    searchParams.get("view") === "history" ? "history" : "active"
+  );
   const [runs, setRuns] = useState<ProtocolRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -108,9 +111,10 @@ function RunsPageContent() {
   const activeCount = useMemo(() => runs.filter((r) => r.status === "IN_PROGRESS").length, [runs]);
 
   return (
-    <div className="min-h-screen bg-zinc-950 p-6 text-zinc-100">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <AppTopNav />
-
+      <ProtocolsRunsSubNav />
+      <div className="p-6">
       {/* Header */}
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -259,6 +263,7 @@ function RunsPageContent() {
           ))}
         </ul>
       )}
+      </div>
     </div>
   );
 }

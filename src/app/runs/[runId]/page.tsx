@@ -7,6 +7,7 @@ import AppTopNav from "@/components/AppTopNav";
 import { getCurrentUser } from "@/components/AppTopNav";
 import type { ProtocolRun, StepResult } from "@/models/protocolRun";
 import TagInput from "@/components/tags/TagInput";
+import ProtocolsRunsSubNav from "@/components/ProtocolsRunsSubNav";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -713,6 +714,7 @@ export default function ActiveRunPage() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-zinc-950 text-zinc-100">
       <AppTopNav />
+      <ProtocolsRunsSubNav />
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <div className="shrink-0 border-b border-zinc-800 px-6 py-3">

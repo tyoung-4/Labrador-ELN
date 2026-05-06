@@ -733,7 +733,7 @@ function ProtocolsPageContent() {
   }, [entries]);
 
   const filteredEntries = useMemo(() => {
-    const q = keyword.trim().toLowerCase();
+const q = keyword.trim().toLowerCase();
     const filtered = entries.filter((entry) => {
       const author = entry.author?.name || "Unknown";
       const bucket = normalizeTechniqueBucket(entry.technique || "General");
@@ -771,8 +771,6 @@ function ProtocolsPageContent() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex min-h-screen flex-col gap-3 bg-zinc-950 p-6 text-zinc-100">
-      <AppTopNav />
-
       {/* Action bar */}
       <div className="flex items-center gap-2">
         <button
@@ -1044,6 +1042,7 @@ function ProtocolsPageContent() {
                           existingAssignments={selected.tagAssignments ?? []}
                           onAssignmentsChange={(updated) => {
                             setSelected((prev) => prev ? { ...prev, tagAssignments: updated } : prev);
+                            setEntries((prev) => prev.map((e) => e.id === selected.id ? { ...e, tagAssignments: updated } : e));
                             setShowTagNudge(false);
                             setTagsModified(true);
                           }}
