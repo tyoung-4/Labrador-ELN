@@ -18,7 +18,7 @@ export default function ProtocolsRunsSubNav() {
   const inactive = "bg-zinc-800 text-zinc-300 hover:bg-zinc-700";
 
   return (
-    <div className="border-b border-zinc-800 bg-zinc-950 px-6 py-3">
+    <div className="bg-zinc-950 px-6 py-3">
       <div className="flex gap-2">
         <Link href="/protocols" className={`${base} ${isProtocols ? active : inactive}`}>
           Protocols
