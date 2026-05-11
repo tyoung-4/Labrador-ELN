@@ -8,6 +8,7 @@ import { getCurrentUser } from "@/components/AppTopNav";
 import type { ProtocolRun, StepResult } from "@/models/protocolRun";
 import TagInput from "@/components/tags/TagInput";
 import ProtocolsRunsSubNav from "@/components/ProtocolsRunsSubNav";
+import SidebarWidgets from "@/components/runs/SidebarWidgets";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -951,6 +952,9 @@ function RunSidebar({
           </div>
         </div>
       ) : null}
+
+      {/* Widgets */}
+      <SidebarWidgets />
 
       {/* Tags */}
       <div className="border-t border-zinc-800 pt-4">
