@@ -137,7 +137,8 @@ const EquipmentCalendar = forwardRef<EquipmentCalendarHandle, {
 
     if (singleGroup) {
       const gStored = localStorage.getItem(DASHBOARD_GROUP_KEY);
-      if (gStored && RESOURCE_GROUPS.some(g => g.id === gStored)) setActiveGroupId(gStored);
+      // Only restore tc/fplc — spr and other tabs are not shown in the dashboard
+      if (gStored && ["tc", "fplc"].includes(gStored)) setActiveGroupId(gStored);
     }
 
     function onStorage(e: StorageEvent) {
@@ -439,7 +440,7 @@ const EquipmentCalendar = forwardRef<EquipmentCalendarHandle, {
       {singleGroup && activeGroup ? (
         <div className="mb-2 border-b border-zinc-800 pb-2">
           <div className="mb-1.5 flex gap-1">
-            {RESOURCE_GROUPS.map(g => (
+            {RESOURCE_GROUPS.filter(g => g.id === "tc" || g.id === "fplc").map(g => (
               <button
                 key={g.id}
                 onClick={() => {

@@ -162,9 +162,9 @@ export function nextDayStr(dateStr: string): string {
 
 const TOTAL_MINUTES      = 1440;                                              // 12 am – 11:59 pm
 const VISIBLE_MINUTES    = 10 * 60;                                           // 600 min (7 am – 5 pm)
-const GRID_PX_PER_MINUTE = 0.667;                                             // 40 px/hr — fits 10 hrs in ~400px
-const TOTAL_GRID_HEIGHT  = Math.round(TOTAL_MINUTES * GRID_PX_PER_MINUTE);   // ~960 px full day
-const CONTAINER_HEIGHT   = Math.round(VISIBLE_MINUTES * GRID_PX_PER_MINUTE); // ~400 px visible
+const GRID_PX_PER_MINUTE = 0.8;                                               // 48 px/hr — matches DashboardPanel PX_PER_HOUR for vertical alignment
+const TOTAL_GRID_HEIGHT  = Math.round(TOTAL_MINUTES * GRID_PX_PER_MINUTE);   // 1152 px full day
+const CONTAINER_HEIGHT   = Math.round(VISIBLE_MINUTES * GRID_PX_PER_MINUTE); // 480 px visible
 
 // 2-hour interval labels: 12am, 2am … 10pm (12 entries)
 const TIME_LABELS: ReadonlyArray<{ label: string; topPx: number }> =
@@ -321,7 +321,7 @@ export function DailyView({
             {TIME_LABELS.map(({ label, topPx }) => (
               <div
                 key={topPx}
-                className="absolute inset-x-0 px-1 text-right text-[9px] leading-none text-zinc-700"
+                className="absolute inset-x-0 pl-1 pt-0.5 text-left text-xs leading-none text-slate-300"
                 style={{ top: `${topPx}px` }}
               >
                 {label}
