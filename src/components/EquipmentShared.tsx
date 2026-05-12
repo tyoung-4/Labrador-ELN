@@ -213,9 +213,10 @@ export function DailyView({
     return () => clearInterval(id);
   }, []);
 
-  // Always default to 7:00 am regardless of date or current time
+  // Always anchor to 8:00 am regardless of date or current time.
+  // With CONTAINER_HEIGHT = 480 px (10 hrs) this shows 8 am–6 pm by default.
   function defaultScrollPx(): number {
-    return Math.round(7 * 60 * GRID_PX_PER_MINUTE); // ~280 px
+    return Math.round(8 * 60 * GRID_PX_PER_MINUTE); // 384 px
   }
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -275,7 +276,7 @@ export function DailyView({
 
   return (
     <div className="min-w-[320px]">
-      {/* ── Scroll viewport (7 am–5 pm default, full day scrollable) ── */}
+      {/* ── Scroll viewport (8 am–6 pm default, full day scrollable) ── */}
       <div
         ref={scrollRef}
         className="overflow-y-scroll"
