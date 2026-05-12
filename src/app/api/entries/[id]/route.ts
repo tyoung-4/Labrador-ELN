@@ -149,10 +149,11 @@ export async function PUT(request: Request, context: RouteContext) {
       version: { increment: 1 },
     };
 
-    // Only update entryType / typedData / linkedRunId if they were explicitly sent
-    if ("entryType"   in payload) data.entryType   = normalizeEntryType(payload.entryType);
-    if ("typedData"   in payload) data.typedData   = normalizeTypedData(payload.typedData);
-    if ("linkedRunId" in payload) data.linkedRunId = payload.linkedRunId ?? null;
+    // Only update entryType / typedData / linkedRunId / allowNonSequential if explicitly sent
+    if ("entryType"          in payload) data.entryType          = normalizeEntryType(payload.entryType);
+    if ("typedData"          in payload) data.typedData          = normalizeTypedData(payload.typedData);
+    if ("linkedRunId"        in payload) data.linkedRunId        = payload.linkedRunId ?? null;
+    if ("allowNonSequential" in payload) data.allowNonSequential = Boolean(payload.allowNonSequential);
 
     const updated = await prisma.entry.update({
       where: { id },

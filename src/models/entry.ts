@@ -46,6 +46,7 @@ export type Entry = {
     role: string;
   } | null;
   version?: number;
+  allowNonSequential?: boolean;
   /** Nullable FK to ProtocolRun — set when this entry is linked to a run */
   linkedRunId?: string | null;
   linkedRun?: LinkedRun | null;
