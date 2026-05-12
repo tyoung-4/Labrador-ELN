@@ -9,6 +9,7 @@ import type { ProtocolRun, StepResult } from "@/models/protocolRun";
 import TagInput from "@/components/tags/TagInput";
 import ProtocolsRunsSubNav from "@/components/ProtocolsRunsSubNav";
 import SidebarWidgets from "@/components/runs/SidebarWidgets";
+import RecipeChip, { type RecipeSummary } from "@/components/recipes/RecipeChip";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -21,6 +22,7 @@ type ParsedStep = {
   sectionTitle?: string;
   isSubstep: boolean;
   requiredFields: { key: string; label: string }[]; // measurement/field nodes
+  recipeRefs?: string[]; // recipe IDs attached to this step
 };
 
 type ResultKind = "PASSED" | "FAILED" | "SKIPPED";
@@ -61,7 +63,7 @@ function parseStepsFromBody(runBody: string): ParsedStep[] {
   try {
     type RawField  = { id: string; label: string; [k: string]: unknown };
     type RawSub    = { id: string; html?: string; text?: string; requiredFields?: RawField[]; fields?: RawField[] };
-    type RawStep   = { id: string; html?: string; text?: string; requiredFields?: RawField[]; fields?: RawField[]; substeps?: RawSub[]; subSteps?: RawSub[] };
+    type RawStep   = { id: string; html?: string; text?: string; requiredFields?: RawField[]; fields?: RawField[]; substeps?: RawSub[]; subSteps?: RawSub[]; recipeRefs?: string[] };
     type RawSection = { id: string; title: string; steps?: RawStep[] };
     type RawData    = { version?: number; sections?: RawSection[]; steps?: unknown };
 
@@ -90,6 +92,7 @@ function parseStepsFromBody(runBody: string): ParsedStep[] {
               key: `field-${globalIdx - 1}-${fi}`,
               label: f.label,
             })),
+            recipeRefs: step.recipeRefs ?? [],
           });
           for (const sub of step.substeps ?? step.subSteps ?? []) {
             const subId      = `step-${globalIdx++}`;
@@ -213,6 +216,334 @@ const ACCENT_TEXTS = [
   "text-amber-300",
 ];
 
+// ── InlineStepEditor — compact form to change a completed step's result/note ──
+
+function InlineStepEditor({
+  step,
+  currentResult,
+  currentNote,
+  onSave,
+  onCancel,
+}: {
+  step: ParsedStep;
+  currentResult: string;
+  currentNote: string;
+  onSave: (kind: ResultKind, note: string) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [kind, setKind] = useState<ResultKind>(currentResult as ResultKind);
+  const [note, setNote] = useState(currentNote);
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    await onSave(kind, note);
+    setSaving(false);
+  }
+
+  const btnBase = "rounded px-2.5 py-1 text-xs font-semibold transition";
+  return (
+    <div className="mt-2 rounded border border-zinc-200 bg-zinc-50 p-3 space-y-2">
+      {/* Result selector */}
+      <div className="flex gap-1.5">
+        {(["PASSED", "FAILED", "SKIPPED"] as ResultKind[]).map((k) => (
+          <button
+            key={k}
+            onClick={() => setKind(k)}
+            className={`${btnBase} ${
+              kind === k
+                ? k === "PASSED" ? "bg-emerald-600 text-white"
+                : k === "FAILED" ? "bg-red-600 text-white"
+                : "bg-zinc-600 text-white"
+                : "bg-white border border-zinc-300 text-zinc-600 hover:bg-zinc-100"
+            }`}
+          >
+            {k === "PASSED" ? "✓ Pass" : k === "FAILED" ? "✗ Fail" : "→ Skip"}
+          </button>
+        ))}
+      </div>
+      {/* Note */}
+      <textarea
+        rows={2}
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Notes for this step…"
+        className="w-full rounded border border-zinc-300 bg-white px-2 py-1.5 text-xs text-zinc-800 placeholder:text-zinc-400 focus:border-indigo-400 focus:outline-none"
+      />
+      {/* Actions */}
+      <div className="flex gap-1.5">
+        <button
+          onClick={save}
+          disabled={saving}
+          className={`${btnBase} bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50`}
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+        <button
+          onClick={onCancel}
+          className={`${btnBase} bg-white border border-zinc-300 text-zinc-600 hover:bg-zinc-100`}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── UnlockConfirmInline — confirmation prompt for unlocking a step ─────────────
+
+function UnlockConfirmInline({
+  onConfirm,
+  onCancel,
+}: {
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs">
+      <span className="text-amber-800">Re-open this step? Current result will be cleared.</span>
+      <button
+        onClick={onConfirm}
+        className="rounded bg-amber-600 px-2 py-0.5 text-white hover:bg-amber-700 font-medium"
+      >
+        Confirm
+      </button>
+      <button
+        onClick={onCancel}
+        className="rounded border border-zinc-300 bg-white px-2 py-0.5 text-zinc-600 hover:bg-zinc-50"
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+// ── StepRow — a single step with inline edit / unlock support ─────────────────
+
+function StepRow({
+  step,
+  globalIdx,
+  numLabel,
+  result,
+  isActive,
+  isRunComplete,
+  allowNonSequential,
+  isEditing,
+  pendingNotes,
+  pendingFields,
+  onNoteChange,
+  onFieldChange,
+  onEditOpen,
+  onEditClose,
+  onEditSave,
+  onUnlock,
+  onStepClick,
+  expandedNotes,
+  setExpandedNotes,
+  recipesById,
+}: {
+  step: ParsedStep;
+  globalIdx: number;
+  numLabel: string;
+  result: StepResult | undefined;
+  isActive: boolean;
+  isRunComplete: boolean;
+  allowNonSequential: boolean;
+  isEditing: boolean;
+  pendingNotes: Record<string, string>;
+  pendingFields: Record<string, Record<string, string>>;
+  onNoteChange: (stepId: string, note: string) => void;
+  onFieldChange: (stepId: string, fieldKey: string, value: string) => void;
+  onEditOpen: (stepId: string) => void;
+  onEditClose: () => void;
+  onEditSave: (step: ParsedStep, kind: ResultKind, note: string) => Promise<void>;
+  onUnlock: (step: ParsedStep) => Promise<void>;
+  onStepClick: (globalIdx: number, step: ParsedStep) => void;
+  expandedNotes: Set<string>;
+  setExpandedNotes: React.Dispatch<React.SetStateAction<Set<string>>>;
+  recipesById: Record<string, RecipeSummary>;
+}) {
+  const [showUnlockConfirm, setShowUnlockConfirm] = useState(false);
+  const [hovered, setHovered] = useState(false);
+
+  let stripeBorder: string;
+  let rowBg: string;
+  if (result?.result === "PASSED")       { stripeBorder = "border-emerald-500"; rowBg = "bg-emerald-50"; }
+  else if (result?.result === "FAILED")  { stripeBorder = "border-red-500";     rowBg = "bg-red-50"; }
+  else if (result?.result === "SKIPPED") { stripeBorder = "border-amber-500";   rowBg = "bg-amber-50"; }
+  else if (isActive)                     { stripeBorder = "border-indigo-400";  rowBg = ""; }
+  else                                   { stripeBorder = "border-zinc-300";    rowBg = ""; }
+
+  const notesOpen   = expandedNotes.has(step.id);
+  const savedNote   = result?.notes ?? "";
+  const pendingNote = pendingNotes[step.id] ?? "";
+
+  // Click target for non-sequential mode
+  const isClickable = allowNonSequential && !isRunComplete;
+
+  return (
+    <div
+      className={`border-l-4 ${stripeBorder} ${rowBg} rounded-r transition-colors duration-150${step.isSubstep ? " ml-8" : ""}${isActive && !result ? " outline-2 outline-dashed outline-indigo-400" : ""}${isClickable && !result ? " cursor-pointer" : ""}`}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={() => {
+        if (isClickable && !result) onStepClick(globalIdx, step);
+      }}
+    >
+      <div className="px-4 py-3">
+        <div className="flex gap-3">
+          {/* Step number */}
+          <span
+            className={`mt-0.5 shrink-0 font-mono text-xs font-bold ${
+              isActive && !result ? "text-indigo-600" : result ? "text-zinc-400" : "text-zinc-500"
+            }`}
+          >
+            {numLabel}.
+          </span>
+
+          {/* Step body */}
+          <div className="min-w-0 flex-1">
+            {/* Header row: HTML + hover actions */}
+            <div className="flex items-start gap-2">
+              <div
+                className="flex-1 text-sm leading-relaxed text-zinc-800 [&_p]:my-0"
+                dangerouslySetInnerHTML={{ __html: step.html || step.label }}
+              />
+              {/* Hover action buttons — edit + unlock (completed steps, not complete run) */}
+              {result && !isRunComplete && hovered && !isEditing && !showUnlockConfirm && (
+                <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={() => onEditOpen(step.id)}
+                    title="Edit result"
+                    className="rounded p-0.5 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700 transition text-sm"
+                  >
+                    ✏️
+                  </button>
+                  {allowNonSequential && (
+                    <button
+                      onClick={() => setShowUnlockConfirm(true)}
+                      title="Unlock step"
+                      className="rounded px-1.5 py-0.5 text-xs text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700 transition"
+                    >
+                      Unlock
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Recipe chips */}
+            {(step.recipeRefs ?? []).length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {(step.recipeRefs ?? []).map((rid) => {
+                  const recipe = recipesById[rid];
+                  if (!recipe) return null;
+                  return <RecipeChip key={rid} recipe={recipe} />;
+                })}
+              </div>
+            )}
+
+            {/* Result badge (only shown when not in inline edit mode) */}
+            {result && !isEditing && (
+              <div className="mt-1.5">
+                <ResultBadge result={result.result} small />
+              </div>
+            )}
+
+            {/* Unlock confirmation */}
+            {showUnlockConfirm && (
+              <UnlockConfirmInline
+                onConfirm={() => { setShowUnlockConfirm(false); onUnlock(step); }}
+                onCancel={() => setShowUnlockConfirm(false)}
+              />
+            )}
+
+            {/* Inline edit mode (only on IN_PROGRESS runs) */}
+            {isEditing && result && !isRunComplete && (
+              <InlineStepEditor
+                step={step}
+                currentResult={result.result}
+                currentNote={result.notes ?? ""}
+                onSave={(kind, note) => onEditSave(step, kind, note)}
+                onCancel={onEditClose}
+              />
+            )}
+
+            {/* Required field chips — hidden in edit mode */}
+            {!isEditing && step.requiredFields.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {step.requiredFields.map((field) => {
+                  if (result) {
+                    let savedVal = "";
+                    try {
+                      savedVal = (JSON.parse(result.fieldValues) as Record<string, string>)[field.key] ?? "";
+                    } catch { /* */ }
+                    return (
+                      <span key={field.key} className="flex items-center gap-1 rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs">
+                        <span className="text-zinc-500">{field.label}:</span>
+                        <span className="text-zinc-700">{savedVal || "—"}</span>
+                      </span>
+                    );
+                  }
+                  const val = (pendingFields[step.id] ?? {})[field.key] ?? "";
+                  return (
+                    <label key={field.key} className="flex cursor-text items-center gap-1 rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs">
+                      <span className="text-zinc-500">{field.label}:</span>
+                      <input
+                        type="text"
+                        value={val}
+                        onChange={(e) => onFieldChange(step.id, field.key, e.target.value)}
+                        disabled={isRunComplete}
+                        placeholder="…"
+                        className="w-20 border-none bg-white text-zinc-800 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed"
+                      />
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Inline notes toggle — hidden in edit mode */}
+            {!isEditing && (
+              <div className="mt-2">
+                <button
+                  className="text-xs text-zinc-500 hover:text-zinc-700"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExpandedNotes((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(step.id)) next.delete(step.id);
+                      else next.add(step.id);
+                      return next;
+                    });
+                  }}
+                >
+                  {notesOpen ? "▾ Hide notes" : `▸ ${savedNote ? "View notes" : "Add notes"}`}
+                </button>
+                {notesOpen && (
+                  <div className="mt-1.5">
+                    {result || isRunComplete ? (
+                      <p className="text-xs italic text-zinc-600">{savedNote || "No notes."}</p>
+                    ) : (
+                      <textarea
+                        rows={2}
+                        value={pendingNote}
+                        onChange={(e) => { e.stopPropagation(); onNoteChange(step.id, e.target.value); }}
+                        placeholder="Notes for this step…"
+                        className="w-full rounded border border-zinc-300 bg-white px-2 py-1.5 text-xs text-zinc-800 placeholder:text-zinc-400 focus:border-indigo-400 focus:outline-none"
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RunProtocolScrollView({
   steps,
   resultMap,
@@ -222,6 +553,14 @@ function RunProtocolScrollView({
   onNoteChange,
   onFieldChange,
   isRunComplete,
+  recipesById,
+  allowNonSequential,
+  editingStepId,
+  onStepClick,
+  onEditOpen,
+  onEditClose,
+  onEditSave,
+  onUnlock,
 }: {
   steps: ParsedStep[];
   resultMap: Record<string, StepResult>;
@@ -231,6 +570,14 @@ function RunProtocolScrollView({
   onNoteChange: (stepId: string, note: string) => void;
   onFieldChange: (stepId: string, fieldKey: string, value: string) => void;
   isRunComplete: boolean;
+  recipesById: Record<string, RecipeSummary>;
+  allowNonSequential: boolean;
+  editingStepId: string | null;
+  onStepClick: (globalIdx: number, step: ParsedStep) => void;
+  onEditOpen: (stepId: string) => void;
+  onEditClose: () => void;
+  onEditSave: (step: ParsedStep, kind: ResultKind, note: string) => Promise<void>;
+  onUnlock: (step: ParsedStep) => Promise<void>;
 }) {
   const stepRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -317,134 +664,32 @@ function RunProtocolScrollView({
 
           {/* Step rows */}
           <div className="space-y-2">
-            {section.items.map(({ step, globalIdx, numLabel }) => {
-              const result = resultMap[step.id];
-              const isActive = globalIdx === activeStepIdx;
-
-              let stripeBorder: string;
-              let rowBg: string;
-              if (result?.result === "PASSED")       { stripeBorder = "border-emerald-500"; rowBg = "bg-emerald-50"; }
-              else if (result?.result === "FAILED")  { stripeBorder = "border-red-500";     rowBg = "bg-red-50"; }
-              else if (result?.result === "SKIPPED") { stripeBorder = "border-amber-500";   rowBg = "bg-amber-50"; }
-              else if (isActive)                     { stripeBorder = "border-indigo-400";  rowBg = ""; }
-              else                                   { stripeBorder = "border-zinc-300";    rowBg = ""; }
-
-              const notesOpen   = expandedNotes.has(step.id);
-              const savedNote   = result?.notes ?? "";
-              const pendingNote = pendingNotes[step.id] ?? "";
-
-              return (
-                <div
-                  key={step.id}
-                  ref={(el) => { stepRefs.current[step.id] = el; }}
-                  className={`border-l-4 ${stripeBorder} ${rowBg} rounded-r transition-colors duration-150${step.isSubstep ? " ml-8" : ""}${isActive && !result ? " outline-2 outline-dashed outline-indigo-400" : ""}`}
-                >
-                  <div className="px-4 py-3">
-                    <div className="flex gap-3">
-                      {/* Step number */}
-                      <span
-                        className={`mt-0.5 shrink-0 font-mono text-xs font-bold ${
-                          isActive && !result ? "text-indigo-600" : result ? "text-zinc-400" : "text-zinc-500"
-                        }`}
-                      >
-                        {numLabel}.
-                      </span>
-
-                      {/* Step body */}
-                      <div className="min-w-0 flex-1">
-                        {/* Step HTML content */}
-                        <div
-                          className="text-sm leading-relaxed text-zinc-800 [&_p]:my-0"
-                          dangerouslySetInnerHTML={{ __html: step.html || step.label }}
-                        />
-
-                        {/* Result badge */}
-                        {result && (
-                          <div className="mt-1.5">
-                            <ResultBadge result={result.result} small />
-                          </div>
-                        )}
-
-                        {/* Required field chips */}
-                        {step.requiredFields.length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {step.requiredFields.map((field) => {
-                              if (result) {
-                                let savedVal = "";
-                                try {
-                                  savedVal =
-                                    (JSON.parse(result.fieldValues) as Record<string, string>)[
-                                      field.key
-                                    ] ?? "";
-                                } catch { /* */ }
-                                return (
-                                  <span
-                                    key={field.key}
-                                    className="flex items-center gap-1 rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs"
-                                  >
-                                    <span className="text-zinc-500">{field.label}:</span>
-                                    <span className="text-zinc-700">{savedVal || "—"}</span>
-                                  </span>
-                                );
-                              }
-                              const val = (pendingFields[step.id] ?? {})[field.key] ?? "";
-                              return (
-                                <label
-                                  key={field.key}
-                                  className="flex cursor-text items-center gap-1 rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs"
-                                >
-                                  <span className="text-zinc-500">{field.label}:</span>
-                                  <input
-                                    type="text"
-                                    value={val}
-                                    onChange={(e) => onFieldChange(step.id, field.key, e.target.value)}
-                                    disabled={isRunComplete}
-                                    placeholder="…"
-                                    className="w-20 border-none bg-white text-zinc-800 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed"
-                                  />
-                                </label>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        {/* Inline notes toggle */}
-                        <div className="mt-2">
-                          <button
-                            className="text-xs text-zinc-500 hover:text-zinc-700"
-                            onClick={() =>
-                              setExpandedNotes((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(step.id)) next.delete(step.id);
-                                else next.add(step.id);
-                                return next;
-                              })
-                            }
-                          >
-                            {notesOpen ? "▾ Hide notes" : `▸ ${savedNote ? "View notes" : "Add notes"}`}
-                          </button>
-                          {notesOpen && (
-                            <div className="mt-1.5">
-                              {result || isRunComplete ? (
-                                <p className="text-xs italic text-zinc-600">{savedNote || "No notes."}</p>
-                              ) : (
-                                <textarea
-                                  rows={2}
-                                  value={pendingNote}
-                                  onChange={(e) => onNoteChange(step.id, e.target.value)}
-                                  placeholder="Notes for this step…"
-                                  className="w-full rounded border border-zinc-300 bg-white px-2 py-1.5 text-xs text-zinc-800 placeholder:text-zinc-400 focus:border-indigo-400 focus:outline-none"
-                                />
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {section.items.map(({ step, globalIdx, numLabel }) => (
+              <div key={step.id} ref={(el) => { stepRefs.current[step.id] = el; }}>
+                <StepRow
+                  step={step}
+                  globalIdx={globalIdx}
+                  numLabel={numLabel}
+                  result={resultMap[step.id]}
+                  isActive={globalIdx === activeStepIdx}
+                  isRunComplete={isRunComplete}
+                  allowNonSequential={allowNonSequential}
+                  isEditing={editingStepId === step.id}
+                  pendingNotes={pendingNotes}
+                  pendingFields={pendingFields}
+                  onNoteChange={onNoteChange}
+                  onFieldChange={onFieldChange}
+                  onEditOpen={onEditOpen}
+                  onEditClose={onEditClose}
+                  onEditSave={onEditSave}
+                  onUnlock={onUnlock}
+                  onStepClick={onStepClick}
+                  expandedNotes={expandedNotes}
+                  setExpandedNotes={setExpandedNotes}
+                  recipesById={recipesById}
+                />
+              </div>
+            ))}
           </div>
         </div>
       ))}
@@ -488,6 +733,10 @@ export default function ActiveRunPage() {
   const [runTagAssignments, setRunTagAssignments] = useState<NonNullable<ProtocolRun["tagAssignments"]>>([]);
   const [showTagNudge, setShowTagNudge] = useState(false);
   const [tagNudgeDismissed, setTagNudgeDismissed] = useState(false);
+  const [recipesById, setRecipesById] = useState<Record<string, RecipeSummary>>({});
+  const [allowNonSequential, setAllowNonSequential] = useState(false);
+  // stepId of the step currently open in inline-edit mode (null = none)
+  const [editingStepId, setEditingStepId] = useState<string | null>(null);
 
   // Parse steps — only after run is loaded and we're client-side
   const steps = useMemo<ParsedStep[]>(() => {
@@ -535,6 +784,14 @@ export default function ActiveRunPage() {
         setRun(runData);
         setStepResults(srData);
 
+        // Fetch allowNonSequential from the source protocol entry
+        if (runData.sourceEntryId) {
+          fetch(`/api/entries/${runData.sourceEntryId}`, { headers: authHeaders })
+            .then((r) => r.ok ? r.json() : null)
+            .then((entry) => { if (entry?.allowNonSequential) setAllowNonSequential(true); })
+            .catch(() => {/* non-critical */});
+        }
+
         // Initialise tag state
         const tags = runData.tagAssignments ?? [];
         setRunTagAssignments(tags);
@@ -558,6 +815,18 @@ export default function ActiveRunPage() {
     load();
     return () => { cancelled = true; };
   }, [runId, authHeaders]);
+
+  // ── Load all recipes for chip rendering ───────────────────────────────────
+  useEffect(() => {
+    fetch("/api/recipes", { headers: authHeaders })
+      .then((r) => r.ok ? r.json() : [])
+      .then((list: RecipeSummary[]) => {
+        const map: Record<string, RecipeSummary> = {};
+        for (const r of list) map[r.id] = r;
+        setRecipesById(map);
+      })
+      .catch(() => {/* non-critical */});
+  }, [authHeaders]);
 
   // ── Persist active step index to interactionState ──────────────────────────
   const persistActiveStep = useCallback(
@@ -588,6 +857,66 @@ export default function ActiveRunPage() {
       [stepId]: { ...(prev[stepId] ?? {}), [fieldKey]: value },
     }));
   }, []);
+
+  // ── Non-sequential step selection ─────────────────────────────────────────
+  function handleStepClick(globalIdx: number, step: ParsedStep) {
+    if (!allowNonSequential || isRunComplete) return;
+    if (resultMap[step.id]) {
+      // Completed step → open inline edit instead of setting active
+      setEditingStepId(step.id);
+    } else {
+      // Incomplete step → make it active
+      setEditingStepId(null);
+      setActiveStepIdx(globalIdx);
+      persistActiveStep(globalIdx);
+    }
+  }
+
+  // ── Unlock a completed step (non-sequential only) ──────────────────────────
+  async function handleUnlock(step: ParsedStep) {
+    if (!allowNonSequential || isRunComplete) return;
+    try {
+      const res = await fetch(`/api/protocol-runs/${runId}/step-results`, {
+        method: "DELETE",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ stepId: step.id }),
+      });
+      if (!res.ok) return;
+      // Remove from local state
+      setStepResults((prev) => prev.filter((r) => r.stepId !== step.id));
+      // Set this step as active
+      const idx = steps.indexOf(step);
+      if (idx >= 0) {
+        setActiveStepIdx(idx);
+        persistActiveStep(idx);
+      }
+      setEditingStepId(null);
+    } catch {
+      // non-critical
+    }
+  }
+
+  // ── Inline edit save ───────────────────────────────────────────────────────
+  async function handleEditSave(step: ParsedStep, kind: ResultKind, note: string) {
+    if (isRunComplete) return;
+    try {
+      const res = await fetch(`/api/protocol-runs/${runId}/step-results`, {
+        method: "POST",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ stepId: step.id, result: kind, notes: note, fieldValues: {} }),
+      });
+      if (!res.ok) return;
+      const updated = (await res.json()) as StepResult;
+      setStepResults((prev) => {
+        const next = prev.filter((r) => r.stepId !== step.id);
+        next.push(updated);
+        return next;
+      });
+      setEditingStepId(null);
+    } catch {
+      // non-critical
+    }
+  }
 
   // ── Submit a step result ───────────────────────────────────────────────────
   async function handleResult(step: ParsedStep, kind: ResultKind) {
@@ -735,6 +1064,11 @@ export default function ActiveRunPage() {
                   COMPLETED
                 </span>
               )}
+              {allowNonSequential && (
+                <span className="rounded border border-zinc-600 px-2 py-0.5 text-xs text-zinc-400">
+                  Non-sequential
+                </span>
+              )}
             </div>
             <h1 className="text-lg font-bold leading-tight text-zinc-100">{run.title}</h1>
             {run.runId && (
@@ -790,6 +1124,14 @@ export default function ActiveRunPage() {
             onNoteChange={handleNoteChange}
             onFieldChange={handleFieldChange}
             isRunComplete={isRunComplete}
+            recipesById={recipesById}
+            allowNonSequential={allowNonSequential}
+            editingStepId={editingStepId}
+            onStepClick={handleStepClick}
+            onEditOpen={(stepId) => setEditingStepId(stepId)}
+            onEditClose={() => setEditingStepId(null)}
+            onEditSave={handleEditSave}
+            onUnlock={handleUnlock}
           />
         </div>
 

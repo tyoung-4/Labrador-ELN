@@ -12,6 +12,7 @@ import React, {
   useState,
 } from "react";
 import { Italic, Redo2, Underline, Undo2 } from "lucide-react";
+import RecipeChip, { type RecipeSummary } from "@/components/recipes/RecipeChip";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,7 @@ export type Step = {
   text: string;
   fields: RequiredField[];
   subSteps: SubStep[];
+  recipeRefs?: string[]; // recipe IDs attached to this step
 };
 
 export type Section = {
@@ -574,6 +576,151 @@ export type FocusTarget = {
   subStepId?: string;
 };
 
+// ── StepRecipeRow ─────────────────────────────────────────────────────────────
+
+function StepRecipeRow({
+  recipeRefs,
+  allRecipes,
+  onAdd,
+  onRemove,
+}: {
+  recipeRefs: string[];
+  allRecipes: RecipeSummary[];
+  onAdd: (id: string) => void;
+  onRemove: (id: string) => void;
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const attachedRecipes = recipeRefs
+    .map((id) => allRecipes.find((r) => r.id === id))
+    .filter(Boolean) as RecipeSummary[];
+
+  return (
+    <div className="ml-10 flex flex-wrap items-center gap-1 pb-0.5">
+      {attachedRecipes.map((recipe) => (
+        <RecipeChip
+          key={recipe.id}
+          recipe={recipe}
+          onRemove={() => onRemove(recipe.id)}
+        />
+      ))}
+      <div className="relative">
+        <button
+          onClick={() => setPickerOpen((v) => !v)}
+          className="rounded border border-dashed border-zinc-300 px-1.5 py-0.5 text-xs text-zinc-400 hover:border-indigo-400 hover:text-indigo-600 transition"
+        >
+          + Recipe
+        </button>
+        {pickerOpen && (
+          <RecipePickerDropdown
+            recipes={allRecipes}
+            attachedIds={recipeRefs}
+            onPick={(id) => { onAdd(id); setPickerOpen(false); }}
+            onClose={() => setPickerOpen(false)}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── RecipePickerDropdown ───────────────────────────────────────────────────────
+
+function RecipePickerDropdown({
+  recipes,
+  attachedIds,
+  onPick,
+  onClose,
+}: {
+  recipes: RecipeSummary[];
+  attachedIds: string[];
+  onPick: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  // Close on Escape
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const filtered = recipes.filter((r) =>
+    r.name.toLowerCase().includes(query.toLowerCase()) ||
+    (r.description ?? "").toLowerCase().includes(query.toLowerCase())
+  );
+
+  const hoveredRecipe = hovered ? recipes.find((r) => r.id === hovered) : null;
+
+  return (
+    <div className="absolute left-0 top-full z-50 mt-1 flex gap-2" style={{ minWidth: 220 }}>
+      {/* Picker panel */}
+      <div className="w-52 rounded border border-zinc-200 bg-white shadow-lg">
+        <div className="border-b border-zinc-100 px-2 py-1.5">
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search recipes…"
+            className="w-full text-xs text-zinc-800 placeholder:text-zinc-400 outline-none"
+          />
+        </div>
+        <div className="max-h-48 overflow-y-auto">
+          {filtered.length === 0 && (
+            <p className="px-3 py-2 text-xs text-zinc-400">No recipes found</p>
+          )}
+          {filtered.map((r) => {
+            const attached = attachedIds.includes(r.id);
+            return (
+              <button
+                key={r.id}
+                onClick={() => { onPick(r.id); onClose(); }}
+                disabled={attached}
+                onMouseEnter={() => setHovered(r.id)}
+                onMouseLeave={() => setHovered(null)}
+                className={`w-full px-3 py-1.5 text-left text-xs transition ${
+                  attached
+                    ? "text-zinc-400 cursor-default"
+                    : "text-zinc-700 hover:bg-indigo-50 hover:text-indigo-800"
+                }`}
+              >
+                {r.name}
+                {attached && <span className="ml-1 text-zinc-400">(added)</span>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Hover preview panel */}
+      {hoveredRecipe && hoveredRecipe.components.length > 0 && (
+        <div className="w-56 rounded border border-zinc-200 bg-white p-3 shadow-lg">
+          <p className="mb-1 text-xs font-semibold text-zinc-800">{hoveredRecipe.name}</p>
+          {hoveredRecipe.description && (
+            <p className="mb-1.5 text-xs text-zinc-500">{hoveredRecipe.description}</p>
+          )}
+          <table className="w-full text-xs">
+            <tbody>
+              {hoveredRecipe.components.map((c) => (
+                <tr key={c.id} className="border-b border-zinc-100 last:border-0">
+                  <td className="py-0.5 pr-2 text-zinc-700">{c.reagentName}</td>
+                  <td className="py-0.5 text-right text-zinc-500 tabular-nums">
+                    {c.concentration != null ? `${c.concentration} ${c.unit}`.trim() : c.unit || "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
   function ProtocolStepsEditor(
     { initialContent = "", onChange, showSectionErrors = false, onFocusTypeChange },
@@ -607,6 +754,15 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
     const [fieldModalOpen, setFieldModalOpen] = useState(false);
     const [fieldModalInitialType, setFieldModalInitialType] = useState<string | undefined>(undefined);
     const [recipesModalOpen, setRecipesModalOpen] = useState(false);
+
+    // ── Recipe data ───────────────────────────────────────────────────────────
+    const [allRecipes, setAllRecipes] = useState<RecipeSummary[]>([]);
+    useEffect(() => {
+      fetch("/api/recipes")
+        .then((r) => r.ok ? r.json() : [])
+        .then((list: RecipeSummary[]) => setAllRecipes(list))
+        .catch(() => {/* non-critical */});
+    }, []);
 
     const numbers = useMemo(() => computeNumbers(data), [data]);
 
@@ -831,6 +987,33 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
               )};
             }
             return { ...st, fields: st.fields.filter((f) => f.id !== fieldId) };
+          }),
+        }),
+      });
+    }
+
+    // ── Recipe ref operations ─────────────────────────────────────────────────
+
+    function addRecipeToStep(sectionId: string, stepId: string, recipeId: string) {
+      mutate({
+        ...data,
+        sections: data.sections.map((s) => s.id !== sectionId ? s : {
+          ...s, steps: s.steps.map((st) => {
+            if (st.id !== stepId) return st;
+            const refs = st.recipeRefs ?? [];
+            if (refs.includes(recipeId)) return st; // already attached
+            return { ...st, recipeRefs: [...refs, recipeId] };
+          }),
+        }),
+      });
+    }
+
+    function removeRecipeFromStep(sectionId: string, stepId: string, recipeId: string) {
+      mutate({
+        ...data,
+        sections: data.sections.map((s) => s.id !== sectionId ? s : {
+          ...s, steps: s.steps.map((st) => st.id !== stepId ? st : {
+            ...st, recipeRefs: (st.recipeRefs ?? []).filter((id) => id !== recipeId),
           }),
         }),
       });
@@ -1101,6 +1284,14 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
                             ))}
                           </div>
                         )}
+
+                        {/* Recipe chips + Add button */}
+                        <StepRecipeRow
+                          recipeRefs={step.recipeRefs ?? []}
+                          allRecipes={allRecipes}
+                          onAdd={(id) => addRecipeToStep(section.id, step.id, id)}
+                          onRemove={(id) => removeRecipeFromStep(section.id, step.id, id)}
+                        />
 
                         {/* Sub-steps */}
                         {step.subSteps.map((ss) => {

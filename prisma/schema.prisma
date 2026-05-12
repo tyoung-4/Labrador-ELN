@@ -16,6 +16,7 @@ model User {
   entries            Entry[]
   protocolRuns       ProtocolRun[]
   projectMemberships ProjectMember[]
+  recipes            Recipe[]
 }
 
 enum EntryType {
@@ -30,24 +31,24 @@ enum EntryType {
 }
 
 model Entry {
-  id           String        @id @default(uuid())
-  title        String
-  description  String        @default("")
-  technique    String        @default("General")
-  entryType    EntryType     @default(GENERAL)
-  typedData    Json          @default("{}")
-  body         String
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id                   String        @id @default(uuid())
+  title                String
+  description          String        @default("")
+  technique            String        @default("General")
+  entryType            EntryType     @default(GENERAL)
+  typedData            Json          @default("{}")
+  body                 String
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
   version              Int           @default(1)
   allowNonSequential   Boolean       @default(false)
   author               User?         @relation(fields: [authorId], references: [id])
-  authorId     String?
-  attachments   Attachment[]
-  protocolRuns  ProtocolRun[]  @relation("RunSource")
-  linkedRun     ProtocolRun?   @relation("RunLink", fields: [linkedRunId], references: [id])
-  linkedRunId   String?
-  protocol      Protocol?
+  authorId             String?
+  attachments          Attachment[]
+  protocolRuns         ProtocolRun[] @relation("RunSource")
+  linkedRun            ProtocolRun?  @relation("RunLink", fields: [linkedRunId], references: [id])
+  linkedRunId          String?
+  protocol             Protocol?
 }
 
 model Attachment {
@@ -604,4 +605,26 @@ model InventoryAttachment {
   @@index([reagentLotId])
   @@index([cellLinePassageId])
   @@index([plasmidPrepId])
+}
+
+model Recipe {
+  id          String            @id @default(cuid())
+  name        String
+  description String            @default("")
+  createdById String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  createdBy   User              @relation(fields: [createdById], references: [id])
+  components  RecipeComponent[]
+}
+
+model RecipeComponent {
+  id            String   @id @default(cuid())
+  recipeId      String
+  reagentName   String
+  concentration Float?
+  unit          String   @default("")
+  notes         String   @default("")
+  order         Int      @default(0)
+  recipe        Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
 }

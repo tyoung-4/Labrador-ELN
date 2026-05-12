@@ -6,6 +6,7 @@ import ProtocolStepsEditor, {
   type FocusType,
   type ProtocolStepsEditorHandle,
 } from "./ProtocolStepsEditor";
+import RecipeChip, { type RecipeSummary } from "@/components/recipes/RecipeChip";
 import { TECHNIQUE_OPTIONS, PROTOCOL_TECHNIQUES, type Entry, type AttachmentRecord } from "@/models/entry";
 import {
   ENTRY_TYPE_CONFIGS,
@@ -49,7 +50,7 @@ const COMPONENT_ITEMS = [
   { label: "Timer",           entryType: "Timer"         },
 ] as const;
 
-type EditorTab = "steps" | "description" | "guidelines" | "references" | "materials";
+type EditorTab = "steps" | "description" | "guidelines" | "references" | "materials" | "recipes";
 
 type LinkedRef = {
   id: string;
@@ -245,6 +246,77 @@ function LinkedItemsPanel({
       ) : (
         <p className="text-xs text-zinc-600">No items yet — add one above.</p>
       )}
+    </div>
+  );
+}
+
+// ─── Recipes Tab Panel ────────────────────────────────────────────────────────
+
+function RecipesTabPanel() {
+  const [recipes, setRecipes] = useState<RecipeSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/recipes")
+      .then((r) => r.ok ? r.json() : [])
+      .then((list: RecipeSummary[]) => { setRecipes(list); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return <p className="p-4 text-sm text-zinc-500">Loading recipes…</p>;
+  }
+
+  if (recipes.length === 0) {
+    return (
+      <div className="p-4 text-center text-sm text-zinc-500">
+        No recipes found. Recipes can be added via the seed script or API.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 p-4">
+      <p className="text-xs text-zinc-500 mb-3">
+        Browse available recipes. Attach them to individual steps using the
+        <span className="mx-1 rounded border border-dashed border-zinc-300 px-1 py-0.5 text-zinc-400">+ Recipe</span>
+        button on each step row.
+      </p>
+      {recipes.map((recipe) => (
+        <div key={recipe.id} className="rounded border border-zinc-700 bg-zinc-900 p-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-zinc-100">{recipe.name}</p>
+              {recipe.description && (
+                <p className="mt-0.5 text-xs text-zinc-400">{recipe.description}</p>
+              )}
+            </div>
+            <RecipeChip recipe={recipe} />
+          </div>
+          {recipe.components.length > 0 && (
+            <table className="mt-2 w-full text-xs">
+              <thead>
+                <tr className="border-b border-zinc-800">
+                  <th className="pb-1 text-left font-medium text-zinc-500">Reagent</th>
+                  <th className="pb-1 text-right font-medium text-zinc-500">Amount</th>
+                  <th className="pb-1 pl-2 text-left font-medium text-zinc-500">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recipe.components.map((c) => (
+                  <tr key={c.id} className="border-b border-zinc-800/60 last:border-0">
+                    <td className="py-0.5 pr-2 text-zinc-300">{c.reagentName}</td>
+                    <td className="py-0.5 text-right tabular-nums text-zinc-400">
+                      {c.concentration != null ? `${c.concentration} ${c.unit}`.trim() : "—"}
+                    </td>
+                    <td className="py-0.5 pl-2 text-zinc-500">{c.notes || ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -578,6 +650,7 @@ export default function Editor({
   const [title, setTitle]           = useState(initial.title ?? "");
   const [description, setDescription] = useState(initial.description ?? "");
   const [technique, setTechnique]   = useState(initial.technique ?? "General");
+  const [allowNonSequential, setAllowNonSequential] = useState(initial.allowNonSequential ?? false);
 
   // Entry type + typed data
   const [entryType, setEntryType]   = useState(initial.entryType ?? "GENERAL");
@@ -716,6 +789,7 @@ export default function Editor({
       entryType,
       typedData: buildTypedData(),
       body: serializeBody({ steps, description: tabDescription, guidelines: tabGuidelines, references: tabReferences, materials: tabMaterials }),
+      allowNonSequential,
     });
   }
 
@@ -754,6 +828,7 @@ export default function Editor({
     { id: "guidelines",  label: "Guidelines & Warnings" },
     { id: "references",  label: "References" },
     { id: "materials",   label: "Inventory" },
+    { id: "recipes",     label: "Recipes" },
   ];
 
   return (
@@ -785,6 +860,21 @@ export default function Editor({
                   <option key={option} value={option}>{option}</option>
                 ))}
               </select>
+            </div>
+
+            {/* Allow non-sequential toggle */}
+            <div className="mt-1.5 flex items-center gap-2">
+              <label className="flex cursor-pointer items-center gap-2 select-none">
+                <div
+                  onClick={() => setAllowNonSequential((v) => !v)}
+                  className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${allowNonSequential ? "bg-indigo-600" : "bg-zinc-700"}`}
+                >
+                  <span
+                    className={`inline-block h-3 w-3 rounded-full bg-white shadow transition-transform ${allowNonSequential ? "translate-x-3.5" : "translate-x-0.5"}`}
+                  />
+                </div>
+                <span className="text-xs text-zinc-400">Allow non-sequential runs</span>
+              </label>
             </div>
           </div>
 
@@ -917,6 +1007,9 @@ export default function Editor({
                   onChange={setTabMaterials}
                   placeholder="Link to inventory item…"
                 />
+              )}
+              {activeTab === "recipes" && (
+                <RecipesTabPanel />
               )}
             </div>
 
