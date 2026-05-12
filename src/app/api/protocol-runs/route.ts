@@ -125,15 +125,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "sourceEntryId is required" }, { status: 400 });
     }
 
-    const [source, sourceProtocol] = await Promise.all([
+    const [source, sourceProtocol, inventoryLinks] = await Promise.all([
       prisma.entry.findUnique({ where: { id: sourceEntryId } }),
       prisma.protocol.findUnique({ where: { entryId: sourceEntryId } }),
+      prisma.protocolInventoryLink.findMany({ where: { entryId: sourceEntryId }, orderBy: { createdAt: "asc" } }),
     ]);
     if (!source) return new NextResponse(null, { status: 404 });
 
     // Store the full body as runBody so the new run page can parse it
     // (new ProtocolStepsEditor stores JSON; legacy stores HTML)
     const runBodyContent = source.body;
+    // Snapshot linked inventory items at run-creation time
+    const linkedInventorySnapshot = JSON.stringify(
+      inventoryLinks.map(({ id, itemType, itemId, itemName, itemDetail, notes }) => ({
+        id, itemType, itemId, itemName, itemDetail, notes,
+      }))
+    );
 
     const [runCount, runId] = await Promise.all([
       prisma.protocolRun.count({ where: { sourceEntryId } }),
@@ -148,6 +155,7 @@ export async function POST(request: Request) {
         status: "IN_PROGRESS",
         locked: true,
         runBody: runBodyContent,
+        linkedInventory: linkedInventorySnapshot,
         notes: "",
         interactionState: JSON.stringify({
           stepCompletion: {},

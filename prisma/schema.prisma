@@ -49,6 +49,7 @@ model Entry {
   linkedRun            ProtocolRun?  @relation("RunLink", fields: [linkedRunId], references: [id])
   linkedRunId          String?
   protocol             Protocol?
+  inventoryLinks       ProtocolInventoryLink[]
 }
 
 model Attachment {
@@ -111,6 +112,7 @@ model ProtocolRun {
   runBody          String
   notes            String    @default("")
   interactionState String    @default("{}")
+  linkedInventory  String    @default("[]")
   operatorName     String    @default("")
   completedAt      DateTime?
   createdAt        DateTime  @default(now())
@@ -627,4 +629,18 @@ model RecipeComponent {
   notes         String   @default("")
   order         Int      @default(0)
   recipe        Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+}
+
+model ProtocolInventoryLink {
+  id         String   @id @default(uuid())
+  entryId    String
+  entry      Entry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  itemType   String   // "reagent" | "stock" | "plasmid" | "cellline"
+  itemId     String
+  itemName   String
+  itemDetail String   @default("")
+  notes      String   @default("")
+  createdAt  DateTime @default(now())
+
+  @@index([entryId])
 }

@@ -951,10 +951,10 @@ const q = keyword.trim().toLowerCase();
       {/* ── Editor Modal Overlay ── */}
       {editorOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/75 p-4 pt-12"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
           onMouseDown={(e) => { if (e.target === e.currentTarget) closeEditor(); }}
         >
-          <div className="w-full max-w-5xl rounded-xl border border-zinc-700 bg-zinc-950 shadow-2xl shadow-black/80">
+          <div className="flex h-[90vh] w-[90vw] max-w-6xl flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 shadow-2xl shadow-black/80">
             {/* Modal header */}
             <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-3">
               <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -1017,7 +1017,7 @@ const q = keyword.trim().toLowerCase();
             )}
 
             {/* Editor */}
-            <div className="p-4">
+            <div className="flex-1 overflow-y-auto p-4">
               <Editor
                 initial={selected ?? undefined}
                 currentAuthorName={currentUser.name}

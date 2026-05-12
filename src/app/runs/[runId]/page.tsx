@@ -27,6 +27,19 @@ type ParsedStep = {
 
 type ResultKind = "PASSED" | "FAILED" | "SKIPPED";
 
+type LinkedInventoryItem = {
+  id: string;
+  itemType: string;
+  itemId: string;
+  itemName: string;
+  itemDetail: string;
+  notes: string;
+};
+
+function safeParseLinkedInventory(raw: string): LinkedInventoryItem[] {
+  try { return JSON.parse(raw) as LinkedInventoryItem[]; } catch { return []; }
+}
+
 // Typed shape of the interactionState JSON blob persisted on ProtocolRun.
 // stepFailures and stepSkips are stored here for type-safety even though
 // PASS/FAIL/SKIP truth-of-record lives in StepResult rows.
@@ -737,6 +750,9 @@ export default function ActiveRunPage() {
   const [allowNonSequential, setAllowNonSequential] = useState(false);
   // stepId of the step currently open in inline-edit mode (null = none)
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
+  // Inventory usage confirmation
+  const [showInventoryConfirm, setShowInventoryConfirm] = useState(false);
+  const [inventoryConfirmed, setInventoryConfirmed] = useState<Set<string>>(new Set());
 
   // Parse steps — only after run is loaded and we're client-side
   const steps = useMemo<ParsedStep[]>(() => {
@@ -970,7 +986,7 @@ export default function ActiveRunPage() {
       ).length;
 
       if (updatedResolved === steps.length && run?.status === "IN_PROGRESS") {
-        await completeRun();
+        requestCompleteRun();
       }
     } finally {
       setSubmitting(false);
@@ -991,6 +1007,17 @@ export default function ActiveRunPage() {
       if (!resolvedMap[allSteps[i].id]) return i;
     }
     return currentIdx; // all resolved
+  }
+
+  function requestCompleteRun() {
+    if (!run || run.status === "COMPLETED" || completingRun) return;
+    const linkedItems: LinkedInventoryItem[] = safeParseLinkedInventory(run.linkedInventory);
+    if (linkedItems.length > 0) {
+      setInventoryConfirmed(new Set());
+      setShowInventoryConfirm(true);
+    } else {
+      void completeRun();
+    }
   }
 
   async function completeRun() {
@@ -1066,7 +1093,7 @@ export default function ActiveRunPage() {
               )}
               {allowNonSequential && (
                 <span className="rounded border border-zinc-600 px-2 py-0.5 text-xs text-zinc-400">
-                  Non-sequential
+                  Out-of-order run
                 </span>
               )}
             </div>
@@ -1097,6 +1124,58 @@ export default function ActiveRunPage() {
       </div>
 
       {/* ── Completion banner ────────────────────────────────────────────── */}
+      {/* ── Inventory usage confirmation modal ── */}
+      {showInventoryConfirm && run && (() => {
+        const items = safeParseLinkedInventory(run.linkedInventory);
+        const allConfirmed = items.every((item) => inventoryConfirmed.has(item.id));
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+            <div className="mx-4 w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl">
+              <h3 className="mb-1 text-base font-semibold text-zinc-100">Confirm Inventory Usage</h3>
+              <p className="mb-4 text-xs text-zinc-400">Check off each item used before finishing the run.</p>
+              <div className="mb-5 space-y-2">
+                {items.map((item) => (
+                  <label key={item.id} className="flex cursor-pointer items-start gap-3 rounded border border-zinc-700 bg-zinc-800/60 px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={inventoryConfirmed.has(item.id)}
+                      onChange={(e) => {
+                        setInventoryConfirmed((prev) => {
+                          const next = new Set(prev);
+                          e.target.checked ? next.add(item.id) : next.delete(item.id);
+                          return next;
+                        });
+                      }}
+                      className="mt-0.5 accent-indigo-500"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-zinc-100">{item.itemName}</p>
+                      {item.itemDetail && <p className="text-xs text-zinc-400">{item.itemDetail}</p>}
+                      {item.notes && <p className="text-xs text-zinc-500">{item.notes}</p>}
+                    </div>
+                  </label>
+                ))}
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setShowInventoryConfirm(false)}
+                  className="rounded border border-zinc-700 px-4 py-2 text-xs text-zinc-400 hover:bg-zinc-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={!allConfirmed}
+                  onClick={() => { setShowInventoryConfirm(false); void completeRun(); }}
+                  className="rounded bg-indigo-600 px-4 py-2 text-xs text-white hover:bg-indigo-500 disabled:opacity-40"
+                >
+                  Finish Run
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {showCompleteBanner && (
         <div className="shrink-0 flex items-center justify-between border-b border-emerald-500/50 bg-emerald-500/10 px-6 py-2">
           <span className="text-sm font-semibold text-emerald-200">
@@ -1147,7 +1226,7 @@ export default function ActiveRunPage() {
             isRunComplete={isRunComplete}
             allResolved={allResolved}
             onResult={handleResult}
-            onCompleteRun={completeRun}
+            onCompleteRun={requestCompleteRun}
             runId={runId}
             runNotes={run.notes}
             authHeaders={authHeaders}
@@ -1213,7 +1292,7 @@ function RunSidebar({
   isRunComplete: boolean;
   allResolved: boolean;
   onResult: (step: ParsedStep, kind: ResultKind) => Promise<void>;
-  onCompleteRun: () => Promise<void>;
+  onCompleteRun: () => void;
   runId: string;
   runNotes: string;
   authHeaders: Record<string, string>;

@@ -250,6 +250,145 @@ function LinkedItemsPanel({
   );
 }
 
+// ─── Inventory Links Panel ────────────────────────────────────────────────────
+
+type InventoryItem = {
+  id: string;
+  type: "reagent" | "stock" | "plasmid" | "cellline";
+  name: string;
+  detail: string;
+};
+
+type InventoryLink = {
+  id: string;
+  itemType: string;
+  itemId: string;
+  itemName: string;
+  itemDetail: string;
+  notes: string;
+};
+
+const ITEM_TYPE_STYLE: Record<string, string> = {
+  reagent:  "border-amber-500/40 bg-amber-500/10 text-amber-300",
+  stock:    "border-sky-500/40   bg-sky-500/10   text-sky-300",
+  plasmid:  "border-violet-500/40 bg-violet-500/10 text-violet-300",
+  cellline: "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
+};
+
+function InventoryLinksPanel({ entryId }: { entryId: string | undefined }) {
+  const [links, setLinks] = useState<InventoryLink[]>([]);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<InventoryItem[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [showDrop, setShowDrop] = useState(false);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!entryId) return;
+    fetch(`/api/protocols/${entryId}/inventory-links`)
+      .then((r) => r.ok ? r.json() : [])
+      .then(setLinks)
+      .catch(() => {});
+  }, [entryId]);
+
+  useEffect(() => {
+    if (!query.trim()) { setResults([]); setShowDrop(false); return; }
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await fetch(`/api/inventory/search?q=${encodeURIComponent(query.trim())}`);
+        const data: InventoryItem[] = res.ok ? await res.json() : [];
+        setResults(data);
+        setShowDrop(data.length > 0);
+      } finally {
+        setSearching(false);
+      }
+    }, 250);
+  }, [query]);
+
+  async function addLink(item: InventoryItem) {
+    if (!entryId) return;
+    const res = await fetch(`/api/protocols/${entryId}/inventory-links`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ itemType: item.type, itemId: item.id, itemName: item.name, itemDetail: item.detail }),
+    });
+    if (res.ok) {
+      const link: InventoryLink = await res.json();
+      setLinks((prev) => [...prev, link]);
+    }
+    setQuery(""); setResults([]); setShowDrop(false);
+  }
+
+  async function removeLink(linkId: string) {
+    if (!entryId) return;
+    await fetch(`/api/protocols/${entryId}/inventory-links/${linkId}`, { method: "DELETE" });
+    setLinks((prev) => prev.filter((l) => l.id !== linkId));
+  }
+
+  if (!entryId) {
+    return <p className="p-4 text-sm text-zinc-500">Save the protocol first to link inventory items.</p>;
+  }
+
+  return (
+    <div className="space-y-3 p-4">
+      <div className="relative">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onFocus={() => results.length > 0 && setShowDrop(true)}
+          onBlur={() => setTimeout(() => setShowDrop(false), 150)}
+          placeholder="Search reagents, stocks, plasmids, cell lines…"
+          className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
+        />
+        {searching && (
+          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-zinc-500">Searching…</span>
+        )}
+        {showDrop && results.length > 0 && (
+          <div className="absolute left-0 right-0 top-full z-50 mt-0.5 max-h-56 overflow-y-auto rounded border border-zinc-700 bg-zinc-900 shadow-xl">
+            {results.map((item) => (
+              <button
+                key={`${item.type}-${item.id}`}
+                onMouseDown={() => addLink(item)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-800"
+              >
+                <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[9px] font-semibold uppercase ${ITEM_TYPE_STYLE[item.type] ?? ""}`}>
+                  {item.type}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-zinc-200">{item.name}</span>
+                {item.detail && <span className="shrink-0 text-xs text-zinc-500">{item.detail}</span>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {links.length === 0 ? (
+        <p className="text-xs text-zinc-600">No inventory items linked. Search above to add some.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {links.map((link) => (
+            <div key={link.id} className="group flex items-center gap-2 rounded border border-zinc-700/70 bg-zinc-800/50 px-3 py-2">
+              <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[9px] font-semibold uppercase ${ITEM_TYPE_STYLE[link.itemType] ?? ""}`}>
+                {link.itemType}
+              </span>
+              <span className="flex-1 min-w-0 truncate text-sm text-zinc-200">{link.itemName}</span>
+              {link.itemDetail && <span className="shrink-0 text-xs text-zinc-500">{link.itemDetail}</span>}
+              <button
+                onClick={() => removeLink(link.id)}
+                className="shrink-0 text-xs text-zinc-700 opacity-0 transition hover:text-red-400 group-hover:opacity-100"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Recipes Tab Panel ────────────────────────────────────────────────────────
 
 function RecipesTabPanel() {
@@ -873,7 +1012,7 @@ export default function Editor({
                     className={`inline-block h-3 w-3 rounded-full bg-white shadow transition-transform ${allowNonSequential ? "translate-x-3.5" : "translate-x-0.5"}`}
                   />
                 </div>
-                <span className="text-xs text-zinc-400">Allow non-sequential runs</span>
+                <span className="text-xs text-zinc-400">Steps can be completed out of order</span>
               </label>
             </div>
           </div>
@@ -881,71 +1020,87 @@ export default function Editor({
           {/* ── 3-col layout: left sidebar | tabs+editor | right sidebar ── */}
           <div className="mb-2 grid gap-3 lg:grid-cols-[200px_minmax(0,1fr)_240px]">
 
-            {/* Left sidebar — 4 edit buttons */}
+            {/* Left sidebar — Edit buttons (Steps tab only) */}
             <aside className="lg:sticky lg:top-2 lg:h-fit rounded border border-zinc-800 bg-zinc-900 p-3">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Edit</p>
-              <div className="space-y-1 text-sm">
-                {/* Add Section */}
-                <button
-                  onClick={() => stepsEditorRef.current?.insertSection()}
-                  disabled={activeTab !== "steps"}
-                  className={`w-full rounded border px-3 py-2 text-left text-zinc-100 transition ${
-                    activeTab !== "steps"
-                      ? "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-700"
-                      : "border-zinc-700 bg-zinc-800 hover:bg-zinc-700"
-                  }`}
-                >
-                  Add Section
-                </button>
-                {/* Add Step */}
-                <button
-                  onClick={() => stepsEditorRef.current?.insertStep()}
-                  disabled={activeTab !== "steps"}
-                  className={`w-full rounded border px-3 py-2 text-left text-zinc-100 transition ${
-                    activeTab !== "steps"
-                      ? "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-700"
-                      : "border-zinc-700 bg-zinc-800 hover:bg-zinc-700"
-                  }`}
-                >
-                  Add Step
-                </button>
-                {/* Add Sub-step — disabled when on a Section title or not on Steps tab */}
-                {(() => {
-                  const subDisabled = activeTab !== "steps" || focusType === "section";
-                  return (
+              {activeTab !== "steps" ? (
+                <p className="text-xs text-zinc-600">Switch to the Steps tab to edit steps.</p>
+              ) : (
+                <>
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Edit</p>
+                  <div className="space-y-1 text-sm">
+                    {/* Add Section */}
+                    <button
+                      onClick={() => stepsEditorRef.current?.insertSection()}
+                      className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-left text-zinc-100 transition hover:bg-zinc-700"
+                    >
+                      Add Section
+                    </button>
+                    {/* Add Step */}
+                    <button
+                      onClick={() => stepsEditorRef.current?.insertStep()}
+                      className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-left text-zinc-100 transition hover:bg-zinc-700"
+                    >
+                      Add Step
+                    </button>
+                    {/* Add Sub-step — disabled on section focus */}
                     <button
                       onClick={() => stepsEditorRef.current?.insertSubStep()}
-                      disabled={subDisabled}
+                      disabled={focusType === "section"}
                       className={`w-full rounded border px-3 py-2 text-left text-zinc-100 transition ${
-                        subDisabled
+                        focusType === "section"
                           ? "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-700"
                           : "border-zinc-700 bg-zinc-800 hover:bg-zinc-700"
                       }`}
                     >
                       Add Sub-step
                     </button>
-                  );
-                })()}
-                {/* Convert — label changes contextually; disabled on Section or no focus */}
-                {(() => {
-                  const cvDisabled = activeTab !== "steps" || focusType === "section" || focusType === null;
-                  const cvLabel =
-                    focusType === "substep" ? "Convert to Step" : "Convert to Sub-step";
-                  return (
+                    {/* Convert — label changes contextually */}
+                    {(() => {
+                      const cvDisabled = focusType === "section" || focusType === null;
+                      const cvLabel = focusType === "substep" ? "Convert to Step" : "Convert to Sub-step";
+                      return (
+                        <button
+                          onClick={() => stepsEditorRef.current?.convertFocused()}
+                          disabled={cvDisabled}
+                          className={`w-full rounded border px-3 py-2 text-left text-zinc-100 transition ${
+                            cvDisabled
+                              ? "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-700"
+                              : "border-zinc-700 bg-zinc-800 hover:bg-zinc-700"
+                          }`}
+                        >
+                          {cvLabel}
+                        </button>
+                      );
+                    })()}
+                    {/* Delete Step */}
                     <button
-                      onClick={() => stepsEditorRef.current?.convertFocused()}
-                      disabled={cvDisabled}
-                      className={`w-full rounded border px-3 py-2 text-left text-zinc-100 transition ${
-                        cvDisabled
+                      onClick={() => stepsEditorRef.current?.deleteFocused()}
+                      disabled={focusType !== "step"}
+                      title={focusType !== "step" ? "Select a step first" : "Delete the selected step"}
+                      className={`w-full rounded border px-3 py-2 text-left transition ${
+                        focusType !== "step"
                           ? "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-700"
-                          : "border-zinc-700 bg-zinc-800 hover:bg-zinc-700"
+                          : "border-red-500/30 bg-red-900/20 text-red-300 hover:bg-red-900/40"
                       }`}
                     >
-                      {cvLabel}
+                      Delete Step
                     </button>
-                  );
-                })()}
-              </div>
+                    {/* + Recipe */}
+                    <button
+                      onClick={() => stepsEditorRef.current?.openRecipePicker()}
+                      disabled={focusType !== "step"}
+                      title={focusType !== "step" ? "Select a step first" : "Attach a recipe to the selected step"}
+                      className={`w-full rounded border px-3 py-2 text-left transition ${
+                        focusType !== "step"
+                          ? "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-700"
+                          : "border-indigo-700/50 bg-indigo-900/20 text-indigo-300 hover:bg-indigo-900/40"
+                      }`}
+                    >
+                      + Recipe
+                    </button>
+                  </div>
+                </>
+              )}
             </aside>
 
             {/* Center — Tabs + editor content */}
@@ -1002,11 +1157,7 @@ export default function Editor({
                 />
               )}
               {activeTab === "materials" && (
-                <LinkedItemsPanel
-                  items={tabMaterials}
-                  onChange={setTabMaterials}
-                  placeholder="Link to inventory item…"
-                />
+                <InventoryLinksPanel entryId={initial.id} />
               )}
               {activeTab === "recipes" && (
                 <RecipesTabPanel />

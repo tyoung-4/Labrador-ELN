@@ -39,6 +39,7 @@ export type ProtocolRun = {
   runBody: string;
   notes: string;
   interactionState: string;
+  linkedInventory: string;
   operatorName: string;
   completedAt: string | null;
   createdAt: string;

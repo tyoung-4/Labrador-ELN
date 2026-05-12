@@ -557,8 +557,10 @@ export type ProtocolStepsEditorHandle = {
   insertStep: () => void;
   insertSubStep: () => void;
   convertFocused: () => void;
+  deleteFocused: () => void;
   openRequiredField: (entryType?: string) => void;
   openRecipes: () => void;
+  openRecipePicker: () => void;
 };
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -581,19 +583,17 @@ export type FocusTarget = {
 function StepRecipeRow({
   recipeRefs,
   allRecipes,
-  onAdd,
   onRemove,
 }: {
   recipeRefs: string[];
   allRecipes: RecipeSummary[];
-  onAdd: (id: string) => void;
   onRemove: (id: string) => void;
 }) {
-  const [pickerOpen, setPickerOpen] = useState(false);
   const attachedRecipes = recipeRefs
     .map((id) => allRecipes.find((r) => r.id === id))
     .filter(Boolean) as RecipeSummary[];
 
+  if (attachedRecipes.length === 0) return null;
   return (
     <div className="ml-10 flex flex-wrap items-center gap-1 pb-0.5">
       {attachedRecipes.map((recipe) => (
@@ -603,22 +603,6 @@ function StepRecipeRow({
           onRemove={() => onRemove(recipe.id)}
         />
       ))}
-      <div className="relative">
-        <button
-          onClick={() => setPickerOpen((v) => !v)}
-          className="rounded border border-dashed border-zinc-300 px-1.5 py-0.5 text-xs text-zinc-400 hover:border-indigo-400 hover:text-indigo-600 transition"
-        >
-          + Recipe
-        </button>
-        {pickerOpen && (
-          <RecipePickerDropdown
-            recipes={allRecipes}
-            attachedIds={recipeRefs}
-            onPick={(id) => { onAdd(id); setPickerOpen(false); }}
-            onClose={() => setPickerOpen(false)}
-          />
-        )}
-      </div>
     </div>
   );
 }
@@ -754,6 +738,7 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
     const [fieldModalOpen, setFieldModalOpen] = useState(false);
     const [fieldModalInitialType, setFieldModalInitialType] = useState<string | undefined>(undefined);
     const [recipesModalOpen, setRecipesModalOpen] = useState(false);
+    const [recipePickerOpen, setRecipePickerOpen] = useState(false);
 
     // ── Recipe data ───────────────────────────────────────────────────────────
     const [allRecipes, setAllRecipes] = useState<RecipeSummary[]>([]);
@@ -975,6 +960,22 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
       });
     }
 
+    function addRecipeToFocused(recipeId: string) {
+      const target = focusTargetRef.current;
+      if (!target) return;
+      mutate({
+        ...dataRef.current,
+        sections: dataRef.current.sections.map((s) => s.id !== target.sectionId ? s : {
+          ...s, steps: s.steps.map((st) => {
+            if (st.id !== target.stepId) return st;
+            const refs = st.recipeRefs ?? [];
+            if (refs.includes(recipeId)) return st;
+            return { ...st, recipeRefs: [...refs, recipeId] };
+          }),
+        }),
+      });
+    }
+
     function removeField(sectionId: string, stepId: string, fieldId: string, subStepId?: string) {
       mutate({
         ...data,
@@ -1121,12 +1122,34 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
           promoteSubStepToStep(target.sectionId, target.stepId, target.subStepId);
         }
       },
+      deleteFocused() {
+        const type   = focusTypeRef.current;
+        const target = focusTargetRef.current;
+        if (type !== "step" || !target) return;
+        const cur = dataRef.current;
+        const section = cur.sections.find((s) => s.id === target.sectionId);
+        const step = section?.steps.find((st) => st.id === target.stepId);
+        if (!step) return;
+        const hasContent = step.subSteps.length > 0 || step.fields.length > 0;
+        if (hasContent && !window.confirm("Delete this step and all its sub-steps and fields?")) return;
+        mutate({
+          ...cur,
+          sections: cur.sections.map((s) => s.id !== target.sectionId ? s : {
+            ...s, steps: s.steps.filter((st) => st.id !== target.stepId),
+          }),
+        });
+        setFocusCtx(null, null);
+      },
       openRequiredField(entryType?: string) {
         setFieldModalInitialType(entryType);
         setFieldModalOpen(true);
       },
       openRecipes() {
         setRecipesModalOpen(true);
+      },
+      openRecipePicker() {
+        if (focusTypeRef.current !== "step") return;
+        setRecipePickerOpen(true);
       },
     }));
 
@@ -1285,11 +1308,10 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
                           </div>
                         )}
 
-                        {/* Recipe chips + Add button */}
+                        {/* Recipe chips */}
                         <StepRecipeRow
                           recipeRefs={step.recipeRefs ?? []}
                           allRecipes={allRecipes}
-                          onAdd={(id) => addRecipeToStep(section.id, step.id, id)}
                           onRemove={(id) => removeRecipeFromStep(section.id, step.id, id)}
                         />
 
@@ -1363,6 +1385,28 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
             onClose={() => setRecipesModalOpen(false)}
             onInsert={(field) => { addFieldToFocused(field); setRecipesModalOpen(false); }}
           />
+        )}
+        {recipePickerOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+            onMouseDown={(e) => { if (e.target === e.currentTarget) setRecipePickerOpen(false); }}
+          >
+            <div className="w-80 rounded-lg border border-zinc-700 bg-zinc-900 shadow-2xl">
+              <RecipePickerDropdown
+                recipes={allRecipes}
+                attachedIds={
+                  (() => {
+                    const target = focusTargetRef.current;
+                    if (!target) return [];
+                    const section = data.sections.find((s) => s.id === target.sectionId);
+                    const step = section?.steps.find((st) => st.id === target.stepId);
+                    return step?.recipeRefs ?? [];
+                  })()
+                }
+                onPick={(id) => { addRecipeToFocused(id); setRecipePickerOpen(false); }}
+                onClose={() => setRecipePickerOpen(false)}
+              />
+            </div>
+          </div>
         )}
       </div>
     );
