@@ -1,6 +1,6 @@
 "use client";
 
-import { MouseEvent, useEffect, useRef, useState } from "react";
+import { MouseEvent, useEffect, useState } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -160,20 +160,21 @@ export function nextDayStr(dateStr: string): string {
 
 // ─── DailyView ────────────────────────────────────────────────────────────────
 
-const TOTAL_MINUTES      = 1440;                                              // 12 am – 11:59 pm
-const VISIBLE_MINUTES    = 10 * 60;                                           // 600 min (7 am – 5 pm)
-const GRID_PX_PER_MINUTE = 0.8;                                               // 48 px/hr — matches DashboardPanel PX_PER_HOUR for vertical alignment
-const TOTAL_GRID_HEIGHT  = Math.round(TOTAL_MINUTES * GRID_PX_PER_MINUTE);   // 1152 px full day
-const CONTAINER_HEIGHT   = Math.round(VISIBLE_MINUTES * GRID_PX_PER_MINUTE); // 480 px visible
+const CONTAINER_HEIGHT   = 480;                                               // px — fixed dashboard column height; do not change
+const GRID_START_MINS    = 8  * 60;                                           // 480 min = 8:00 am — top of visible window
+const GRID_WINDOW_MINS   = 10 * 60;                                           // 600 min = 8:00 am – 6:00 pm target window
+const GRID_PX_PER_MINUTE = CONTAINER_HEIGHT / GRID_WINDOW_MINS;              // derived: 480 / 600 = 0.8 px/min
+const GRID_HEIGHT        = Math.round(GRID_WINDOW_MINS * GRID_PX_PER_MINUTE); // = CONTAINER_HEIGHT (480 px); inner grid fills container exactly
 
-// 2-hour interval labels: 12am, 2am … 10pm (12 entries)
+// 2-hour interval labels for the visible window: 8 am, 10 am, 12 pm, 2 pm, 4 pm, 6 pm
+// topPx is relative to GRID_START_MINS so positions map directly onto the compressed grid
 const TIME_LABELS: ReadonlyArray<{ label: string; topPx: number }> =
-  [0, 120, 240, 360, 480, 600, 720, 840, 960, 1080, 1200, 1320].map(mins => {
+  [480, 600, 720, 840, 960, 1080].map(mins => {
     const h24 = Math.floor(mins / 60);
     const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
     return {
       label: `${h12}:00 ${h24 < 12 ? "am" : "pm"}`,
-      topPx: mins * GRID_PX_PER_MINUTE,
+      topPx: (mins - GRID_START_MINS) * GRID_PX_PER_MINUTE,
     };
   });
 
@@ -185,7 +186,6 @@ export function DailyView({
   onEventClick,
   onEndEarly,
   currentUserId,
-  scrollTrigger,
 }: {
   date: string;
   enabledResources: (ResourceMeta & { group: ResourceGroup })[];
@@ -195,11 +195,9 @@ export function DailyView({
   onEndEarly?: (ev: ScheduleEvent) => void;
   /** Current user's ID. When provided, only owners (or "Admin") can interact. */
   currentUserId?: string;
-  /** Increment to force-scroll back to default position (e.g. on Today click). */
+  /** Accepted for API compatibility; no longer used — grid is fixed-position with no scrolling. */
   scrollTrigger?: number;
 }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-
   // Track current minute for the live time indicator — updates every 60 s
   const [nowMins, setNowMins] = useState(() => {
     const n = new Date();
@@ -212,18 +210,6 @@ export function DailyView({
     }, 60_000);
     return () => clearInterval(id);
   }, []);
-
-  // Always anchor to 8:00 am regardless of date or current time.
-  // With CONTAINER_HEIGHT = 480 px (10 hrs) this shows 8 am–6 pm by default.
-  function defaultScrollPx(): number {
-    return Math.round(8 * 60 * GRID_PX_PER_MINUTE); // 384 px
-  }
-  useEffect(() => {
-    requestAnimationFrame(() => {
-      if (scrollRef.current) scrollRef.current.scrollTop = defaultScrollPx();
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, scrollTrigger]);
 
   if (enabledResources.length === 0) {
     return (
@@ -243,7 +229,7 @@ export function DailyView({
   }
 
   function bookingTop(startTime: string): number {
-    return tmins(startTime) * GRID_PX_PER_MINUTE;
+    return (tmins(startTime) - GRID_START_MINS) * GRID_PX_PER_MINUTE;
   }
 
   function bookingHeight(startTime: string, endTime: string): number {
@@ -267,7 +253,8 @@ export function DailyView({
 
   function handleColClick(e: MouseEvent<HTMLDivElement>, resourceId: ResourceId) {
     const rect        = e.currentTarget.getBoundingClientRect();
-    const clickedMins = Math.floor((e.clientY - rect.top) / GRID_PX_PER_MINUTE);
+    const rawMins     = Math.floor((e.clientY - rect.top) / GRID_PX_PER_MINUTE);
+    const clickedMins = rawMins + GRID_START_MINS; // grid origin is 8 am, not midnight
     const rounded     = Math.floor(clickedMins / 30) * 30;
     const h = Math.floor(rounded / 60) % 24;
     const m = rounded % 60;
@@ -276,41 +263,35 @@ export function DailyView({
 
   return (
     <div className="min-w-[320px]">
-      {/* ── Scroll viewport (8 am–6 pm default, full day scrollable) ── */}
+      {/* Resource header — above the grid viewport so CONTAINER_HEIGHT is fully available to the grid */}
       <div
-        ref={scrollRef}
-        className="overflow-y-scroll"
-        style={{
-          height: `${CONTAINER_HEIGHT}px`,
-          maxHeight: `${CONTAINER_HEIGHT}px`,
-          overflowY: "scroll",
-          flexShrink: 0,
-        }}
+        className="grid border-b border-zinc-800 bg-zinc-950"
+        style={{ gridTemplateColumns: `3.5rem repeat(${colCount}, minmax(0, 1fr))` }}
       >
-        {/* Sticky resource header */}
-        <div
-          className="sticky top-0 z-10 grid border-b border-zinc-800 bg-zinc-950"
-          style={{ gridTemplateColumns: `3.5rem repeat(${colCount}, minmax(0, 1fr))` }}
-        >
-          <div className="border-r border-zinc-800" />
-          {enabledResources.map(r => (
-            <div
-              key={r.id}
-              className={`border-r border-zinc-800 px-2 py-2 text-center text-[10px] font-semibold ${r.group.textCls}`}
-            >
-              {r.label}
-            </div>
-          ))}
-        </div>
+        <div className="border-r border-zinc-800" />
+        {enabledResources.map(r => (
+          <div
+            key={r.id}
+            className={`border-r border-zinc-800 px-2 py-2 text-center text-[10px] font-semibold ${r.group.textCls}`}
+          >
+            {r.label}
+          </div>
+        ))}
+      </div>
 
-        {/* ── Full-day grid (2880 px) ── */}
-        <div className="relative" style={{ height: `${TOTAL_GRID_HEIGHT}px` }}>
+      {/* ── Fixed grid viewport: CONTAINER_HEIGHT px = exactly 8 am–6 pm; no scrolling ── */}
+      <div
+        className="overflow-hidden"
+        style={{ height: `${CONTAINER_HEIGHT}px`, flexShrink: 0 }}
+      >
+        {/* ── Compressed grid: 8 am–6 pm (GRID_HEIGHT = CONTAINER_HEIGHT = 480 px) ── */}
+        <div className="relative" style={{ height: `${GRID_HEIGHT}px` }}>
 
-          {/* Current-time indicator (today only) */}
-          {isToday && (
+          {/* Current-time indicator (today only, visible only within 8 am–6 pm window) */}
+          {isToday && nowMins >= GRID_START_MINS && nowMins < GRID_START_MINS + GRID_WINDOW_MINS && (
             <div
               className="pointer-events-none absolute z-20 border-t-2 border-red-500"
-              style={{ top: `${nowMins * GRID_PX_PER_MINUTE}px`, left: "3.5rem", right: 0 }}
+              style={{ top: `${(nowMins - GRID_START_MINS) * GRID_PX_PER_MINUTE}px`, left: "3.5rem", right: 0 }}
             />
           )}
 
