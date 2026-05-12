@@ -39,8 +39,9 @@ model Entry {
   body         String
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
-  version      Int           @default(1)
-  author       User?         @relation(fields: [authorId], references: [id])
+  version              Int           @default(1)
+  allowNonSequential   Boolean       @default(false)
+  author               User?         @relation(fields: [authorId], references: [id])
   authorId     String?
   attachments   Attachment[]
   protocolRuns  ProtocolRun[]  @relation("RunSource")
