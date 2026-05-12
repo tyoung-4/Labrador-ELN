@@ -1,6 +1,6 @@
 "use client";
 
-import { MouseEvent, useEffect, useState } from "react";
+import { MouseEvent, useEffect, useMemo, useState } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -90,6 +90,9 @@ export const RESOURCE_GROUPS: ResourceGroup[] = [
 export const ALL_RESOURCES: (ResourceMeta & { group: ResourceGroup })[] =
   RESOURCE_GROUPS.flatMap(g => g.resources.map(r => ({ ...r, group: g })));
 
+/** Group IDs shown on the dashboard (TC Rooms + FPLC/HPLC only) */
+export const DASHBOARD_GROUP_IDS = ["tc", "fplc"] as const;
+
 /** Full 24-hour day, 12:00 am–11:00 pm */
 export const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
@@ -160,23 +163,43 @@ export function nextDayStr(dateStr: string): string {
 
 // ─── DailyView ────────────────────────────────────────────────────────────────
 
-const CONTAINER_HEIGHT   = 480;                                               // px — fixed dashboard column height; do not change
-const GRID_START_MINS    = 8  * 60;                                           // 480 min = 8:00 am — top of visible window
-const GRID_WINDOW_MINS   = 10 * 60;                                           // 600 min = 8:00 am – 6:00 pm target window
-const GRID_PX_PER_MINUTE = CONTAINER_HEIGHT / GRID_WINDOW_MINS;              // derived: 480 / 600 = 0.8 px/min
-const GRID_HEIGHT        = Math.round(GRID_WINDOW_MINS * GRID_PX_PER_MINUTE); // = CONTAINER_HEIGHT (480 px); inner grid fills container exactly
+const CONTAINER_HEIGHT   = 480;                                          // px — fixed dashboard column height; do not change
+const GRID_START_MINS    = 8  * 60;                                      // 480 min = 8:00 am — top of visible window
+const GRID_WINDOW_MINS   = 10 * 60;                                      // 600 min = 8:00 am – 6:00 pm target window
+const GRID_PX_PER_MINUTE = CONTAINER_HEIGHT / GRID_WINDOW_MINS;         // derived: 480 / 600 = 0.8 px/min
 
 // 2-hour interval labels for the visible window: 8 am, 10 am, 12 pm, 2 pm, 4 pm, 6 pm
 // topPx is relative to GRID_START_MINS so positions map directly onto the compressed grid
 const TIME_LABELS: ReadonlyArray<{ label: string; topPx: number }> =
-  [480, 600, 720, 840, 960, 1080].map(mins => {
-    const h24 = Math.floor(mins / 60);
-    const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+  Array.from({ length: GRID_WINDOW_MINS / 120 + 1 }, (_, i) => {
+    const mins = GRID_START_MINS + i * 120;
+    const h24  = Math.floor(mins / 60);
+    const h12  = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
     return {
       label: `${h12}:00 ${h24 < 12 ? "am" : "pm"}`,
       topPx: (mins - GRID_START_MINS) * GRID_PX_PER_MINUTE,
     };
   });
+
+// ── DailyView pure helpers (module-level; no closures) ────────────────────────
+
+function tmins(t: string): number {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + (m || 0);
+}
+
+function bookingTop(startTime: string): number {
+  return (tmins(startTime) - GRID_START_MINS) * GRID_PX_PER_MINUTE;
+}
+
+function bookingHeight(startTime: string, endTime: string): number {
+  let s = tmins(startTime);
+  let e = tmins(endTime);
+  if (e <= s) e += 1440; // overnight
+  return Math.max((e - s) * GRID_PX_PER_MINUTE, 24);
+}
+
+// ─── DailyView ────────────────────────────────────────────────────────────────
 
 export function DailyView({
   date,
@@ -206,10 +229,21 @@ export function DailyView({
   useEffect(() => {
     const id = setInterval(() => {
       const n = new Date();
-      setNowMins(n.getHours() * 60 + n.getMinutes());
+      const next = n.getHours() * 60 + n.getMinutes();
+      setNowMins(prev => next === prev ? prev : next);
     }, 60_000);
     return () => clearInterval(id);
   }, []);
+
+  const eventsByResourceDate = useMemo(() => {
+    const m = new Map<string, ScheduleEvent[]>();
+    for (const ev of events) {
+      const key = `${ev.resourceId}|${ev.date}`;
+      const arr = m.get(key);
+      if (arr) arr.push(ev); else m.set(key, [ev]);
+    }
+    return m;
+  }, [events]);
 
   if (enabledResources.length === 0) {
     return (
@@ -223,22 +257,6 @@ export function DailyView({
   const isToday  = date === localDateStr();
 
   // ── Helpers ────────────────────────────────────────────────────────────────
-  function tmins(t: string): number {
-    const [h, m] = t.split(":").map(Number);
-    return h * 60 + (m || 0);
-  }
-
-  function bookingTop(startTime: string): number {
-    return (tmins(startTime) - GRID_START_MINS) * GRID_PX_PER_MINUTE;
-  }
-
-  function bookingHeight(startTime: string, endTime: string): number {
-    let s = tmins(startTime);
-    let e = tmins(endTime);
-    if (e <= s) e += 1440; // overnight
-    return Math.max((e - s) * GRID_PX_PER_MINUTE, 24);
-  }
-
   function isActive(ev: ScheduleEvent): boolean {
     if (!isToday || !ev.startTime || !ev.endTime) return false;
     const s = tmins(ev.startTime);
@@ -284,8 +302,8 @@ export function DailyView({
         className="overflow-hidden"
         style={{ height: `${CONTAINER_HEIGHT}px`, flexShrink: 0 }}
       >
-        {/* ── Compressed grid: 8 am–6 pm (GRID_HEIGHT = CONTAINER_HEIGHT = 480 px) ── */}
-        <div className="relative" style={{ height: `${GRID_HEIGHT}px` }}>
+        {/* ── Compressed grid: 8 am–6 pm (CONTAINER_HEIGHT = 480 px) ── */}
+        <div className="relative" style={{ height: `${CONTAINER_HEIGHT}px` }}>
 
           {/* Current-time indicator (today only, visible only within 8 am–6 pm window) */}
           {isToday && nowMins >= GRID_START_MINS && nowMins < GRID_START_MINS + GRID_WINDOW_MINS && (
@@ -321,7 +339,7 @@ export function DailyView({
             }}
           >
             {enabledResources.map(r => {
-              const colEvts = events.filter(e => e.resourceId === r.id && e.date === date);
+              const colEvts = eventsByResourceDate.get(`${r.id}|${date}`) ?? [];
 
               return (
                 <div
@@ -329,7 +347,7 @@ export function DailyView({
                   onClick={e => handleColClick(e, r.id)}
                   className="relative h-full cursor-pointer border-r border-zinc-800 transition hover:bg-zinc-800/20"
                 >
-                  {/* 30-min grid lines */}
+                  {/* 2-hour grid lines */}
                   {TIME_LABELS.map(({ topPx }, i) => (
                     <div
                       key={topPx}
@@ -357,9 +375,7 @@ export function DailyView({
                       >
                         <div className="truncate font-medium">{ev.title}</div>
                         <div className="truncate opacity-70">{ev.userName}</div>
-                        {ev.startTime && ev.endTime && (
-                          <div className="opacity-60">{fmt12h(ev.startTime)}–{fmt12h(ev.endTime)}</div>
-                        )}
+                        <div className="opacity-60">{fmt12h(ev.startTime)}–{fmt12h(ev.endTime)}</div>
                         {active && owner && onEndEarly && (
                           <button
                             onClick={e => { e.stopPropagation(); onEndEarly(ev); }}

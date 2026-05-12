@@ -7,6 +7,7 @@ import {
   RESOURCE_GROUPS,
   ALL_RESOURCES,
   ENABLED_KEY,
+  DASHBOARD_GROUP_IDS,
   localDateStr,
   DailyView,
   BookingModal,
@@ -52,8 +53,6 @@ const EquipmentCalendar = forwardRef<EquipmentCalendarHandle, {
     if (onDateChange) onDateChange(d);
     else setInternalDate(d);
   };
-  const [eqScrollTrigger, setEqScrollTrigger] = useState(0);
-
   // ── API-backed events ─────────────────────────────────────────────────────
   const { events, refresh, saveBooking: saveBookingFn, deleteBooking: deleteBookingFn, endEarlyBooking } = useEquipmentBookings();
 
@@ -138,7 +137,7 @@ const EquipmentCalendar = forwardRef<EquipmentCalendarHandle, {
     if (singleGroup) {
       const gStored = localStorage.getItem(DASHBOARD_GROUP_KEY);
       // Only restore tc/fplc — spr and other tabs are not shown in the dashboard
-      if (gStored && ["tc", "fplc"].includes(gStored)) setActiveGroupId(gStored);
+      if (gStored && (DASHBOARD_GROUP_IDS as readonly string[]).includes(gStored)) setActiveGroupId(gStored);
     }
 
     function onStorage(e: StorageEvent) {
@@ -276,7 +275,6 @@ const EquipmentCalendar = forwardRef<EquipmentCalendarHandle, {
 
   function navToday() {
     setDailyDate(localDateStr());
-    setEqScrollTrigger(t => t + 1); // force scroll even if already on today
   }
 
   // Expose openNew() to DashboardPanel's unified +Book button
@@ -440,7 +438,7 @@ const EquipmentCalendar = forwardRef<EquipmentCalendarHandle, {
       {singleGroup && activeGroup ? (
         <div className="mb-2 border-b border-zinc-800 pb-2">
           <div className="mb-1.5 flex gap-1">
-            {RESOURCE_GROUPS.filter(g => g.id === "tc" || g.id === "fplc").map(g => (
+            {RESOURCE_GROUPS.filter(g => (DASHBOARD_GROUP_IDS as readonly string[]).includes(g.id)).map(g => (
               <button
                 key={g.id}
                 onClick={() => {
@@ -518,7 +516,7 @@ const EquipmentCalendar = forwardRef<EquipmentCalendarHandle, {
           onEventClick={openEdit}
           onEndEarly={handleEndEarly}
           currentUserId={userId}
-          scrollTrigger={controlledScrollTrigger ?? eqScrollTrigger}
+          scrollTrigger={controlledScrollTrigger}
         />
       </div>
 
