@@ -10,6 +10,7 @@ import TagInput from "@/components/tags/TagInput";
 import ProtocolsRunsSubNav from "@/components/ProtocolsRunsSubNav";
 import SidebarWidgets from "@/components/runs/SidebarWidgets";
 import RecipeChip, { type RecipeSummary } from "@/components/recipes/RecipeChip";
+import StepFileAttachment from "@/components/runs/StepFileAttachment";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -574,6 +575,9 @@ function RunProtocolScrollView({
   onEditClose,
   onEditSave,
   onUnlock,
+  runId,
+  userId,
+  authHeaders,
 }: {
   steps: ParsedStep[];
   resultMap: Record<string, StepResult>;
@@ -591,6 +595,9 @@ function RunProtocolScrollView({
   onEditClose: () => void;
   onEditSave: (step: ParsedStep, kind: ResultKind, note: string) => Promise<void>;
   onUnlock: (step: ParsedStep) => Promise<void>;
+  runId: string;
+  userId: string;
+  authHeaders: Record<string, string>;
 }) {
   const stepRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -700,6 +707,12 @@ function RunProtocolScrollView({
                   expandedNotes={expandedNotes}
                   setExpandedNotes={setExpandedNotes}
                   recipesById={recipesById}
+                />
+                <StepFileAttachment
+                  runId={runId}
+                  stepId={step.id}
+                  userId={userId}
+                  authHeaders={authHeaders}
                 />
               </div>
             ))}
@@ -1211,6 +1224,9 @@ export default function ActiveRunPage() {
             onEditClose={() => setEditingStepId(null)}
             onEditSave={handleEditSave}
             onUnlock={handleUnlock}
+            runId={runId}
+            userId={currentUser.id}
+            authHeaders={authHeaders}
           />
         </div>
 

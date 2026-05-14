@@ -2,11 +2,13 @@ import Link from "next/link";
 import AppTopNav from "@/components/AppTopNav";
 import EquipmentCalendar from "@/components/EquipmentCalendar";
 import DashboardPanel from "@/components/DashboardPanel";
+import OutstandingRunsWidget from "@/components/runs/OutstandingRunsWidget";
 
 export default function Home() {
   return (
     <div className="flex min-h-screen flex-col gap-4 bg-zinc-950 p-6 text-zinc-100">
       <AppTopNav />
+      <OutstandingRunsWidget />
 
       {/* Dashboard — full width, above module grid */}
       <DashboardPanel equipmentCalendar={<EquipmentCalendar singleGroup />} />
