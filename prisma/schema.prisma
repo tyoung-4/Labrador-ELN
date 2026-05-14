@@ -17,6 +17,7 @@ model User {
   protocolRuns       ProtocolRun[]
   projectMemberships ProjectMember[]
   recipes            Recipe[]
+  uploadedFiles      RunStepFile[]
 }
 
 enum EntryType {
@@ -125,6 +126,7 @@ model ProtocolRun {
   runnerId       String?
   linkedEntries  Entry[]   @relation("RunLink")
   stepResults    StepResult[]
+  stepFiles      RunStepFile[]
 }
 
 model StepResult {
@@ -643,4 +645,21 @@ model ProtocolInventoryLink {
   createdAt  DateTime @default(now())
 
   @@index([entryId])
+}
+
+model RunStepFile {
+  id          String      @id @default(cuid())
+  runId       String
+  stepId      String      // "step-0", "step-1" etc — matches StepResult stepId convention
+  fileName    String      // original filename shown to user
+  fileKey     String      // R2 object key (path in bucket)
+  fileSize    Int         // bytes
+  mimeType    String
+  uploadedBy  String      // userId
+  createdAt   DateTime    @default(now())
+  run         ProtocolRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  uploader    User        @relation(fields: [uploadedBy], references: [id])
+
+  @@index([runId])
+  @@index([runId, stepId])
 }
