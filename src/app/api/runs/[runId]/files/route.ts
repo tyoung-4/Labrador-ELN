@@ -61,6 +61,32 @@ export async function POST(
   return NextResponse.json(file, { status: 201 });
 }
 
+// ── PATCH — update notes on a file record ────────────────────────────────────
+
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ runId: string }> },
+) {
+  const { runId } = await params;
+  const body = await req.json().catch(() => ({}));
+  const { fileId, notes } = body as { fileId?: string; notes?: string };
+
+  if (!fileId || notes === undefined) {
+    return NextResponse.json({ error: "fileId and notes are required" }, { status: 400 });
+  }
+
+  const file = await prisma.runStepFile.findUnique({ where: { id: fileId } });
+  if (!file || file.runId !== runId) {
+    return new NextResponse(null, { status: 404 });
+  }
+
+  const updated = await prisma.runStepFile.update({
+    where: { id: fileId },
+    data: { notes },
+  });
+  return NextResponse.json(updated);
+}
+
 // ── DELETE — remove file from R2 and DB ──────────────────────────────────────
 
 export async function DELETE(
