@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import ProteinStockForm from "./ProteinStockForm";
 import ProteinBatchForm from "./ProteinBatchForm";
 import AddBatchModal from "./AddBatchModal";
@@ -32,7 +33,7 @@ interface ProteinBatch {
 interface ProteinStock {
   id: string;
   name: string;
-  plasmid?: { name: string } | null;
+  plasmid?: { id: string; name: string } | null;
   concentration: number | null;
   concUnit: string | null;
   volume: number | null;
@@ -414,7 +415,12 @@ function ProteinStockCard({
       {expanded && (
         <div className="mt-2 space-y-2 text-xs text-white/50">
           {item.owner && <p>Owner: {item.owner}</p>}
-          <p>Plasmid: {item.plasmid?.name ?? "—"}</p>
+          <p>
+            Plasmid:{" "}
+            {item.plasmid
+              ? <Link href={`/inventory?tab=plasmids`} className="text-teal-400/80 hover:text-teal-300 underline underline-offset-2">{item.plasmid.name}</Link>
+              : "—"}
+          </p>
           {item.notes && <p className="whitespace-pre-wrap">{item.notes}</p>}
           {item.tags.length > 0 && (
             <div className="flex flex-wrap gap-1">

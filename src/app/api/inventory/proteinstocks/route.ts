@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
       orderBy: { name: "asc" },
       include: {
         _count: { select: { researchNotes: true, usageEvents: true } },
-        plasmid: { select: { name: true } },
+        plasmid: { select: { id: true, name: true } },
       },
     });
 
