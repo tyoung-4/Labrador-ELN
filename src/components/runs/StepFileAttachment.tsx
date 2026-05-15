@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import FileAnnotationModal from "./FileAnnotationModal";
 
 type StepFile = {
   id: string;
@@ -45,18 +46,30 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024;
 type FileCardProps = {
   file: StepFile;
   runId: string;
+  userId: string;
   authHeaders: Record<string, string>;
   onDelete: (file: StepFile) => void;
   onNotesSaved: (fileId: string, notes: string) => void;
 };
 
-function FileCard({ file, runId, authHeaders, onDelete, onNotesSaved }: FileCardProps) {
+function FileCard({ file, runId, userId, authHeaders, onDelete, onNotesSaved }: FileCardProps) {
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [thumbLoading, setThumbLoading] = useState(file.mimeType.startsWith("image/"));
   const [notesDraft, setNotesDraft] = useState(file.notes ?? "");
   const [savedFlash, setSavedFlash] = useState(false);
   const [notesFocused, setNotesFocused] = useState(false);
+  const [hasAnnotation, setHasAnnotation] = useState(false);
+  const [annotateOpen, setAnnotateOpen] = useState(false);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Check if annotation exists on mount
+  useEffect(() => {
+    fetch(`/api/files/${file.id}/annotation`, { headers: authHeaders })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => setHasAnnotation(!!d))
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const isImage = file.mimeType.startsWith("image/");
 
@@ -154,6 +167,16 @@ function FileCard({ file, runId, authHeaders, onDelete, onNotesSaved }: FileCard
               ↓
             </button>
             <button
+              onClick={() => setAnnotateOpen(true)}
+              title="Annotate"
+              className="relative shrink-0 text-xs text-zinc-500 transition hover:text-indigo-300"
+            >
+              🔬
+              {hasAnnotation && (
+                <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              )}
+            </button>
+            <button
               onClick={() => onDelete(file)}
               title="Delete file"
               className="shrink-0 text-xs text-zinc-600 transition hover:text-red-400"
@@ -193,6 +216,15 @@ function FileCard({ file, runId, authHeaders, onDelete, onNotesSaved }: FileCard
           </div>
         </div>
       </div>
+      {annotateOpen && (
+        <FileAnnotationModal
+          file={{ id: file.id, fileName: file.fileName, mimeType: file.mimeType, runId }}
+          authHeaders={authHeaders}
+          currentUserId={userId}
+          onClose={() => setAnnotateOpen(false)}
+          onAnnotationChange={setHasAnnotation}
+        />
+      )}
     </li>
   );
 }
@@ -340,6 +372,7 @@ export default function StepFileAttachment({ runId, stepId, userId, authHeaders 
                   key={f.id}
                   file={f}
                   runId={runId}
+                  userId={userId}
                   authHeaders={authHeaders}
                   onDelete={handleDelete}
                   onNotesSaved={handleNotesSaved}

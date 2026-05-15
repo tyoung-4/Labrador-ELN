@@ -100,6 +100,30 @@ async function main() {
   }
 
   console.log(`\nDone: ${seeded} seeded, ${skipped} skipped.`);
+
+  // ── Ladder library ─────────────────────────────────────────────────────────
+  const LADDERS = [
+    { name: "PageRuler Prestained",              manufacturer: "Thermo Fisher", bands: [10,15,25,35,55,70,100,130,180] },
+    { name: "PageRuler Plus Prestained",          manufacturer: "Thermo Fisher", bands: [3.5,5,10,15,25,35,55,70,100,130,180,245] },
+    { name: "Precision Plus Protein Unstained",   manufacturer: "Bio-Rad",       bands: [10,15,20,25,37,50,75,100,150,250] },
+    { name: "Precision Plus Protein Dual Color",  manufacturer: "Bio-Rad",       bands: [10,15,20,25,37,50,75,100,150,250] },
+    { name: "HiMark Pre-stained",                 manufacturer: "Thermo Fisher", bands: [30,40,50,60,80,110,160,260,460] },
+    { name: "NativeMark Unstained",               manufacturer: "Thermo Fisher", bands: [20,66,146,242,480,720,1200] },
+    { name: "1 kb Plus DNA Ladder",               manufacturer: "Thermo Fisher", bands: [0.1,0.2,0.3,0.4,0.5,0.65,0.85,1,1.2,1.5,2,3,4,5,6,8,10,12] },
+    { name: "100 bp DNA Ladder",                  manufacturer: "NEB",           bands: [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,1.2,1.5,2,3] },
+  ];
+
+  let ladderSeeded = 0, ladderSkipped = 0;
+  for (const ladder of LADDERS) {
+    const exists = await prisma.ladderDefinition.findFirst({ where: { name: ladder.name } });
+    if (exists) { console.log(`  skip  ladder "${ladder.name}"`); ladderSkipped++; continue; }
+    await prisma.ladderDefinition.create({
+      data: { name: ladder.name, manufacturer: ladder.manufacturer, bands: JSON.stringify(ladder.bands) },
+    });
+    console.log(`  seeded ladder "${ladder.name}"`);
+    ladderSeeded++;
+  }
+  console.log(`\nLadders: ${ladderSeeded} seeded, ${ladderSkipped} skipped.`);
 }
 
 main()
