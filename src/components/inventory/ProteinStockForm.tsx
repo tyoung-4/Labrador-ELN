@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import TagInput from "@/components/tags/TagInput";
 
 type ProteinStockFormProps = {
@@ -20,6 +20,15 @@ export default function ProteinStockForm({
 }: ProteinStockFormProps) {
   const [name, setName] = useState(existing?.name ?? "");
   const [plasmidId, setPlasmidId] = useState(existing?.plasmidId ?? "");
+  const [plasmids,  setPlasmids]  = useState<Array<{ id: string; name: string }>>(availablePlasmids);
+
+  useEffect(() => {
+    if (availablePlasmids.length > 0) return;
+    fetch("/api/inventory/plasmids")
+      .then((r) => r.json())
+      .then((data) => { if (Array.isArray(data)) setPlasmids(data); })
+      .catch(() => {});
+  }, [availablePlasmids.length]);
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [useParentThreshold, setUseParentThreshold] = useState(existing?.useParentThreshold ?? true);
   const [submitting, setSubmitting] = useState(false);
@@ -40,6 +49,7 @@ export default function ProteinStockForm({
         },
         body: JSON.stringify({
           name: name.trim(),
+          plasmidId: plasmidId || null,
           ...(existing ? {} : { owner: currentUser }),
           useParentThreshold,
           notes: notes.trim() || null,
@@ -82,7 +92,7 @@ export default function ProteinStockForm({
           className="w-full rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 focus:outline-none focus:border-white/30"
         >
           <option value="">None</option>
-          {availablePlasmids.map((p) => (
+          {plasmids.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
             </option>

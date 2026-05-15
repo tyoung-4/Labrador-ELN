@@ -201,12 +201,12 @@ function ProteinBatchCard({
         </div>
       </div>
 
-      {/* Batch details */}
+      {/* Batch details — date · volume · concentration · mg remaining */}
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-white/40 text-xs">
         <span>{new Date(batch.purificationDate).toLocaleDateString()}</span>
         <span>{batch.currentVolume.toLocaleString()} {unit} remaining</span>
-        {batch.concentration !== null && <span>{batch.concentration} mg/mL</span>}
-        <span className="text-white/30">{mgRemaining}</span>
+        <span>{batch.concentration != null ? `${batch.concentration} mg/mL` : "— mg/mL"}</span>
+        <span>{mgRemaining}</span>
         {batch.a280 !== null && <span>A280/260: {batch.a280}</span>}
         {batch.storageBuffer && <span className="truncate max-w-xs">{batch.storageBuffer}</span>}
         {batch.storageLocationText && <span>&#x1F4CD; {batch.storageLocationText}</span>}

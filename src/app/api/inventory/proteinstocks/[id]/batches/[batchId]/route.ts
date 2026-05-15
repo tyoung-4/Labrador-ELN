@@ -14,20 +14,21 @@ export async function PATCH(
 
     // batchId, purificationDate, initialVolume are immutable after creation.
     // currentVolume may be decremented by "− Use" operations.
+    // Only update fields that are explicitly present in the request body.
     const updated = await prisma.proteinBatch.update({
       where: { id: params.batchId },
       data: {
-        ...(body.currentVolume != null ? { currentVolume: Number(body.currentVolume) } : {}),
-        concentration: body.concentration != null ? Number(body.concentration) : null,
-        mw: body.mw != null ? Number(body.mw) : null,
-        extinctionCoeff: body.extinctionCoeff != null ? Number(body.extinctionCoeff) : null,
-        a280: body.a280 != null ? Number(body.a280) : null,
-        storageBuffer: body.storageBuffer?.trim() || null,
-        storageLocationText: body.storageLocationText?.trim() || null,
-        lowThresholdType: body.lowThresholdType || null,
-        lowThresholdAmber: body.lowThresholdAmber != null ? Number(body.lowThresholdAmber) : null,
-        lowThresholdRed: body.lowThresholdRed != null ? Number(body.lowThresholdRed) : null,
-        notes: body.notes?.trim() || null,
+        ...("currentVolume"      in body ? { currentVolume:      Number(body.currentVolume) }                             : {}),
+        ...("concentration"      in body ? { concentration:      body.concentration != null ? Number(body.concentration) : null } : {}),
+        ...("mw"                 in body ? { mw:                 body.mw != null ? Number(body.mw) : null }               : {}),
+        ...("extinctionCoeff"    in body ? { extinctionCoeff:    body.extinctionCoeff != null ? Number(body.extinctionCoeff) : null } : {}),
+        ...("a280"               in body ? { a280:               body.a280 != null ? Number(body.a280) : null }           : {}),
+        ...("storageBuffer"      in body ? { storageBuffer:      body.storageBuffer?.trim() || null }                     : {}),
+        ...("storageLocationText" in body ? { storageLocationText: body.storageLocationText?.trim() || null }             : {}),
+        ...("lowThresholdType"   in body ? { lowThresholdType:   body.lowThresholdType || null }                          : {}),
+        ...("lowThresholdAmber"  in body ? { lowThresholdAmber:  body.lowThresholdAmber != null ? Number(body.lowThresholdAmber) : null } : {}),
+        ...("lowThresholdRed"    in body ? { lowThresholdRed:    body.lowThresholdRed != null ? Number(body.lowThresholdRed) : null }    : {}),
+        ...("notes"              in body ? { notes:              body.notes?.trim() || null }                             : {}),
       },
     });
 
