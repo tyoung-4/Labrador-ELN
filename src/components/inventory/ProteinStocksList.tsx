@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import ProteinStockForm from "./ProteinStockForm";
 import ProteinBatchForm from "./ProteinBatchForm";
 import AddBatchModal from "./AddBatchModal";
@@ -15,6 +16,7 @@ interface ProteinBatch {
   initialVolume: number;
   currentVolume: number;
   concentration: number | null;
+  volumeUnit: string | null;
   mw: number | null;
   extinctionCoeff: number | null;
   a280: number | null;
@@ -30,6 +32,7 @@ interface ProteinBatch {
 interface ProteinStock {
   id: string;
   name: string;
+  plasmid?: { name: string } | null;
   concentration: number | null;
   concUnit: string | null;
   volume: number | null;
@@ -50,6 +53,232 @@ interface StockUIState {
   editingBatch: ProteinBatch | null;
   batches: ProteinBatch[];
   batchesLoaded: boolean;
+}
+
+// ── Protein Batch Card sub-component ──────────────────────────────────────────
+
+function ProteinBatchCard({
+  batch,
+  stockId,
+  currentUser,
+  isOwner,
+  onUpdated,
+  onDeleted,
+  onEdit,
+}: {
+  batch: ProteinBatch;
+  stockId: string;
+  currentUser: string;
+  isOwner: boolean;
+  onUpdated: (updated: ProteinBatch) => void;
+  onDeleted: () => void;
+  onEdit: () => void;
+}) {
+  const unit = batch.volumeUnit ?? "µL";
+  const [showUse,       setShowUse]       = useState(false);
+  const [usePopoverPos, setUsePopoverPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 });
+  const [useAmount,     setUseAmount]     = useState("");
+  const [useError,      setUseError]      = useState("");
+  const [submitting,    setSubmitting]    = useState(false);
+  const [depleted,      setDepleted]      = useState(false);
+  const [archiving,     setArchiving]     = useState(false);
+  const useBtnRef = useRef<HTMLButtonElement>(null);
+
+  const isDepleted = batch.currentVolume <= 0;
+
+  // Computed mg remaining
+  let mgRemaining: string;
+  if (batch.currentVolume != null && batch.concentration != null) {
+    const mg = unit === "mL"
+      ? batch.currentVolume * batch.concentration
+      : (batch.currentVolume * batch.concentration) / 1000;
+    mgRemaining = mg.toFixed(2) + " mg remaining";
+  } else {
+    mgRemaining = "— mg remaining";
+  }
+
+  useEffect(() => {
+    if (!showUse) return;
+    const close = () => { setShowUse(false); setUseAmount(""); setUseError(""); };
+    const id = setTimeout(() => document.addEventListener("mousedown", close), 0);
+    return () => { clearTimeout(id); document.removeEventListener("mousedown", close); };
+  }, [showUse]);
+
+  const useAmountNum = parseFloat(useAmount);
+  const canLogUse = !isNaN(useAmountNum) && useAmountNum > 0 && useAmountNum <= batch.currentVolume;
+
+  const handleUseAmountChange = (val: string) => {
+    setUseAmount(val);
+    const n = parseFloat(val);
+    if (!isNaN(n) && n > batch.currentVolume) {
+      setUseError(`Cannot exceed remaining volume (${batch.currentVolume} ${unit})`);
+    } else {
+      setUseError("");
+    }
+  };
+
+  const handleLogUse = async () => {
+    if (!canLogUse) return;
+    setSubmitting(true);
+    setUseError("");
+    try {
+      const newVolume = Math.max(0, batch.currentVolume - useAmountNum);
+      const res = await fetch(
+        `/api/inventory/proteinstocks/${stockId}/batches/${batch.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", "x-user-name": currentUser },
+          body: JSON.stringify({ currentVolume: newVolume }),
+        }
+      );
+      if (res.ok) {
+        const updated = await res.json();
+        onUpdated(updated);
+        setShowUse(false);
+        setUseAmount("");
+        if (newVolume === 0) setDepleted(true);
+      } else {
+        setUseError("Failed to update volume");
+      }
+    } catch {
+      setUseError("Network error — please try again");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleArchiveBatch = async () => {
+    setArchiving(true);
+    try {
+      await fetch("/api/inventory/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-user-name": currentUser },
+        body: JSON.stringify({ entityType: "protein_batch", entityId: batch.id }),
+      });
+      onDeleted();
+    } catch {
+      setArchiving(false);
+    }
+  };
+
+  return (
+    <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 space-y-1">
+      {/* Header row */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-white/80 font-mono text-xs">{batch.batchId}</span>
+        <div className="flex items-center gap-1">
+          {/* − Use button */}
+          <button
+            ref={useBtnRef}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!showUse && useBtnRef.current) {
+                const rect = useBtnRef.current.getBoundingClientRect();
+                setUsePopoverPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+              }
+              setShowUse((v) => !v);
+              setUseError("");
+              setUseAmount("");
+            }}
+            disabled={isDepleted}
+            title={isDepleted ? "No volume remaining" : undefined}
+            className={`rounded border text-xs px-2 py-0.5 transition-colors ${
+              isDepleted
+                ? "border-white/5 bg-white/3 text-white/20 cursor-not-allowed"
+                : "border-teal-500/30 bg-teal-500/10 hover:bg-teal-500/20 text-teal-400 hover:text-teal-300"
+            }`}
+          >
+            − Use
+          </button>
+          {isOwner && (
+            <button
+              onClick={() => onEdit()}
+              className="text-xs text-gray-400 hover:text-white border border-white/10 rounded px-2 py-0.5 transition-colors"
+            >
+              Edit
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Batch details */}
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-white/40 text-xs">
+        <span>{new Date(batch.purificationDate).toLocaleDateString()}</span>
+        <span>{batch.currentVolume.toLocaleString()} {unit} remaining</span>
+        {batch.concentration !== null && <span>{batch.concentration} mg/mL</span>}
+        <span className="text-white/30">{mgRemaining}</span>
+        {batch.a280 !== null && <span>A280/260: {batch.a280}</span>}
+        {batch.storageBuffer && <span className="truncate max-w-xs">{batch.storageBuffer}</span>}
+        {batch.storageLocationText && <span>&#x1F4CD; {batch.storageLocationText}</span>}
+      </div>
+
+      {batch.notes && (
+        <p className="text-white/30 text-xs whitespace-pre-wrap">{batch.notes}</p>
+      )}
+
+      {/* Volume depleted prompt */}
+      {depleted && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 space-y-2 mt-2">
+          <p className="text-amber-300 text-xs font-semibold">Volume depleted. Archive this batch?</p>
+          <div className="flex gap-2">
+            <button
+              onClick={handleArchiveBatch}
+              disabled={archiving}
+              className="bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-semibold px-3 py-1 rounded-lg transition-colors"
+            >
+              {archiving ? "Archiving…" : "Archive"}
+            </button>
+            <button
+              onClick={() => setDepleted(false)}
+              className="text-white/40 hover:text-white text-xs px-2 transition-colors"
+            >
+              Keep
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* − Use floating popover (portal) */}
+      {showUse && typeof document !== "undefined" && createPortal(
+        <div
+          style={{ position: "fixed", top: usePopoverPos.top, right: usePopoverPos.right, zIndex: 9999 }}
+          className="bg-gray-900 border border-white/10 rounded-lg shadow-xl p-3 space-y-2"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={0.1}
+              max={batch.currentVolume}
+              step={0.1}
+              value={useAmount}
+              onChange={(e) => handleUseAmountChange(e.target.value)}
+              autoFocus
+              className="w-20 rounded bg-white/10 border border-white/20 text-white text-sm px-2 py-1 focus:outline-none focus:border-teal-400/50"
+            />
+            <span className="text-white/40 text-xs">{unit}</span>
+          </div>
+          {useError && <p className="text-red-400 text-xs max-w-[180px]">{useError}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={handleLogUse}
+              disabled={submitting || !canLogUse}
+              className="bg-teal-600 hover:bg-teal-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+            >
+              {submitting ? "Logging…" : "Log Use"}
+            </button>
+            <button
+              onClick={() => { setShowUse(false); setUseAmount(""); setUseError(""); }}
+              className="text-white/40 hover:text-white text-xs px-2 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
 }
 
 // ── Per-stock card sub-component ──────────────────────────────────────────────
@@ -102,6 +331,14 @@ function ProteinStockCard({
     onReload();
   };
 
+  const updateBatch = (batchId: string, updated: ProteinBatch) => {
+    onUpdateUI({ batches: ui.batches.map((b) => (b.id === batchId ? updated : b)) });
+  };
+
+  const deleteBatch = (batchId: string) => {
+    onUpdateUI({ batches: ui.batches.filter((b) => b.id !== batchId) });
+  };
+
   return (
     <div className="px-4 py-3">
       {/* Stock summary row */}
@@ -119,14 +356,6 @@ function ProteinStockCard({
             <span className="text-orange-400/60">⚑ flagged</span>
           )}
         </div>
-
-        {/* + Add Batch — visible to all users */}
-        <button
-          onClick={(e) => { e.stopPropagation(); onUpdateUI({ showBatchForm: true }); }}
-          className="rounded border border-white/20 bg-white/5 hover:bg-white/15 px-2 py-0.5 text-white/60 hover:text-white text-xs transition-colors flex-shrink-0"
-        >
-          + Add Batch
-        </button>
 
         {/* Kebab */}
         <KebabMenu>
@@ -185,6 +414,7 @@ function ProteinStockCard({
       {expanded && (
         <div className="mt-2 space-y-2 text-xs text-white/50">
           {item.owner && <p>Owner: {item.owner}</p>}
+          <p>Plasmid: {item.plasmid?.name ?? "—"}</p>
           {item.notes && <p className="whitespace-pre-wrap">{item.notes}</p>}
           {item.tags.length > 0 && (
             <div className="flex flex-wrap gap-1">
@@ -199,30 +429,16 @@ function ProteinStockCard({
             <div className="mt-2 space-y-2">
               <p className="text-white/30 text-xs uppercase tracking-wide">Batches</p>
               {ui.batches.map((batch) => (
-                <div key={batch.id} className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 space-y-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-white/80 font-mono text-xs">{batch.batchId}</span>
-                    {isOwner && (
-                      <button
-                        onClick={() => onUpdateUI({ editingBatch: batch })}
-                        className="text-xs text-gray-400 hover:text-white border border-white/10 rounded px-2 py-0.5 transition-colors"
-                      >
-                        Edit Batch
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-white/40">
-                    <span>{new Date(batch.purificationDate).toLocaleDateString()}</span>
-                    <span>{batch.currentVolume.toLocaleString()} µL remaining</span>
-                    {batch.concentration !== null && <span>{batch.concentration} mg/mL</span>}
-                    {batch.a280 !== null && <span>A280/260: {batch.a280}</span>}
-                    {batch.storageBuffer && <span className="truncate max-w-xs">{batch.storageBuffer}</span>}
-                    {batch.storageLocationText && <span>&#x1F4CD; {batch.storageLocationText}</span>}
-                  </div>
-                  {batch.notes && (
-                    <p className="text-white/30 text-xs whitespace-pre-wrap">{batch.notes}</p>
-                  )}
-                </div>
+                <ProteinBatchCard
+                  key={batch.id}
+                  batch={batch}
+                  stockId={item.id}
+                  currentUser={currentUser}
+                  isOwner={isOwner}
+                  onUpdated={(updated) => updateBatch(batch.id, updated)}
+                  onDeleted={() => deleteBatch(batch.id)}
+                  onEdit={() => onUpdateUI({ editingBatch: batch })}
+                />
               ))}
             </div>
           )}
@@ -347,12 +563,17 @@ function ProteinGroupHeader({
         className="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-white/5"
         onClick={onToggleGroup}
       >
-        <span className="text-white font-semibold flex-1">
-          {primaryStock.name}
-          {anyMarked && (
-            <span className="ml-2 text-orange-400/70 text-xs font-normal">⚑ flagged</span>
+        <div className="flex-1 min-w-0">
+          <span className="text-white font-semibold">
+            {primaryStock.name}
+            {anyMarked && (
+              <span className="ml-2 text-orange-400/70 text-xs font-normal">⚑ flagged</span>
+            )}
+          </span>
+          {primaryStock.plasmid?.name && (
+            <span className="ml-2 text-white/30 text-xs font-normal">{primaryStock.plasmid.name}</span>
           )}
-        </span>
+        </div>
 
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-white/30 text-xs">

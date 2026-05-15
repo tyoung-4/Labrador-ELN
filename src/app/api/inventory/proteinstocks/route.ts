@@ -19,7 +19,10 @@ export async function GET(req: NextRequest) {
     const items = await prisma.proteinStock.findMany({
       where,
       orderBy: { name: "asc" },
-      include: { _count: { select: { researchNotes: true, usageEvents: true } } },
+      include: {
+        _count: { select: { researchNotes: true, usageEvents: true } },
+        plasmid: { select: { name: true } },
+      },
     });
 
     if (items.length === 0) return NextResponse.json([]);

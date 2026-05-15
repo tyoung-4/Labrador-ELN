@@ -39,6 +39,9 @@ export default function ProteinBatchForm({
   const [initialVolume, setInitialVolume] = useState(
     existing?.initialVolume != null ? String(existing.initialVolume) : ""
   );
+  const [volumeUnit, setVolumeUnit] = useState<"µL" | "mL">(
+    (existing?.volumeUnit as "µL" | "mL") ?? "µL"
+  );
   const [concentration, setConcentration] = useState(
     existing?.concentration != null ? String(existing.concentration) : ""
   );
@@ -66,6 +69,7 @@ export default function ProteinBatchForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [showWarning, setShowWarning] = useState(false);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   const thresholdError =
     lowThresholdType !== "none" &&
@@ -73,10 +77,16 @@ export default function ProteinBatchForm({
     lowThresholdRed &&
     parseFloat(lowThresholdRed) >= parseFloat(lowThresholdAmber);
 
-  const canSubmit =
-    !submitting &&
-    !thresholdError &&
-    (isEdit ? true : Boolean(purificationDate && initialVolume && Number(initialVolume) > 0));
+  const dateError = touched.purificationDate && !purificationDate ? "Date is required" : "";
+  const volumeError = touched.initialVolume && (!initialVolume || Number(initialVolume) <= 0)
+    ? "Initial volume is required" : "";
+  const concError = touched.concentration && !concentration ? "Concentration is required" : "";
+
+  const allRequiredValid = isEdit
+    ? Boolean(concentration)
+    : Boolean(purificationDate && initialVolume && Number(initialVolume) > 0 && concentration);
+
+  const canSubmit = !submitting && !thresholdError && allRequiredValid;
 
   const batchIdPreview = isEdit
     ? existing.batchId
@@ -115,6 +125,7 @@ export default function ProteinBatchForm({
           body: JSON.stringify({
             purificationDate,
             initialVolume: Number(initialVolume),
+            volumeUnit,
             concentration: concentration ? Number(concentration) : null,
             mw: mw ? Number(mw) : null,
             extinctionCoeff: extinctionCoeff ? Number(extinctionCoeff) : null,
@@ -143,6 +154,8 @@ export default function ProteinBatchForm({
   }
 
   function handleSaveClick() {
+    setTouched({ purificationDate: true, initialVolume: true, concentration: true });
+    if (!allRequiredValid) return;
     if (isEdit) {
       setShowWarning(true);
     } else {
@@ -189,7 +202,7 @@ export default function ProteinBatchForm({
       {/* Purification Date */}
       <div>
         <label className="text-xs text-gray-400 uppercase tracking-wide mb-1 block">
-          Purification Date <span className="text-red-400">*</span>
+          Date <span className="text-red-400">*</span>
         </label>
         {isEdit ? (
           <p className="text-white/60 text-sm px-3 py-2 bg-white/5 rounded border border-white/10">
@@ -201,9 +214,11 @@ export default function ProteinBatchForm({
             type="date"
             value={purificationDate}
             onChange={(e) => setPurificationDate(e.target.value)}
+            onBlur={() => setTouched((t) => ({ ...t, purificationDate: true }))}
             className="w-full rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 focus:outline-none focus:border-white/30"
           />
         )}
+        {dateError && <p className="text-red-400 text-xs mt-1">{dateError}</p>}
       </div>
 
       {/* Batch ID preview / display */}
@@ -216,25 +231,46 @@ export default function ProteinBatchForm({
         </p>
       </div>
 
-      {/* Initial Volume */}
+      {/* Initial Volume + unit selector */}
       <div>
         <label className="text-xs text-gray-400 uppercase tracking-wide mb-1 block">
-          Initial Volume (µL) <span className="text-red-400">*</span>
+          Initial Volume <span className="text-red-400">*</span>
         </label>
         {isEdit ? (
           <p className="text-white/60 text-sm px-3 py-2 bg-white/5 rounded border border-white/10">
-            {existing.initialVolume.toLocaleString()} µL
+            {existing.initialVolume.toLocaleString()} {existing.volumeUnit ?? "µL"}
             <span className="text-gray-600 text-xs ml-2">(immutable)</span>
           </p>
         ) : (
-          <input
-            type="number"
-            value={initialVolume}
-            onChange={(e) => setInitialVolume(e.target.value)}
-            min="1"
-            className="w-full rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 placeholder-gray-600 focus:outline-none focus:border-white/30"
-          />
+          <div className="flex gap-2 items-stretch">
+            <input
+              type="number"
+              value={initialVolume}
+              onChange={(e) => setInitialVolume(e.target.value)}
+              onBlur={() => setTouched((t) => ({ ...t, initialVolume: true }))}
+              min="0.001"
+              step="0.1"
+              className="flex-1 rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 placeholder-gray-600 focus:outline-none focus:border-white/30"
+            />
+            <div className="flex rounded border border-white/10 overflow-hidden text-xs">
+              {(["µL", "mL"] as const).map((u) => (
+                <button
+                  key={u}
+                  type="button"
+                  onClick={() => setVolumeUnit(u)}
+                  className={`px-3 py-2 transition-colors ${
+                    volumeUnit === u
+                      ? "bg-purple-500/30 text-purple-300 border-purple-500/50"
+                      : "bg-white/5 text-white/50 hover:bg-white/10"
+                  }`}
+                >
+                  {u}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
+        {volumeError && <p className="text-red-400 text-xs mt-1">{volumeError}</p>}
       </div>
 
       {/* Current Volume — always read-only */}
@@ -244,7 +280,7 @@ export default function ProteinBatchForm({
             Current Volume (managed via usage events)
           </label>
           <p className="text-white/60 text-sm px-3 py-2 bg-white/5 rounded border border-white/10">
-            {existing.currentVolume.toLocaleString()} µL
+            {existing.currentVolume.toLocaleString()} {existing.volumeUnit ?? "µL"}
           </p>
         </div>
       )}
@@ -252,16 +288,18 @@ export default function ProteinBatchForm({
       {/* Concentration */}
       <div>
         <label className="text-xs text-gray-400 uppercase tracking-wide mb-1 block">
-          Concentration (mg/mL)
+          Concentration (mg/mL) <span className="text-red-400">*</span>
         </label>
         <input
           type="number"
           value={concentration}
           onChange={(e) => setConcentration(e.target.value)}
+          onBlur={() => setTouched((t) => ({ ...t, concentration: true }))}
           min="0"
           step="0.01"
           className="w-full rounded bg-white/5 border border-white/10 text-white text-sm px-3 py-2 placeholder-gray-600 focus:outline-none focus:border-white/30"
         />
+        {concError && <p className="text-red-400 text-xs mt-1">{concError}</p>}
       </div>
 
       {/* MW & Extinction Coefficient */}
@@ -352,6 +390,7 @@ export default function ProteinBatchForm({
           {["none", "volume", "mass", "percentage"].map((t) => (
             <button
               key={t}
+              type="button"
               onClick={() => setLowThresholdType(t)}
               className={`text-sm rounded px-3 py-1.5 border transition-colors ${
                 lowThresholdType === t
@@ -419,7 +458,7 @@ export default function ProteinBatchForm({
         </button>
         <button
           onClick={handleSaveClick}
-          disabled={!canSubmit}
+          disabled={submitting}
           className={`text-sm rounded px-4 py-2 font-medium transition-colors ${
             !canSubmit
               ? "bg-purple-600/40 text-white/40 cursor-not-allowed"

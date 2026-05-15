@@ -77,6 +77,7 @@ export async function POST(req: NextRequest, ctx: Context) {
         a280: body.a280 != null ? Number(body.a280) : null,
         storageBuffer: body.storageBuffer?.trim() || null,
         storageLocationText: body.storageLocationText?.trim() || null,
+        volumeUnit: body.volumeUnit ?? "µL",
         lowThresholdType: body.lowThresholdType || null,
         lowThresholdAmber: body.lowThresholdAmber != null ? Number(body.lowThresholdAmber) : null,
         lowThresholdRed: body.lowThresholdRed != null ? Number(body.lowThresholdRed) : null,

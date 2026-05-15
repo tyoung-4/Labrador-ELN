@@ -12,11 +12,12 @@ export async function PATCH(
     const body = await req.json();
     const editedBy = req.headers.get("x-user-name") ?? "Unknown";
 
-    // Only allow editing mutable fields — batchId, purificationDate,
-    // initialVolume, currentVolume are immutable after creation
+    // batchId, purificationDate, initialVolume are immutable after creation.
+    // currentVolume may be decremented by "− Use" operations.
     const updated = await prisma.proteinBatch.update({
       where: { id: params.batchId },
       data: {
+        ...(body.currentVolume != null ? { currentVolume: Number(body.currentVolume) } : {}),
         concentration: body.concentration != null ? Number(body.concentration) : null,
         mw: body.mw != null ? Number(body.mw) : null,
         extinctionCoeff: body.extinctionCoeff != null ? Number(body.extinctionCoeff) : null,

@@ -44,6 +44,11 @@ model Entry {
   updatedAt            DateTime      @updatedAt
   version              Int           @default(1)
   allowNonSequential   Boolean       @default(false)
+  status               String        @default("PUBLISHED") // "DRAFT" | "PUBLISHED"
+  publishedAt          DateTime?
+  draftOfId            String?
+  draftOf              Entry?        @relation("DraftOf", fields: [draftOfId], references: [id])
+  drafts               Entry[]       @relation("DraftOf")
   author               User?         @relation(fields: [authorId], references: [id])
   authorId             String?
   attachments          Attachment[]
@@ -117,6 +122,7 @@ model ProtocolRun {
   linkedInventory  String    @default("[]")
   operatorName     String    @default("")
   completedAt      DateTime?
+  isMockRun        Boolean   @default(false)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
   sourceEntry    Entry     @relation("RunSource", fields: [sourceEntryId], references: [id])
@@ -378,6 +384,7 @@ model Plasmid {
   updatedAt          DateTime              @updatedAt
   researchNotes      PlasmidResearchNote[]
   preps              PlasmidPrep[]
+  proteinStocks      ProteinStock[]
 
   // Archive fields
   isArchived       Boolean   @default(false)
@@ -408,6 +415,8 @@ model PlasmidResearchNote {
 model ProteinStock {
   id                 String                   @id @default(cuid())
   name               String
+  plasmidId          String?
+  plasmid            Plasmid?                 @relation(fields: [plasmidId], references: [id], onDelete: SetNull)
   concentration      Float?
   concUnit           String?
   volume             Float?
@@ -457,23 +466,28 @@ model ProteinBatch {
   lowThresholdAmber   Float?
   lowThresholdRed     Float?
   notes               String?
+  volumeUnit          String?      @default("µL")
   createdBy           String?
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
+  usageEvents         ProteinUsageEvent[]
 
   @@index([stockId])
 }
 
 model ProteinUsageEvent {
-  id         String       @id @default(cuid())
+  id         String        @id @default(cuid())
   stockId    String
-  stock      ProteinStock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  stock      ProteinStock  @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  batchId    String?
+  batch      ProteinBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
   amountUsed Float
   usedBy     String
-  date       DateTime     @default(now())
+  date       DateTime      @default(now())
   notes      String?
 
   @@index([stockId])
+  @@index([batchId])
 }
 
 model ProteinStockResearchNote {
