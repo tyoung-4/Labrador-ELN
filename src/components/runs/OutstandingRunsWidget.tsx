@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { getCurrentUser } from "@/components/AppTopNav";
+import { getCurrentUser, USER_STORAGE_KEY } from "@/components/AppTopNav";
 
 type OutstandingRun = {
   id: string;
@@ -16,21 +16,35 @@ export default function OutstandingRunsWidget() {
   const [runs, setRuns] = useState<OutstandingRun[]>([]);
   const [loaded, setLoaded] = useState(false);
 
-  const authHeaders = useMemo((): Record<string, string> => {
-    if (typeof window === "undefined") return {};
+  const fetchRuns = useCallback(() => {
     const u = getCurrentUser();
-    return { "x-user-id": u.id, "x-user-role": u.role, "x-user-name": u.name };
-  }, []);
-
-  useEffect(() => {
-    fetch("/api/dashboard/outstanding", { headers: authHeaders })
-      .then((r) => r.ok ? r.json() : { runs: [] })
+    const headers: Record<string, string> = {
+      "x-user-id": u.id,
+      "x-user-role": u.role,
+      "x-user-name": u.name,
+    };
+    fetch("/api/dashboard/outstanding", { headers })
+      .then((r) => (r.ok ? r.json() : { runs: [] }))
       .then((data: { runs: OutstandingRun[] }) => {
         setRuns(data.runs ?? []);
         setLoaded(true);
       })
       .catch(() => setLoaded(true));
-  }, [authHeaders]);
+  }, []);
+
+  useEffect(() => {
+    fetchRuns();
+
+    // Re-fetch whenever the user switches (AppTopNav dispatches a synthetic storage event)
+    const handleUserChange = (e: StorageEvent) => {
+      if (e.key === USER_STORAGE_KEY) {
+        setLoaded(false);
+        fetchRuns();
+      }
+    };
+    window.addEventListener("storage", handleUserChange);
+    return () => window.removeEventListener("storage", handleUserChange);
+  }, [fetchRuns]);
 
   if (!loaded || runs.length === 0) return null;
 
