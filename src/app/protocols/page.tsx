@@ -868,8 +868,10 @@ const q = keyword.trim().toLowerCase();
           {groupedFamilies.map(({ representative: e, allVersions }) => {
             const semVer    = getSemVer(e);
             const vCount    = allVersions.length;
-            const fallback  = stripHtml(e.body ?? "");
-            const summary   = (e.description || fallback).slice(0, 100);
+            const rawDesc   = (e.description ?? "").trim();
+            const summary   = rawDesc && !rawDesc.startsWith("{") && !rawDesc.startsWith("[")
+              ? rawDesc.slice(0, 100)
+              : "";
             const author    = e.author?.name || "Unknown";
             const technique = e.technique || "General";
             const editable  = canEdit(e);
@@ -889,7 +891,7 @@ const q = keyword.trim().toLowerCase();
                       </span>
                     )}
                   </div>
-                  <p className="mt-1 text-xs text-zinc-300">{summary || "No description"}</p>
+                  {summary && <p className="mt-1 text-xs text-zinc-300">{summary}</p>}
                   <p className="mt-1 text-[11px] text-zinc-400">Author: {author}</p>
                   <p className="text-[11px] text-zinc-400">Technique: {technique}</p>
                   {(e.tagAssignments?.length ?? 0) > 0 && (
