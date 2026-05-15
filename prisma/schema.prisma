@@ -18,6 +18,7 @@ model User {
   projectMemberships ProjectMember[]
   recipes            Recipe[]
   uploadedFiles      RunStepFile[]
+  fileAnnotations    FileAnnotation[]
 }
 
 enum EntryType {
@@ -660,7 +661,57 @@ model RunStepFile {
   createdAt   DateTime    @default(now())
   run         ProtocolRun @relation(fields: [runId], references: [id], onDelete: Cascade)
   uploader    User        @relation(fields: [uploadedBy], references: [id])
+  annotation  FileAnnotation?
 
   @@index([runId])
   @@index([runId, stepId])
+}
+
+model LadderDefinition {
+  id           String    @id @default(cuid())
+  name         String
+  manufacturer String
+  bands        String    // JSON array of numbers e.g. "[10,15,25,35,55,70,100,130,180]"
+  createdAt    DateTime  @default(now())
+  lanes        GelLane[]
+}
+
+model FileAnnotation {
+  id            String             @id @default(cuid())
+  runStepFileId String             @unique
+  fileType      String             // "SDS_PAGE" | "WESTERN_BLOT" | "CHROMATOGRAM" | "OTHER"
+  notes         String             @default("")
+  createdById   String
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  runStepFile   RunStepFile        @relation(fields: [runStepFileId], references: [id], onDelete: Cascade)
+  createdBy     User               @relation(fields: [createdById], references: [id])
+  gelLanes      GelLane[]
+  peaks         ChromatogramPeak[]
+}
+
+model GelLane {
+  id            String            @id @default(cuid())
+  annotationId  String
+  laneNumber    Int
+  ladderId      String?
+  ladderName    String            @default("")
+  contents      String            @default("")
+  inventoryId   String            @default("")
+  inventoryType String            @default("")
+  inventoryName String            @default("")
+  annotation    FileAnnotation    @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+  ladder        LadderDefinition? @relation(fields: [ladderId], references: [id])
+}
+
+model ChromatogramPeak {
+  id              String         @id @default(cuid())
+  annotationId    String
+  peakNumber      Int
+  label           String         @default("")
+  retentionVolume Float?
+  inventoryId     String         @default("")
+  inventoryType   String         @default("")
+  inventoryName   String         @default("")
+  annotation      FileAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
 }
