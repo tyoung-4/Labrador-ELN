@@ -7,6 +7,7 @@ type StepFile = {
   fileName: string;
   fileSize: number;
   mimeType: string;
+  notes: string;
   createdAt: string;
 };
 
@@ -23,7 +24,180 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function fileIcon(mimeType: string): string {
+  if (mimeType.startsWith("image/")) return "📎";
+  if (mimeType === "application/pdf") return "📄";
+  if (
+    mimeType === "text/csv" ||
+    mimeType.includes("spreadsheet") ||
+    mimeType.includes("excel")
+  )
+    return "📊";
+  if (mimeType.startsWith("text/")) return "📝";
+  if (mimeType.startsWith("video/")) return "🎬";
+  return "📎";
+}
+
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
+
+// ── FileCard ─────────────────────────────────────────────────────────────────
+
+type FileCardProps = {
+  file: StepFile;
+  runId: string;
+  authHeaders: Record<string, string>;
+  onDelete: (file: StepFile) => void;
+  onNotesSaved: (fileId: string, notes: string) => void;
+};
+
+function FileCard({ file, runId, authHeaders, onDelete, onNotesSaved }: FileCardProps) {
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+  const [thumbLoading, setThumbLoading] = useState(file.mimeType.startsWith("image/"));
+  const [notesDraft, setNotesDraft] = useState(file.notes ?? "");
+  const [savedFlash, setSavedFlash] = useState(false);
+  const [notesFocused, setNotesFocused] = useState(false);
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const isImage = file.mimeType.startsWith("image/");
+
+  // Fetch presigned URL for image thumbnails on mount
+  useEffect(() => {
+    if (!isImage) return;
+    let cancelled = false;
+    fetch(`/api/runs/${runId}/files/${file.id}/url`, { headers: authHeaders })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data: { url: string }) => {
+        if (!cancelled) {
+          setThumbUrl(data.url);
+          setThumbLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setThumbLoading(false);
+      });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleDownload() {
+    try {
+      const res = await fetch(`/api/runs/${runId}/files/${file.id}/url`, { headers: authHeaders });
+      if (!res.ok) return;
+      const { url } = (await res.json()) as { url: string };
+      window.open(url, "_blank", "noopener");
+    } catch {
+      // silently ignore
+    }
+  }
+
+  function handleOpenThumb() {
+    if (thumbUrl) window.open(thumbUrl, "_blank", "noopener");
+    else handleDownload();
+  }
+
+  async function handleNoteBlur() {
+    if (notesDraft === (file.notes ?? "")) return;
+    try {
+      const res = await fetch(`/api/runs/${runId}/files`, {
+        method: "PATCH",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ fileId: file.id, notes: notesDraft }),
+      });
+      if (!res.ok) return;
+      onNotesSaved(file.id, notesDraft);
+      setSavedFlash(true);
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+      flashTimer.current = setTimeout(() => setSavedFlash(false), 1500);
+    } catch {
+      // silently ignore
+    }
+  }
+
+  return (
+    <li className="flex flex-col gap-1 rounded-lg border border-zinc-700/60 bg-zinc-800/70 p-2">
+      {/* Top row: thumb/icon + meta + actions */}
+      <div className="flex items-start gap-2">
+        {/* Thumbnail / icon box */}
+        <div
+          className={`relative flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-md border border-zinc-700/50 bg-zinc-900/80 ${isImage && thumbUrl ? "cursor-pointer" : ""}`}
+          onClick={isImage ? handleOpenThumb : undefined}
+        >
+          {isImage ? (
+            thumbLoading ? (
+              <span className="animate-spin text-base text-zinc-500">⟳</span>
+            ) : thumbUrl ? (
+              <img
+                src={thumbUrl}
+                alt={file.fileName}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <span className="text-2xl">📎</span>
+            )
+          ) : (
+            <span className="text-2xl">{fileIcon(file.mimeType)}</span>
+          )}
+        </div>
+
+        {/* Filename + size + actions */}
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <div className="flex items-center gap-1.5">
+            <span className="min-w-0 flex-1 truncate text-xs font-medium text-zinc-200">
+              {file.fileName}
+            </span>
+            <span className="shrink-0 text-[10px] text-zinc-500">{formatBytes(file.fileSize)}</span>
+            <button
+              onClick={handleDownload}
+              title="Download"
+              className="shrink-0 text-xs text-zinc-400 transition hover:text-sky-300"
+            >
+              ↓
+            </button>
+            <button
+              onClick={() => onDelete(file)}
+              title="Delete file"
+              className="shrink-0 text-xs text-zinc-600 transition hover:text-red-400"
+            >
+              🗑
+            </button>
+          </div>
+
+          {/* Notes */}
+          <div className="relative mt-0.5">
+            {notesFocused ? (
+              <textarea
+                autoFocus
+                value={notesDraft}
+                onChange={(e) => setNotesDraft(e.target.value)}
+                onBlur={() => { setNotesFocused(false); handleNoteBlur(); }}
+                placeholder="Add a note..."
+                rows={2}
+                className="w-full resize-none rounded border border-zinc-600/60 bg-zinc-900/60 px-1.5 py-1 text-[11px] text-zinc-300 placeholder-zinc-600 outline-none focus:border-indigo-500/60"
+              />
+            ) : (
+              <input
+                type="text"
+                value={notesDraft}
+                onChange={(e) => setNotesDraft(e.target.value)}
+                onFocus={() => setNotesFocused(true)}
+                onBlur={handleNoteBlur}
+                placeholder="Add a note..."
+                className="w-full rounded border border-transparent bg-transparent px-1.5 py-0.5 text-[11px] text-zinc-400 placeholder-zinc-600 outline-none transition hover:border-zinc-700/60 focus:border-indigo-500/60 focus:bg-zinc-900/60 focus:text-zinc-300"
+              />
+            )}
+            {savedFlash && (
+              <span className="absolute right-0 top-0 text-[10px] text-emerald-400 transition-opacity">
+                Saved
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+// ── StepFileAttachment ────────────────────────────────────────────────────────
 
 export default function StepFileAttachment({ runId, stepId, userId, authHeaders }: Props) {
   const [files, setFiles] = useState<StepFile[]>([]);
@@ -34,7 +208,6 @@ export default function StepFileAttachment({ runId, stepId, userId, authHeaders 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasFetchedRef = useRef(false);
 
-  // Fetch files for this step on first expand
   useEffect(() => {
     if (!expanded || hasFetchedRef.current) return;
     hasFetchedRef.current = true;
@@ -42,21 +215,7 @@ export default function StepFileAttachment({ runId, stepId, userId, authHeaders 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expanded]);
 
-  async function fetchFiles() {
-    try {
-      const res = await fetch(`/api/runs/${runId}/files`, { headers: authHeaders });
-      if (!res.ok) return;
-      const grouped: Record<string, StepFile[]> = await res.json();
-      const stepFiles = grouped[stepId] ?? [];
-      setFiles(stepFiles);
-      // Auto-expand if files exist
-      if (stepFiles.length > 0) setExpanded(true);
-    } catch {
-      // non-critical
-    }
-  }
-
-  // Auto-expand if files exist on first mount (fetch without waiting for expand)
+  // Probe on mount — auto-expand if files exist
   useEffect(() => {
     async function probe() {
       try {
@@ -77,6 +236,17 @@ export default function StepFileAttachment({ runId, stepId, userId, authHeaders 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  async function fetchFiles() {
+    try {
+      const res = await fetch(`/api/runs/${runId}/files`, { headers: authHeaders });
+      if (!res.ok) return;
+      const grouped: Record<string, StepFile[]> = await res.json();
+      setFiles(grouped[stepId] ?? []);
+    } catch {
+      // non-critical
+    }
+  }
+
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -89,11 +259,15 @@ export default function StepFileAttachment({ runId, stepId, userId, authHeaders 
     setUploading(true);
     setUploadProgress(0);
     try {
-      // 1. Get presigned upload URL
       const urlRes = await fetch(`/api/runs/${runId}/files/upload-url`, {
         method: "POST",
         headers: { ...authHeaders, "Content-Type": "application/json" },
-        body: JSON.stringify({ stepId, fileName: file.name, fileSize: file.size, mimeType: file.type || "application/octet-stream" }),
+        body: JSON.stringify({
+          stepId,
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type || "application/octet-stream",
+        }),
       });
       if (!urlRes.ok) {
         const err = await urlRes.json().catch(() => ({})) as { error?: string };
@@ -101,10 +275,8 @@ export default function StepFileAttachment({ runId, stepId, userId, authHeaders 
       }
       const { uploadUrl, fileKey } = (await urlRes.json()) as { uploadUrl: string; fileKey: string };
 
-      // 2. PUT directly to R2 (browser → R2, no server proxy)
       await uploadWithProgress(file, uploadUrl, setUploadProgress);
 
-      // 3. Confirm upload — create DB record
       const confirmRes = await fetch(`/api/runs/${runId}/files`, {
         method: "POST",
         headers: { ...authHeaders, "Content-Type": "application/json" },
@@ -129,17 +301,6 @@ export default function StepFileAttachment({ runId, stepId, userId, authHeaders 
     }
   }
 
-  async function handleDownload(file: StepFile) {
-    try {
-      const res = await fetch(`/api/runs/${runId}/files/${file.id}/url`, { headers: authHeaders });
-      if (!res.ok) throw new Error("Could not get download URL");
-      const { url } = (await res.json()) as { url: string };
-      window.open(url, "_blank", "noopener");
-    } catch {
-      setError("Could not open file. Please try again.");
-    }
-  }
-
   async function handleDelete(file: StepFile) {
     if (!window.confirm(`Delete "${file.fileName}"? This cannot be undone.`)) return;
     try {
@@ -155,49 +316,38 @@ export default function StepFileAttachment({ runId, stepId, userId, authHeaders 
     }
   }
 
+  function handleNotesSaved(fileId: string, notes: string) {
+    setFiles((prev) => prev.map((f) => (f.id === fileId ? { ...f, notes } : f)));
+  }
+
   return (
     <div className="mt-1">
-      {/* Toggle */}
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="flex items-center gap-1 text-[11px] text-zinc-500 hover:text-zinc-300 transition"
+        className="flex items-center gap-1 text-[11px] text-zinc-500 transition hover:text-zinc-300"
       >
         <span>📎</span>
-        <span>
-          {files.length > 0 ? `Files (${files.length})` : "Files"}
-        </span>
+        <span>{files.length > 0 ? `Files (${files.length})` : "Files"}</span>
         <span className="opacity-50">{expanded ? "▲" : "▼"}</span>
       </button>
 
       {expanded && (
         <div className="mt-1.5 rounded border border-zinc-700/60 bg-zinc-900/60 p-2">
-          {/* File list */}
           {files.length > 0 && (
-            <ul className="mb-2 space-y-1">
+            <ul className="mb-2 space-y-2">
               {files.map((f) => (
-                <li key={f.id} className="flex items-center gap-2 rounded bg-zinc-800/60 px-2 py-1">
-                  <span className="min-w-0 flex-1 truncate text-xs text-zinc-200">{f.fileName}</span>
-                  <span className="shrink-0 text-[10px] text-zinc-500">{formatBytes(f.fileSize)}</span>
-                  <button
-                    onClick={() => handleDownload(f)}
-                    title="Download"
-                    className="shrink-0 text-xs text-zinc-400 hover:text-sky-300 transition"
-                  >
-                    ↓
-                  </button>
-                  <button
-                    onClick={() => handleDelete(f)}
-                    title="Delete file"
-                    className="shrink-0 text-xs text-zinc-600 hover:text-red-400 transition"
-                  >
-                    ✕
-                  </button>
-                </li>
+                <FileCard
+                  key={f.id}
+                  file={f}
+                  runId={runId}
+                  authHeaders={authHeaders}
+                  onDelete={handleDelete}
+                  onNotesSaved={handleNotesSaved}
+                />
               ))}
             </ul>
           )}
 
-          {/* Upload controls */}
           {uploading ? (
             <div className="flex items-center gap-2">
               <div className="h-1 flex-1 overflow-hidden rounded bg-zinc-700">
@@ -211,7 +361,7 @@ export default function StepFileAttachment({ runId, stepId, userId, authHeaders 
           ) : (
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-1 rounded border border-dashed border-zinc-600 px-2 py-1 text-xs text-zinc-400 hover:border-indigo-500 hover:text-indigo-300 transition"
+              className="flex items-center gap-1 rounded border border-dashed border-zinc-600 px-2 py-1 text-xs text-zinc-400 transition hover:border-indigo-500 hover:text-indigo-300"
             >
               📎 Attach file
             </button>
@@ -223,17 +373,13 @@ export default function StepFileAttachment({ runId, stepId, userId, authHeaders 
             onChange={handleFileSelect}
           />
 
-          {/* Error */}
-          {error && (
-            <p className="mt-1 text-[10px] text-red-400">{error}</p>
-          )}
+          {error && <p className="mt-1 text-[10px] text-red-400">{error}</p>}
         </div>
       )}
     </div>
   );
 }
 
-// XHR-based upload with progress tracking (fetch API doesn't support upload progress)
 function uploadWithProgress(
   file: File,
   url: string,

@@ -656,6 +656,7 @@ model RunStepFile {
   fileSize    Int         // bytes
   mimeType    String
   uploadedBy  String      // userId
+  notes       String      @default("")
   createdAt   DateTime    @default(now())
   run         ProtocolRun @relation(fields: [runId], references: [id], onDelete: Cascade)
   uploader    User        @relation(fields: [uploadedBy], references: [id])
