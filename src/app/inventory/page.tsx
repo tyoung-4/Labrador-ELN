@@ -38,12 +38,13 @@ const TYPE_TO_TAB: Partial<Record<TemplateType, Tab>> = {
 };
 
 export default function InventoryPage() {
-  const [tab, setTab] = useState<Tab>(() => {
-    if (typeof window === "undefined") return "reagents";
+  const [tab, setTab] = useState<Tab>("reagents");
+
+  useEffect(() => {
     const p = new URLSearchParams(window.location.search).get("tab");
     const valid: Tab[] = ["reagents", "cellLines", "plasmids", "proteins", "archived"];
-    return (valid.includes(p as Tab) ? p : "reagents") as Tab;
-  });
+    if (p && valid.includes(p as Tab)) setTab(p as Tab);
+  }, []);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [showImport, setShowImport] = useState(false);
