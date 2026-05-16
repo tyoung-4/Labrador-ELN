@@ -418,7 +418,7 @@ function ProteinStockCard({
           <p>
             Plasmid:{" "}
             {item.plasmid
-              ? <Link href={`/inventory?tab=plasmids`} className="text-teal-400/80 hover:text-teal-300 underline underline-offset-2">{item.plasmid.name}</Link>
+              ? <Link href={`/inventory?tab=plasmids&plasmidId=${item.plasmid.id}`} className="text-teal-400/80 hover:text-teal-300 underline underline-offset-2">{item.plasmid.name}</Link>
               : "—"}
           </p>
           {item.notes && <p className="whitespace-pre-wrap">{item.notes}</p>}

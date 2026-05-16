@@ -39,11 +39,15 @@ const TYPE_TO_TAB: Partial<Record<TemplateType, Tab>> = {
 
 export default function InventoryPage() {
   const [tab, setTab] = useState<Tab>("reagents");
+  const [highlightPlasmidId, setHighlightPlasmidId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    const p = new URLSearchParams(window.location.search).get("tab");
+    const params = new URLSearchParams(window.location.search);
+    const p = params.get("tab");
     const valid: Tab[] = ["reagents", "cellLines", "plasmids", "proteins", "archived"];
     if (p && valid.includes(p as Tab)) setTab(p as Tab);
+    const pid = params.get("plasmidId");
+    if (pid) setHighlightPlasmidId(pid);
   }, []);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -175,7 +179,7 @@ export default function InventoryPage() {
         <div>
           {tab === "reagents"  && <ReagentsList search={debouncedSearch} currentUser={currentUser} refetchTrigger={refetchTrigger} />}
           {tab === "cellLines" && <CellLinesList search={debouncedSearch} currentUser={currentUser} refetchTrigger={refetchTrigger} />}
-          {tab === "plasmids"  && <PlasmidsList search={debouncedSearch} currentUser={currentUser} refetchTrigger={refetchTrigger} />}
+          {tab === "plasmids"  && <PlasmidsList search={debouncedSearch} currentUser={currentUser} refetchTrigger={refetchTrigger} highlightId={highlightPlasmidId} />}
           {tab === "proteins"  && <ProteinStocksList search={debouncedSearch} currentUser={currentUser} refetchTrigger={refetchTrigger} />}
           {tab === "archived"  && <ArchivedList search={debouncedSearch} currentUser={currentUser} />}
         </div>

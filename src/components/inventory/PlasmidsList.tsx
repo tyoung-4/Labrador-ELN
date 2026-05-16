@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import PlasmidForm from "./PlasmidForm";
 import AddBatchModal from "./AddBatchModal";
 import KebabMenu, { KebabMenuItem, ArchiveConfirm, FlagPrompt } from "./KebabMenu";
@@ -217,7 +217,7 @@ function PlasmidCard({
 
 // ── Parent list component ─────────────────────────────────────────────────────
 
-export default function PlasmidsList({ search, currentUser, refetchTrigger }: { search: string; currentUser: string; refetchTrigger?: number }) {
+export default function PlasmidsList({ search, currentUser, refetchTrigger, highlightId }: { search: string; currentUser: string; refetchTrigger?: number; highlightId?: string }) {
   const [items,          setItems]          = useState<Plasmid[]>([]);
   const [loading,        setLoading]        = useState(true);
   const [expandedIds,    setExpandedIds]    = useState<Set<string>>(new Set());
@@ -225,6 +225,17 @@ export default function PlasmidsList({ search, currentUser, refetchTrigger }: { 
   const [addBatchItemId, setAddBatchItemId] = useState<string | null>(null);
   const [prepsMap,       setPrepsMap]       = useState<Record<string, PlasmidPrep[]>>({});
   const [loadedIds,      setLoadedIds]      = useState<Set<string>>(new Set());
+
+  const highlightRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!highlightId || !items.length) return;
+    if (!items.find((i) => i.id === highlightId)) return;
+    setExpandedIds((prev) => new Set([...prev, highlightId]));
+    loadPreps(highlightId);
+    setTimeout(() => highlightRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 150);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightId, items.length]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -266,17 +277,22 @@ export default function PlasmidsList({ search, currentUser, refetchTrigger }: { 
     <>
       <div className="space-y-2">
         {items.map((item) => (
-          <PlasmidCard
+          <div
             key={item.id}
-            item={item}
-            currentUser={currentUser}
-            expanded={expandedIds.has(item.id)}
-            preps={prepsMap[item.id] ?? []}
-            onToggle={() => toggleExpand(item.id)}
-            onEdit={() => setEditingItem(item)}
-            onReload={load}
-            onAddBatch={() => setAddBatchItemId(item.id)}
-          />
+            ref={item.id === highlightId ? highlightRef : null}
+            className={item.id === highlightId ? "ring-2 ring-teal-400/50 rounded-xl" : undefined}
+          >
+            <PlasmidCard
+              item={item}
+              currentUser={currentUser}
+              expanded={expandedIds.has(item.id)}
+              preps={prepsMap[item.id] ?? []}
+              onToggle={() => toggleExpand(item.id)}
+              onEdit={() => setEditingItem(item)}
+              onReload={load}
+              onAddBatch={() => setAddBatchItemId(item.id)}
+            />
+          </div>
         ))}
       </div>
 
