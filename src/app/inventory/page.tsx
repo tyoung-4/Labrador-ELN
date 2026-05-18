@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 import ReagentsList from "@/components/inventory/ReagentsList";
 import CellLinesList from "@/components/inventory/CellLinesList";
 import PlasmidsList from "@/components/inventory/PlasmidsList";
@@ -38,17 +39,17 @@ const TYPE_TO_TAB: Partial<Record<TemplateType, Tab>> = {
 };
 
 export default function InventoryPage() {
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState<Tab>("reagents");
   const [highlightPlasmidId, setHighlightPlasmidId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const p = params.get("tab");
     const valid: Tab[] = ["reagents", "cellLines", "plasmids", "proteins", "archived"];
+    const p = searchParams.get("tab");
     if (p && valid.includes(p as Tab)) setTab(p as Tab);
-    const pid = params.get("plasmidId");
-    if (pid) setHighlightPlasmidId(pid);
-  }, []);
+    const pid = searchParams.get("plasmidId");
+    setHighlightPlasmidId(pid ?? undefined);
+  }, [searchParams]);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [showImport, setShowImport] = useState(false);
