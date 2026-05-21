@@ -119,6 +119,7 @@ export async function POST(request: Request) {
 
     const payload = await request.json().catch(() => ({}));
     const sourceEntryId = String(payload.sourceEntryId ?? "").trim();
+    const isMockRun = Boolean(payload.isMockRun);
     // Operator is always the logged-in user (actor derived from x-user-name header)
     const operatorName = actor.name;
     if (!sourceEntryId) {
@@ -151,9 +152,10 @@ export async function POST(request: Request) {
         runId,
         sourceEntryId,
         protocolId: sourceProtocol?.id ?? null,
-        title: `${source.title} - Run ${runCount + 1}`,
+        title: `${source.title} - ${isMockRun ? "Mock Run" : `Run ${runCount + 1}`}`,
         status: "IN_PROGRESS",
         locked: true,
+        isMockRun,
         runBody: runBodyContent,
         linkedInventory: linkedInventorySnapshot,
         notes: "",

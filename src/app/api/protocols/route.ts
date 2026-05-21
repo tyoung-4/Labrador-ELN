@@ -56,22 +56,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid technique value." }, { status: 400 });
     }
 
-    // Uniqueness check (case-insensitive) against existing PROTOCOL entries
+    // Uniqueness check (case-insensitive) against existing PUBLISHED PROTOCOL entries only
     const existing = await prisma.entry.findFirst({
       where: {
         entryType: "PROTOCOL",
+        status: "PUBLISHED",
         title: { equals: name, mode: "insensitive" },
       },
       select: { id: true },
     });
     if (existing) {
       return NextResponse.json(
-        { error: "A protocol with this name already exists." },
+        { error: "A published protocol with this name already exists." },
         { status: 409 }
       );
     }
 
-    // Create Entry + Protocol row atomically
+    // Create Entry + Protocol row atomically — starts as DRAFT at v0
     const entry = await prisma.entry.create({
       data: {
         title:       name,
@@ -79,7 +80,8 @@ export async function POST(request: Request) {
         technique,
         entryType:   "PROTOCOL",
         body:        "",
-        typedData:   { typed: { _semVer: "1.0" } },
+        typedData:   { typed: { _semVer: "0" } },
+        status:      "DRAFT",
         authorId:    actor.id,
         version:     1,
         protocol: {

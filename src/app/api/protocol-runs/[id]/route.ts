@@ -194,3 +194,32 @@ export async function PUT(request: Request, context: RouteContext) {
     return NextResponse.json({ error: "Failed to update protocol run", detail }, { status: 500 });
   }
 }
+
+export async function DELETE(request: Request, context: RouteContext) {
+  const id = await getRunId(context);
+  try {
+    const actor = getActorFromRequest(request);
+    await ensureActor(actor);
+
+    const existing = await prisma.protocolRun.findUnique({
+      where: { id },
+      select: { runnerId: true, isMockRun: true },
+    });
+    if (!existing) return new NextResponse(null, { status: 404 });
+    if (!existing.isMockRun) {
+      return NextResponse.json({ error: "Only mock runs can be deleted." }, { status: 400 });
+    }
+    if (!canAccessRun(actor, existing.runnerId)) {
+      return NextResponse.json({ error: "Not allowed to delete this run." }, { status: 403 });
+    }
+
+    await prisma.protocolRun.delete({ where: { id } });
+    return new NextResponse(null, { status: 204 });
+  } catch (error) {
+    const isMissing = typeof error === "object" && error !== null && "code" in error && (error as { code: string }).code === "P2025";
+    if (isMissing) return new NextResponse(null, { status: 404 });
+    console.error(`DELETE /api/protocol-runs/${id} failed:`, error);
+    const detail = process.env.NODE_ENV === "development" && error instanceof Error ? error.message : undefined;
+    return NextResponse.json({ error: "Failed to delete run", detail }, { status: 500 });
+  }
+}

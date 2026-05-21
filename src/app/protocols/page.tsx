@@ -1,5 +1,5 @@
 "use client";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Editor from "@/components/Editor";
 import AppTopNav from "@/components/AppTopNav";
@@ -146,6 +146,132 @@ function VersionBumpModal({
         >
           Cancel save
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Publish Flow Modal ───────────────────────────────────────────────────────
+
+function PublishFlowModal({
+  selected,
+  parentSemVer,
+  onConfirm,
+  onCancel,
+}: {
+  selected: Entry;
+  parentSemVer: string | null; // null = brand new protocol (no prior published version)
+  onConfirm: (bumpType: "major" | "minor" | null, changeSummary: string) => void;
+  onCancel: () => void;
+}) {
+  const isNewProtocol = parentSemVer === null;
+  const [step, setStep] = useState<1 | 2>(isNewProtocol ? 2 : 1);
+  const [bumpType, setBumpType] = useState<"major" | "minor" | null>(null);
+  const [summary, setSummary] = useState("");
+
+  const minorVer = parentSemVer ? bumpSemVer(parentSemVer, "minor") : "1.0";
+  const majorVer = parentSemVer ? bumpSemVer(parentSemVer, "major") : "1.0";
+  const targetVer = isNewProtocol ? "1.0" : bumpType ? bumpSemVer(parentSemVer!, bumpType) : null;
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-4">
+      <div className="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-5 shadow-2xl shadow-black/80">
+        {step === 1 ? (
+          <>
+            <h3 className="mb-3 text-sm font-semibold text-zinc-100">Publish Protocol</h3>
+            <div className="mb-4 rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+              ⚠ Once published, this protocol will be available to all lab members and can be run immediately. Please review your protocol before proceeding.
+            </div>
+            <div className="mb-3 h-px bg-zinc-800" />
+            <p className="mb-3 text-xs font-medium text-zinc-300">Select version bump type:</p>
+            <div className="mb-4 space-y-2">
+              <button
+                onClick={() => setBumpType("minor")}
+                className={`w-full rounded border px-4 py-3 text-left transition ${
+                  bumpType === "minor"
+                    ? "border-emerald-500 bg-emerald-500/10"
+                    : "border-zinc-700 bg-zinc-800/50 hover:border-zinc-600"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-zinc-100">Minor Update</span>
+                  <span className="text-xs text-zinc-400">
+                    v{parentSemVer} →{" "}
+                    <span className={bumpType === "minor" ? "font-semibold text-emerald-300" : "text-zinc-300"}>
+                      v{minorVer}
+                    </span>
+                  </span>
+                </div>
+                <p className="mt-0.5 text-xs text-zinc-500">Small corrections, clarifications, or reagent adjustments</p>
+              </button>
+              <button
+                onClick={() => setBumpType("major")}
+                className={`w-full rounded border px-4 py-3 text-left transition ${
+                  bumpType === "major"
+                    ? "border-orange-500 bg-orange-500/10"
+                    : "border-zinc-700 bg-zinc-800/50 hover:border-zinc-600"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-zinc-100">Major Update</span>
+                  <span className="text-xs text-zinc-400">
+                    v{parentSemVer} →{" "}
+                    <span className={bumpType === "major" ? "font-semibold text-orange-300" : "text-zinc-300"}>
+                      v{majorVer}
+                    </span>
+                  </span>
+                </div>
+                <p className="mt-0.5 text-xs text-zinc-500">Significant workflow changes, new sections, or protocol restructuring</p>
+              </button>
+            </div>
+            <div className="flex items-center justify-between">
+              <button onClick={onCancel} className="text-xs text-zinc-600 hover:text-zinc-400">Cancel</button>
+              <button
+                onClick={() => setStep(2)}
+                disabled={!bumpType}
+                className="rounded bg-indigo-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Continue
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="mb-3 flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-zinc-100">Add Change Summary</h3>
+              <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
+                Publishing as v{targetVer ?? "1.0"}
+              </span>
+            </div>
+            <p className="mb-1 text-xs text-zinc-400">Change summary (optional)</p>
+            <textarea
+              value={summary}
+              onChange={(e) => setSummary(e.target.value.slice(0, 500))}
+              placeholder="Briefly describe what changed in this version (e.g. Updated lysis buffer to 50 mM Tris-HCl, added Western blot section...)"
+              rows={4}
+              className="mb-1 w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none resize-none"
+            />
+            <div className="mb-1 flex justify-end">
+              <span className="text-[10px] text-zinc-600">{summary.length}/500</span>
+            </div>
+            <p className="mb-4 text-[10px] text-zinc-600">Version history note will be visible to all lab members.</p>
+            <div className="mb-4 h-px bg-zinc-800" />
+            <div className="flex items-center justify-between">
+              <div className="flex gap-3">
+                {!isNewProtocol && (
+                  <button onClick={() => setStep(1)} className="text-xs text-zinc-500 hover:text-zinc-300">← Back</button>
+                )}
+                <button onClick={onCancel} className="text-xs text-zinc-600 hover:text-zinc-400">Cancel</button>
+              </div>
+              <button
+                onClick={() => onConfirm(isNewProtocol ? null : bumpType, summary.trim())}
+                className="rounded bg-emerald-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-emerald-500"
+              >
+                Confirm &amp; Publish
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -421,14 +547,25 @@ function ProtocolsPageContent() {
   // Pending payload waiting for version bump decision
   const [pendingPayload, setPendingPayload] = useState<Partial<Entry> | null>(null);
 
-  // Run confirmation dialog
+  // Run/mock-run confirmation dialogs
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showMockRunModal, setShowMockRunModal] = useState(false);
 
   // New Protocol creation modal
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   // Amber nudge banner — shown after save if protocol has no PROJECT tag
   const [showTagNudge, setShowTagNudge] = useState(false);
+
+  // Protocol list tab
+  const [listTab, setListTab] = useState<"MY" | "PUBLISHED" | "DRAFTS">("MY");
+
+  // Draft auto-save: ref to trigger Editor save, plus last-saved timestamp
+  const autoSaveRef = useRef<(() => void) | null>(null);
+  const [autoSavedAt, setAutoSavedAt] = useState<Date | null>(null);
+
+  // Publish flow modal
+  const [showPublishFlow, setShowPublishFlow] = useState(false);
 
   // ── Filters ────────────────────────────────────────────────────────────────
   const [keyword,         setKeyword]         = useState("");
@@ -484,7 +621,7 @@ function ProtocolsPageContent() {
   // ── Core save logic ────────────────────────────────────────────────────────
 
   /** Final save — called after version bump is decided (or null for new entries) */
-  async function doSave(payload: Partial<Entry>, bumpType: "major" | "minor" | null, isTagOnly = false) {
+  async function doSave(payload: Partial<Entry> & { status?: string; publishedAt?: string | null }, bumpType: "major" | "minor" | null, isTagOnly = false) {
     setPendingPayload(null);
     setLoading(true);
     setSaveError(null);
@@ -511,17 +648,22 @@ function ProtocolsPageContent() {
     }
 
     try {
+      const apiBody: Record<string, unknown> = {
+        title:       finalPayload.title,
+        description: finalPayload.description,
+        body:        finalPayload.body,
+        technique:   finalPayload.technique,
+        entryType:   finalPayload.entryType,
+        typedData:   finalPayload.typedData,
+      };
+      if ("status"        in finalPayload) apiBody.status        = finalPayload.status;
+      if ("publishedAt"   in finalPayload) apiBody.publishedAt   = finalPayload.publishedAt;
+      if ("changeSummary" in finalPayload) apiBody.changeSummary = finalPayload.changeSummary;
+
       const res = await fetch(isUpdate ? `/api/entries/${finalPayload.id}` : "/api/entries", {
         method: isUpdate ? "PUT" : "POST",
         headers: jsonHeaders,
-        body: JSON.stringify({
-          title:       finalPayload.title,
-          description: finalPayload.description,
-          body:        finalPayload.body,
-          technique:   finalPayload.technique,
-          entryType:   finalPayload.entryType,
-          typedData:   finalPayload.typedData,
-        }),
+        body: JSON.stringify(apiBody),
       });
       if (!res.ok) {
         let detail = "";
@@ -541,9 +683,19 @@ function ProtocolsPageContent() {
       if (isTagOnly) {
         setSaveSuccess("Tags updated successfully");
       }
-      // Show nudge banner if protocol has no PROJECT tag
-      const hasProjectTag = existingTagAssignments.some((a) => a.tag.type === "PROJECT");
-      setShowTagNudge(!hasProjectTag);
+      // Track auto-save timestamp for drafts
+      if (saved.status === "DRAFT") {
+        setAutoSavedAt(new Date());
+      }
+      // When a draft is published, switch to My Protocols tab
+      if (finalPayload.status === "PUBLISHED" && saved.status === "PUBLISHED") {
+        setListTab("MY");
+      }
+      // Show nudge banner if protocol has no PROJECT tag (published only)
+      if (saved.status !== "DRAFT") {
+        const hasProjectTag = existingTagAssignments.some((a) => a.tag.type === "PROJECT");
+        setShowTagNudge(!hasProjectTag);
+      }
     } finally {
       setLoading(false);
     }
@@ -561,6 +713,12 @@ function ProtocolsPageContent() {
 
     // New protocols: save immediately (no version bump prompt)
     if (!isUpdate) {
+      await doSave(payload, null);
+      return;
+    }
+
+    // DRAFT entries: save without version bump (drafts don't version-bump)
+    if (selected?.status === "DRAFT") {
       await doSave(payload, null);
       return;
     }
@@ -609,6 +767,7 @@ function ProtocolsPageContent() {
     setSaveSuccess(null);
     setPendingPayload(null);
     setShowTagNudge(false);
+    setAutoSavedAt(null);
   }
 
   async function handleSelect(id: string) {
@@ -659,7 +818,42 @@ function ProtocolsPageContent() {
   async function handleEdit(id: string) {
     const entry = entries.find((e) => e.id === id);
     if (!entry || !canEdit(entry)) return;
-    await handleSelect(id);
+
+    // DRAFT entries: open directly
+    if (entry.status === "DRAFT") {
+      await handleSelect(id);
+      return;
+    }
+
+    // PUBLISHED entries: create a draft fork (with confirmation)
+    if (!window.confirm(`Create a draft copy of "${entry.title}" to edit?\n\nYour changes will be saved as a draft until you publish.`)) return;
+    setLoading(true);
+    setSaveError(null);
+    try {
+      const res = await fetch(`/api/protocols/${id}/draft`, { method: "POST", headers: authHeaders });
+      if (res.status === 409) {
+        const body = await res.json().catch(() => ({})) as { draftId?: string };
+        if (body.draftId) {
+          // Already has a draft — open it
+          setListTab("DRAFTS");
+          await handleSelect(body.draftId);
+        }
+        return;
+      }
+      if (!res.ok) {
+        setSaveError("Failed to create draft. Please try again.");
+        return;
+      }
+      const draft = (await res.json()) as Entry;
+      setEntries((s) => [draft, ...s]);
+      setListTab("DRAFTS");
+      setSelected(draft);
+      setEditorMode("edit");
+      setIsDirty(false);
+      setEditorOpen(true);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleClone(id: string) {
@@ -690,16 +884,21 @@ function ProtocolsPageContent() {
     setShowConfirmModal(true);
   }
 
-  async function confirmStartRun() {
+  function handleMockRun() {
+    if (!selected) return;
+    setShowMockRunModal(true);
+  }
+
+  async function confirmStartRun(isMockRun = false) {
     if (!selected) return;
     setShowConfirmModal(false);
+    setShowMockRunModal(false);
     setLoading(true);
     try {
-      // operatorName is derived server-side from x-user-name header (currentUser.name)
       const res = await fetch("/api/protocol-runs", {
         method: "POST",
         headers: jsonHeaders,
-        body: JSON.stringify({ sourceEntryId: selected.id }),
+        body: JSON.stringify({ sourceEntryId: selected.id, isMockRun }),
       });
       if (!res.ok) { console.error("Failed to create run:", res.status); return; }
       const run = (await res.json()) as { id: string };
@@ -708,6 +907,75 @@ function ProtocolsPageContent() {
       setLoading(false);
     }
   }
+
+  // ── Publish draft ──────────────────────────────────────────────────────────
+  function publishDraft() {
+    if (!selected || selected.status !== "DRAFT") return;
+    setShowPublishFlow(true);
+  }
+
+  async function doPublishDraft(bumpType: "major" | "minor" | null, changeSummary: string) {
+    if (!selected || selected.status !== "DRAFT") return;
+    setShowPublishFlow(false);
+
+    const isDraftFork = Boolean(selected.draftOfId);
+    let publishSemVer: string;
+
+    if (!isDraftFork) {
+      publishSemVer = "1.0";
+    } else {
+      const parent = entries.find((e) => e.id === selected.draftOfId);
+      const parentSemVer = parent ? getSemVer(parent) : getSemVer(selected);
+      publishSemVer = bumpSemVer(parentSemVer, bumpType ?? "minor");
+    }
+
+    const td = parseTypedData(selected.typedData);
+    td.typed._semVer = publishSemVer;
+
+    await doSave(
+      {
+        id: selected.id,
+        title: selected.title,
+        description: selected.description,
+        body: selected.body,
+        technique: selected.technique,
+        entryType: selected.entryType,
+        typedData: td,
+        changeSummary,
+        status: "PUBLISHED",
+        publishedAt: new Date().toISOString(),
+      },
+      null,
+    );
+  }
+
+  // ── Discard draft ──────────────────────────────────────────────────────────
+  async function discardDraft() {
+    if (!selected || selected.status !== "DRAFT") return;
+    if (!window.confirm(`Discard this draft of "${selected.title}"? It cannot be recovered.`)) return;
+    setLoading(true);
+    setSaveError(null);
+    try {
+      const res = await fetch(`/api/entries/${selected.id}`, { method: "DELETE", headers: authHeaders });
+      if (!res.ok) {
+        setSaveError("Failed to discard draft. Please try again.");
+        return;
+      }
+      setEntries((s) => s.filter((e) => e.id !== selected.id));
+      closeEditor();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ── Auto-save for open drafts (every 60 s) ─────────────────────────────────
+  useEffect(() => {
+    if (!editorOpen || selected?.status !== "DRAFT") return;
+    const interval = setInterval(() => {
+      if (isDirty) autoSaveRef.current?.();
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [editorOpen, selected?.status, isDirty]);
 
   // ── Open parent from Version tab ───────────────────────────────────────────
   async function handleOpenParent(parentId: string) {
@@ -724,6 +992,8 @@ function ProtocolsPageContent() {
     setPendingPayload(null);
     setEditorOpen(true);
     setShowCreateModal(false);
+    // New protocols start as drafts — switch to Drafts tab
+    setListTab("DRAFTS");
   }
 
   // ── Filter / sort ──────────────────────────────────────────────────────────
@@ -733,8 +1003,16 @@ function ProtocolsPageContent() {
   }, [entries]);
 
   const filteredEntries = useMemo(() => {
-const q = keyword.trim().toLowerCase();
+    const q = keyword.trim().toLowerCase();
     const filtered = entries.filter((entry) => {
+      if (listTab === "DRAFTS") {
+        if (entry.status !== "DRAFT" || entry.authorId !== currentUser.id) return false;
+      } else if (listTab === "MY") {
+        if (entry.status === "DRAFT" || entry.authorId !== currentUser.id) return false;
+      } else {
+        // ALL: show everything published (or legacy entries with no status)
+        if (entry.status === "DRAFT") return false;
+      }
       const author = entry.author?.name || "Unknown";
       const bucket = normalizeTechniqueBucket(entry.technique || "General");
       const untaggedOk = !showUntaggedOnly || !entry.tagAssignments?.some((a) => a.tag.type === "PROJECT");
@@ -752,7 +1030,7 @@ const q = keyword.trim().toLowerCase();
       return b.createdAt.localeCompare(a.createdAt);
     });
     return filtered;
-  }, [entries, keyword, techniqueFilter, authorFilter, sortBy, showUntaggedOnly]);
+  }, [entries, keyword, techniqueFilter, authorFilter, sortBy, showUntaggedOnly, listTab, currentUser.id]);
 
   // ── Group into families ────────────────────────────────────────────────────
   const groupedFamilies = useMemo(() => buildFamilies(filteredEntries), [filteredEntries]);
@@ -763,16 +1041,45 @@ const q = keyword.trim().toLowerCase();
     const fam = groupedFamilies.find((f) => f.allVersions.some((e) => e.id === selected.id));
     const versions = fam?.allVersions ?? [selected];
     if (versions.length <= 1) return undefined; // no dropdown needed for single-entry families
-    return versions.map((e) => ({ id: e.id, title: e.title || "", semVer: getSemVer(e) }));
+    return versions.map((e) => ({ id: e.id, title: e.title || "", semVer: getSemVer(e), changeSummary: e.changeSummary ?? "" }));
   }, [selected, groupedFamilies]);
 
-  const canRunProtocol = editorOpen && editorMode === "edit" && Boolean(selected) && !isDirty;
+  const isDraft = selected?.status === "DRAFT";
+  const canRunProtocol = editorOpen && editorMode === "edit" && Boolean(selected) && !isDirty && !isDraft;
+  const canMockRun = editorOpen && editorMode === "edit" && Boolean(selected) && !isDirty && isDraft;
+
+  // Draft count for the tab badge
+  const myDraftCount = useMemo(
+    () => entries.filter((e) => e.status === "DRAFT" && e.authorId === currentUser.id).length,
+    [entries, currentUser.id],
+  );
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex min-h-screen flex-col gap-3 bg-zinc-950 p-6 text-zinc-100">
-      {/* Action bar */}
-      <div className="flex items-center gap-2">
+      {/* Tab bar + New Protocol */}
+      <div className="flex items-center gap-1 border-b border-zinc-800">
+        <button
+          onClick={() => setListTab("MY")}
+          className={`px-4 py-2 text-sm font-medium transition ${listTab === "MY" ? "border-b-2 border-indigo-500 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"}`}
+        >
+          My Protocols
+        </button>
+        <button
+          onClick={() => setListTab("PUBLISHED")}
+          className={`px-4 py-2 text-sm font-medium transition ${listTab === "PUBLISHED" ? "border-b-2 border-indigo-500 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"}`}
+        >
+          All Protocols
+        </button>
+        <button
+          onClick={() => setListTab("DRAFTS")}
+          className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition ${listTab === "DRAFTS" ? "border-b-2 border-amber-500 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"}`}
+        >
+          Drafts
+          {myDraftCount > 0 && (
+            <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400">{myDraftCount}</span>
+          )}
+        </button>
         <button
           onClick={() => setShowCreateModal(true)}
           className="ml-auto rounded bg-emerald-600 px-3 py-1.5 text-sm text-white hover:bg-emerald-500"
@@ -783,8 +1090,8 @@ const q = keyword.trim().toLowerCase();
 
       {/* Protocol Library */}
       <div className="rounded border border-zinc-800 bg-zinc-900 p-3">
-        {/* Technique filter pills */}
-        <div className="mb-3 flex flex-wrap gap-2">
+        {/* Technique filter pills — hidden on Drafts tab */}
+        <div className={`mb-3 flex flex-wrap gap-2${listTab === "DRAFTS" ? " hidden" : ""}`}>
           {TECHNIQUE_TABS.map((tab) => {
             const count = tab.id === "ALL"
               ? entries.length
@@ -882,9 +1189,15 @@ const q = keyword.trim().toLowerCase();
                 <button onClick={() => handleSelect(e.id)} className="w-full text-left">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="truncate text-base font-semibold text-zinc-100">{e.title || "Untitled"}</p>
-                    <span className="shrink-0 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">
-                      v{semVer}
-                    </span>
+                    {e.status === "DRAFT" ? (
+                      <span className="shrink-0 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
+                        DRAFT {semVer === "0" ? "v0" : `v${semVer}-draft`}
+                      </span>
+                    ) : (
+                      <span className="shrink-0 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300">
+                        v{semVer}
+                      </span>
+                    )}
                     {vCount > 1 && (
                       <span className="shrink-0 rounded border border-zinc-600/50 bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">
                         {vCount} versions
@@ -958,11 +1271,24 @@ const q = keyword.trim().toLowerCase();
         >
           <div className="flex h-[90vh] w-[90vw] max-w-6xl flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 shadow-2xl shadow-black/80">
             {/* Modal header */}
-            <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-3">
-              <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className={`flex items-center justify-between border-b px-5 py-3 ${isDraft ? "border-amber-900/60 bg-amber-950/20" : "border-zinc-800"}`}>
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                 <span className="min-w-0 truncate text-sm font-semibold text-zinc-300">
                   {selected?.title || (editorMode === "create" ? "New Protocol" : "Protocol")}
                 </span>
+                {/* DRAFT badge */}
+                {isDraft && (
+                  <span className="shrink-0 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400">
+                    DRAFT
+                  </span>
+                )}
+                {/* Auto-save timestamp */}
+                {isDraft && autoSavedAt && !isDirty && (
+                  <span className="shrink-0 text-[10px] text-zinc-500">
+                    Saved {autoSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                )}
+                {/* Run Protocol button (published only) */}
                 {canRunProtocol && (
                   <button
                     onClick={handleRunProtocol}
@@ -972,6 +1298,27 @@ const q = keyword.trim().toLowerCase();
                     ▶ Run Protocol
                   </button>
                 )}
+                {/* Mock Run button (draft only) */}
+                {canMockRun && (
+                  <button
+                    onClick={handleMockRun}
+                    disabled={loading}
+                    className="shrink-0 rounded border border-amber-500/50 bg-amber-500/10 px-3 py-1 text-xs text-amber-300 hover:bg-amber-500/20 disabled:opacity-50"
+                  >
+                    🧪 Mock Run
+                  </button>
+                )}
+                {/* Publish button (draft only) */}
+                {isDraft && editorMode === "edit" && !isDirty && (
+                  <button
+                    onClick={() => void publishDraft()}
+                    disabled={loading}
+                    className="shrink-0 rounded bg-emerald-600 px-3 py-1 text-xs text-white hover:bg-emerald-500 disabled:opacity-50"
+                  >
+                    Publish
+                  </button>
+                )}
+                {/* Print (published only) */}
                 {canRunProtocol && (
                   <button
                     onClick={() => {
@@ -991,8 +1338,20 @@ const q = keyword.trim().toLowerCase();
                     🖨 Print
                   </button>
                 )}
+                {/* Discard draft */}
+                {isDraft && editorMode === "edit" && (
+                  <button
+                    onClick={() => void discardDraft()}
+                    disabled={loading}
+                    className="shrink-0 rounded border border-red-500/40 px-3 py-1 text-xs text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+                  >
+                    Discard Draft
+                  </button>
+                )}
                 {isDirty && (
-                  <span className="shrink-0 text-[10px] text-zinc-500">(unsaved — save before running)</span>
+                  <span className="shrink-0 text-[10px] text-zinc-500">
+                    {isDraft ? "(unsaved)" : "(unsaved — save before running)"}
+                  </span>
                 )}
               </div>
               <button
@@ -1030,6 +1389,7 @@ const q = keyword.trim().toLowerCase();
                 protocolShell={true}
                 onOpenParent={handleOpenParent}
                 versionFamily={selectedVersionFamily}
+                saveRef={autoSaveRef}
                 beforeButtons={
                   <div className="mt-4 space-y-2">
                     {/* Tags section */}
@@ -1115,6 +1475,48 @@ const q = keyword.trim().toLowerCase();
               </button>
               <button
                 onClick={() => setShowConfirmModal(false)}
+                className="rounded border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-700"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Mock Run Confirmation Dialog ── */}
+      {showPublishFlow && selected && (() => {
+        const parent = selected.draftOfId ? entries.find((e) => e.id === selected.draftOfId) : null;
+        const parentSemVer = parent ? getSemVer(parent) : null;
+        return (
+          <PublishFlowModal
+            selected={selected}
+            parentSemVer={parentSemVer}
+            onConfirm={(bumpType, changeSummary) => void doPublishDraft(bumpType, changeSummary)}
+            onCancel={() => setShowPublishFlow(false)}
+          />
+        );
+      })()}
+
+      {showMockRunModal && selected && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm rounded-lg border border-amber-600/40 bg-zinc-900 p-6 shadow-2xl">
+            <p className="mb-2 text-sm font-semibold text-amber-400">🧪 Mock Run</p>
+            <p className="mb-6 text-sm text-zinc-300">
+              Start a mock run of{" "}
+              <span className="font-semibold text-zinc-100">{selected.title}</span> (draft)?
+              Mock runs are temporary and can be deleted when finished.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => void confirmStartRun(true)}
+                disabled={loading}
+                className="flex-1 rounded border border-amber-500/50 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-300 hover:bg-amber-500/20 disabled:opacity-50"
+              >
+                🧪 Start Mock Run
+              </button>
+              <button
+                onClick={() => setShowMockRunModal(false)}
                 className="rounded border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-700"
               >
                 Cancel

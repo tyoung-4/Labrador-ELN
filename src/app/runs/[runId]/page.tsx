@@ -1094,6 +1094,11 @@ export default function ActiveRunPage() {
               <Link href="/runs" className="text-xs text-zinc-500 hover:text-zinc-400">
                 ← Active Runs
               </Link>
+              {run.isMockRun && (
+                <span className="rounded border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-400">
+                  🧪 MOCK RUN
+                </span>
+              )}
               {run.status === "IN_PROGRESS" && (
                 <span className="rounded bg-indigo-700 px-2 py-0.5 text-xs font-semibold text-indigo-100">
                   IN PROGRESS
@@ -1135,6 +1140,23 @@ export default function ActiveRunPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Mock run banner ──────────────────────────────────────────────── */}
+      {run.isMockRun && (
+        <div className="mx-6 mt-3 flex items-center gap-3 rounded border border-amber-500/40 bg-amber-500/10 px-4 py-2">
+          <span className="text-sm text-amber-400">🧪 This is a <strong>mock run</strong> — results will not be saved to the official record.</span>
+          <button
+            onClick={async () => {
+              if (!window.confirm("Delete this mock run? It cannot be recovered.")) return;
+              const res = await fetch(`/api/protocol-runs/${run.id}`, { method: "DELETE", headers: authHeaders });
+              if (res.ok) router.push("/protocols");
+            }}
+            className="ml-auto shrink-0 rounded border border-red-500/40 px-3 py-1 text-xs text-red-400 hover:bg-red-500/10"
+          >
+            Delete Mock Run
+          </button>
+        </div>
+      )}
 
       {/* ── Completion banner ────────────────────────────────────────────── */}
       {/* ── Inventory usage confirmation modal ── */}

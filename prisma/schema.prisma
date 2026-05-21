@@ -46,6 +46,7 @@ model Entry {
   allowNonSequential   Boolean       @default(false)
   status               String        @default("PUBLISHED") // "DRAFT" | "PUBLISHED"
   publishedAt          DateTime?
+  changeSummary        String        @default("")
   draftOfId            String?
   draftOf              Entry?        @relation("DraftOf", fields: [draftOfId], references: [id])
   drafts               Entry[]       @relation("DraftOf")

@@ -3,11 +3,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import AppTopNav from "@/components/AppTopNav";
 import { getCurrentUser } from "@/components/AppTopNav";
 import type { ProtocolRun } from "@/models/protocolRun";
 import TagDisplay from "@/components/tags/TagDisplay";
-import ProtocolsRunsSubNav from "@/components/ProtocolsRunsSubNav";
 
 type ViewMode = "active" | "history";
 
@@ -71,7 +69,12 @@ function RunsPageContent() {
         const res = await fetch("/api/protocol-runs", { headers: authHeaders });
         if (!res.ok) return;
         const data = (await res.json()) as ProtocolRun[];
-        if (!cancelled) setRuns(data);
+        if (!cancelled) {
+          setRuns(data);
+          if (!searchParams.get("view") && !data.some((r) => r.status === "IN_PROGRESS")) {
+            setViewMode("history");
+          }
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -112,8 +115,6 @@ function RunsPageContent() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <AppTopNav />
-      <ProtocolsRunsSubNav />
       <div className="p-6">
       {/* Header */}
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">

@@ -7,11 +7,8 @@ export default function ProtocolsRunsSubNav() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const isProtocols = pathname === "/protocols";
-  const isRunsRoot = pathname === "/runs";
-  const viewParam = searchParams.get("view");
-  const isActiveRuns = isRunsRoot && (viewParam === "active" || viewParam === null);
-  const isHistory = isRunsRoot && viewParam === "history";
+  const isProtocols = pathname.startsWith("/protocols");
+  const isRuns = pathname.startsWith("/runs");
 
   const base = "rounded px-3 py-1.5 text-sm font-medium transition";
   const active = "bg-zinc-100 text-zinc-900";
@@ -23,11 +20,8 @@ export default function ProtocolsRunsSubNav() {
         <Link href="/protocols" className={`${base} ${isProtocols ? active : inactive}`}>
           Protocols
         </Link>
-        <Link href="/runs" className={`${base} ${isActiveRuns ? active : inactive}`}>
-          Active Runs
-        </Link>
-        <Link href="/runs?view=history" className={`${base} ${isHistory ? active : inactive}`}>
-          Run History
+        <Link href="/runs" className={`${base} ${isRuns ? active : inactive}`}>
+          Runs
         </Link>
       </div>
     </div>

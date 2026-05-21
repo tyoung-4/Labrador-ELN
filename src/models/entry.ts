@@ -47,6 +47,13 @@ export type Entry = {
   } | null;
   version?: number;
   allowNonSequential?: boolean;
+  /** "DRAFT" | "PUBLISHED" */
+  status?: string;
+  publishedAt?: string | null;
+  /** Change summary entered at publish time */
+  changeSummary?: string;
+  /** If this is a draft fork, points to the published Entry it was forked from */
+  draftOfId?: string | null;
   /** Nullable FK to ProtocolRun — set when this entry is linked to a run */
   linkedRunId?: string | null;
   linkedRun?: LinkedRun | null;

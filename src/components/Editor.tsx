@@ -30,9 +30,11 @@ type Props = {
   /** Called when the user clicks a version in the Version panel */
   onOpenParent?: (parentId: string) => void;
   /** Other entries in this protocol's version family — shown in Version panel dropdown */
-  versionFamily?: Array<{ id: string; title: string; semVer: string }>;
+  versionFamily?: Array<{ id: string; title: string; semVer: string; changeSummary?: string }>;
   /** Content rendered between the main editor area and the Save/Cancel buttons */
   beforeButtons?: React.ReactNode;
+  /** If provided, the editor assigns its save function here so callers can trigger save programmatically */
+  saveRef?: React.MutableRefObject<(() => void) | null>;
 };
 
 // Component items shown in the right-sidebar dropdown.
@@ -785,6 +787,7 @@ export default function Editor({
   onOpenParent,
   versionFamily,
   beforeButtons,
+  saveRef,
 }: Props) {
   const [title, setTitle]           = useState(initial.title ?? "");
   const [description, setDescription] = useState(initial.description ?? "");
@@ -931,6 +934,16 @@ export default function Editor({
       allowNonSequential,
     });
   }
+
+  // Keep saveRef in sync with the latest handleSave closure on every render
+  const handleSaveLatestRef = useRef(handleSave);
+  handleSaveLatestRef.current = handleSave;
+  useEffect(() => {
+    if (!saveRef) return;
+    saveRef.current = () => handleSaveLatestRef.current();
+    return () => { saveRef.current = null; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saveRef]);
 
   // ─── Bottom panels (typed fields + custom fields + attachments) ──────────────
 
@@ -1184,32 +1197,45 @@ export default function Editor({
                     </span>
                   </div>
 
-                  {/* Version history dropdown — shown when the family has multiple entries */}
-                  {versionFamily && versionFamily.length > 1 && onOpenParent && (
+                  {/* Version history list — shown when the family has multiple entries */}
+                  {versionFamily && versionFamily.length > 1 && (
                     <div>
-                      <label className="mb-1 block text-zinc-500">Version history</label>
-                      <select
-                        value={initial.id ?? ""}
-                        onChange={(e) => {
-                          if (e.target.value && e.target.value !== initial.id) {
-                            onOpenParent(e.target.value);
-                          }
-                        }}
-                        className="w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-100"
-                      >
+                      <label className="mb-1.5 block text-zinc-500">Version history</label>
+                      <div className="space-y-1.5">
                         {[...versionFamily]
                           .sort((a, b) => {
-                            // Descending semver sort
                             const [aMaj = 0, aMin = 0] = a.semVer.split(".").map(Number);
                             const [bMaj = 0, bMin = 0] = b.semVer.split(".").map(Number);
                             return bMaj !== aMaj ? bMaj - aMaj : bMin - aMin;
                           })
                           .map((v) => (
-                            <option key={v.id} value={v.id}>
-                              v{v.semVer} — {v.title}
-                            </option>
+                            <div
+                              key={v.id}
+                              className={`rounded border px-2 py-1.5 ${
+                                v.id === initial.id
+                                  ? "border-zinc-600 bg-zinc-800"
+                                  : "border-zinc-700/50 bg-zinc-800/30"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="font-semibold text-zinc-200">v{v.semVer}</span>
+                                {onOpenParent && v.id !== initial.id && (
+                                  <button
+                                    onClick={() => onOpenParent(v.id)}
+                                    className="text-[10px] text-indigo-400 hover:text-indigo-300"
+                                  >
+                                    Open
+                                  </button>
+                                )}
+                              </div>
+                              {v.changeSummary ? (
+                                <p className="mt-0.5 italic text-zinc-500">{v.changeSummary}</p>
+                              ) : (
+                                <p className="mt-0.5 text-zinc-600">No summary provided</p>
+                              )}
+                            </div>
                           ))}
-                      </select>
+                      </div>
                     </div>
                   )}
 
