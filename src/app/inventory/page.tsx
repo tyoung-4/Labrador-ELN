@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import ReagentsList from "@/components/inventory/ReagentsList";
@@ -38,7 +38,7 @@ const TYPE_TO_TAB: Partial<Record<TemplateType, Tab>> = {
   plasmid: "plasmids",
 };
 
-export default function InventoryPage() {
+function InventoryPageContent() {
   const searchParams = useSearchParams();
   const [tab, setTab] = useState<Tab>("reagents");
   const [highlightPlasmidId, setHighlightPlasmidId] = useState<string | undefined>(undefined);
@@ -221,5 +221,13 @@ export default function InventoryPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function InventoryPage() {
+  return (
+    <Suspense>
+      <InventoryPageContent />
+    </Suspense>
   );
 }
