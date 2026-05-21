@@ -123,6 +123,8 @@ model ProtocolRun {
   linkedInventory  String    @default("[]")
   operatorName     String    @default("")
   completedAt      DateTime?
+  preRunNotes      String    @default("")
+  abortNotes       String    @default("")
   isMockRun        Boolean   @default(false)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt

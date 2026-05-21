@@ -1054,6 +1054,18 @@ export default function ActiveRunPage() {
     }
   }
 
+  async function handleAbortRun(abortNotes: string) {
+    if (!run) return;
+    try {
+      const res = await fetch(`/api/protocol-runs/${runId}`, {
+        method: "PUT",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "ABORTED", abortNotes }),
+      });
+      if (res.ok) router.push(`/runs/${runId}/summary`);
+    } catch { /* non-critical */ }
+  }
+
   // ── Render helpers ─────────────────────────────────────────────────────────
 
   const activeStep = steps[activeStepIdx] ?? null;
@@ -1278,6 +1290,7 @@ export default function ActiveRunPage() {
             onDismissTagNudge={() => { setShowTagNudge(false); setTagNudgeDismissed(true); }}
             currentUserName={currentUser.name}
             runnerName={run.runner?.name ?? "Admin"}
+            onAbortRun={handleAbortRun}
           />
         </div>
       </div>
@@ -1311,6 +1324,7 @@ function RunSidebar({
   allResolved,
   onResult,
   onCompleteRun,
+  onAbortRun,
   runId,
   runNotes,
   authHeaders,
@@ -1331,6 +1345,7 @@ function RunSidebar({
   allResolved: boolean;
   onResult: (step: ParsedStep, kind: ResultKind) => Promise<void>;
   onCompleteRun: () => void;
+  onAbortRun: (abortNotes: string) => Promise<void>;
   runId: string;
   runNotes: string;
   authHeaders: Record<string, string>;
@@ -1342,6 +1357,10 @@ function RunSidebar({
   runnerName: string;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
+  const [showFailMenu, setShowFailMenu] = useState(false);
+  const [showAbortModal, setShowAbortModal] = useState(false);
+  const [abortNotesInput, setAbortNotesInput] = useState("");
+  const [aborting, setAborting] = useState(false);
 
   // Auto-expand run notes when run completes
   useEffect(() => {
@@ -1394,13 +1413,40 @@ function RunSidebar({
             {submitting ? "Saving…" : "✓  Pass"}
           </button>
           <div className="flex gap-2">
-            <button
-              onClick={() => onResult(activeStep, "FAILED")}
-              disabled={submitting}
-              className="flex-1 rounded bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              ✗  Fail
-            </button>
+            {/* Split fail button */}
+            <div className="relative flex flex-1">
+              <button
+                onClick={() => { setShowFailMenu(false); void onResult(activeStep, "FAILED"); }}
+                disabled={submitting}
+                className="flex-1 rounded-l bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                ✗  Fail
+              </button>
+              <button
+                onClick={() => setShowFailMenu((v) => !v)}
+                disabled={submitting}
+                className="rounded-r border-l border-red-800 bg-red-600 px-2 py-2 text-sm text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="More fail options"
+              >
+                ▾
+              </button>
+              {showFailMenu && (
+                <div className="absolute bottom-full left-0 mb-1 z-10 min-w-[140px] rounded border border-zinc-700 bg-zinc-800 shadow-xl">
+                  <button
+                    onClick={() => { setShowFailMenu(false); void onResult(activeStep, "FAILED"); }}
+                    className="block w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-zinc-700"
+                  >
+                    ✗  Step Fail
+                  </button>
+                  <button
+                    onClick={() => { setShowFailMenu(false); setAbortNotesInput(""); setShowAbortModal(true); }}
+                    className="block w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-zinc-700"
+                  >
+                    ⊗  Abort Run
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               onClick={() => onResult(activeStep, "SKIPPED")}
               disabled={submitting}
@@ -1409,6 +1455,44 @@ function RunSidebar({
               →  Skip
             </button>
           </div>
+
+          {/* Abort confirmation modal */}
+          {showAbortModal && (
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4">
+              <div className="w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 p-5 shadow-2xl">
+                <h3 className="mb-1 text-sm font-semibold text-zinc-100">Abort Run?</h3>
+                <p className="mb-3 text-xs text-zinc-400">This will permanently abort the run. This action cannot be undone.</p>
+                <textarea
+                  value={abortNotesInput}
+                  onChange={(e) => setAbortNotesInput(e.target.value)}
+                  placeholder="Reason for aborting (optional)..."
+                  rows={3}
+                  className="mb-3 w-full resize-none rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={async () => {
+                      setAborting(true);
+                      await onAbortRun(abortNotesInput.trim());
+                      setAborting(false);
+                      setShowAbortModal(false);
+                    }}
+                    disabled={aborting}
+                    className="flex-1 rounded bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {aborting ? "Aborting…" : "Abort Run"}
+                  </button>
+                  <button
+                    onClick={() => setShowAbortModal(false)}
+                    disabled={aborting}
+                    className="flex-1 rounded border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700 disabled:opacity-50"
+                  >
+                    Keep Running
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       ) : null}
 

@@ -132,20 +132,22 @@ export async function PUT(request: Request, context: RouteContext) {
     if (!canAccessRun(actor, existing.runnerId)) {
       return NextResponse.json({ error: "Not allowed to update this run" }, { status: 403 });
     }
-    if (existing.status === "COMPLETED") {
+    if (existing.status === "COMPLETED" || existing.status === "ABORTED") {
       return NextResponse.json({ error: "Run already ended and is locked." }, { status: 409 });
     }
 
     const payload = await request.json().catch(() => ({}));
     const nextStatus = typeof payload.status === "string" ? payload.status : undefined;
+    const isEnding = nextStatus === "COMPLETED" || nextStatus === "ABORTED";
     const updated = await prisma.protocolRun.update({
       where: { id },
       data: {
         interactionState: typeof payload.interactionState === "string" ? payload.interactionState : undefined,
         status: nextStatus,
-        locked: nextStatus === "COMPLETED" ? true : undefined,
-        completedAt: nextStatus === "COMPLETED" ? new Date() : undefined,
+        locked: isEnding ? true : undefined,
+        completedAt: isEnding ? new Date() : undefined,
         notes: typeof payload.notes === "string" ? payload.notes : undefined,
+        abortNotes: typeof payload.abortNotes === "string" ? payload.abortNotes : undefined,
       },
       include: {
         sourceEntry: {

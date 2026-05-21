@@ -14,6 +14,8 @@ function StatusBadge({ status }: { status: string }) {
     return <span className="rounded bg-indigo-700 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-100">IN PROGRESS</span>;
   if (status === "COMPLETED")
     return <span className="rounded bg-emerald-800 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-200">COMPLETED</span>;
+  if (status === "ABORTED")
+    return <span className="rounded bg-red-800 px-1.5 py-0.5 text-[10px] font-semibold text-red-200">ABORTED</span>;
   return <span className="rounded bg-zinc-700 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-300">{status}</span>;
 }
 
@@ -60,6 +62,7 @@ function RunsPageContent() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [showUntaggedOnly, setShowUntaggedOnly] = useState(() => searchParams.get("filter") === "untagged");
+  const [showAborted, setShowAborted] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -94,7 +97,9 @@ function RunsPageContent() {
     const q = query.trim().toLowerCase();
     return runs
       .filter((r) => {
-        const match = viewMode === "active" ? r.status === "IN_PROGRESS" : r.status !== "IN_PROGRESS";
+        const match = viewMode === "active"
+          ? r.status === "IN_PROGRESS"
+          : r.status !== "IN_PROGRESS" && (showAborted || r.status !== "ABORTED");
         const search =
           !q ||
           r.title.toLowerCase().includes(q) ||
@@ -109,7 +114,7 @@ function RunsPageContent() {
           ? a.createdAt.localeCompare(b.createdAt) // oldest first for active (urgency)
           : b.createdAt.localeCompare(a.createdAt) // newest first for history
       );
-  }, [runs, viewMode, query, showUntaggedOnly]);
+  }, [runs, viewMode, query, showUntaggedOnly, showAborted]);
 
   const activeCount = useMemo(() => runs.filter((r) => r.status === "IN_PROGRESS").length, [runs]);
 
@@ -176,6 +181,18 @@ function RunsPageContent() {
         >
           ⚠️ Untagged only
         </button>
+        {viewMode === "history" && (
+          <button
+            onClick={() => setShowAborted((v) => !v)}
+            className={`rounded border px-3 py-1.5 text-sm transition-colors ${
+              showAborted
+                ? "border-red-500 bg-red-500/20 text-red-400"
+                : "border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10"
+            }`}
+          >
+            Show aborted runs
+          </button>
+        )}
       </div>
 
       {/* Untagged filter banner */}

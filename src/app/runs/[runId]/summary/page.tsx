@@ -220,6 +220,9 @@ export default function RunSummaryPage() {
             {run.status === "COMPLETED" && (
               <span className="rounded bg-emerald-700 px-2 py-0.5 text-xs font-semibold text-emerald-100">COMPLETED</span>
             )}
+            {run.status === "ABORTED" && (
+              <span className="rounded bg-red-800 px-2 py-0.5 text-xs font-semibold text-red-200">ABORTED</span>
+            )}
           </div>
           <p className="text-sm text-zinc-400">Protocol: {run.sourceEntry?.title ?? run.sourceEntryId}</p>
 
@@ -234,7 +237,7 @@ export default function RunSummaryPage() {
             </div>
             {run.completedAt && (
               <div>
-                <span className="text-zinc-500">Completed: </span>
+                <span className="text-zinc-500">{run.status === "ABORTED" ? "Aborted: " : "Completed: "}</span>
                 <span className="text-zinc-200">{new Date(run.completedAt).toLocaleString()}</span>
               </div>
             )}
@@ -244,6 +247,22 @@ export default function RunSummaryPage() {
             </div>
           </div>
         </div>
+
+        {/* Pre-run notes */}
+        {run.preRunNotes && (
+          <div className="rounded border-l-4 border-indigo-500 bg-zinc-900 px-4 py-3">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-indigo-400">Pre-Run Notes</p>
+            <p className="whitespace-pre-wrap text-sm text-zinc-300">{run.preRunNotes}</p>
+          </div>
+        )}
+
+        {/* Abort notes */}
+        {run.status === "ABORTED" && run.abortNotes && (
+          <div className="rounded border-l-4 border-red-500 bg-zinc-900 px-4 py-3">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-red-400">Abort Notes</p>
+            <p className="whitespace-pre-wrap text-sm text-zinc-300">{run.abortNotes}</p>
+          </div>
+        )}
 
         {/* Summary counts */}
         <div className="grid grid-cols-3 gap-3">
@@ -279,7 +298,9 @@ export default function RunSummaryPage() {
                           {step.isSubstep && <span className="mr-1 text-zinc-600">↳</span>}
                           {step.label}
                         </p>
-                        {r ? <ResultBadge result={r.result} /> : (
+                        {r ? <ResultBadge result={r.result} /> : run.status === "ABORTED" ? (
+                          <span className="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-600">Not reached</span>
+                        ) : (
                           <span className="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-600">—</span>
                         )}
                       </div>

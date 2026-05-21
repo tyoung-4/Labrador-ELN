@@ -120,6 +120,7 @@ export async function POST(request: Request) {
     const payload = await request.json().catch(() => ({}));
     const sourceEntryId = String(payload.sourceEntryId ?? "").trim();
     const isMockRun = Boolean(payload.isMockRun);
+    const preRunNotes = String(payload.preRunNotes ?? "").slice(0, 2000);
     // Operator is always the logged-in user (actor derived from x-user-name header)
     const operatorName = actor.name;
     if (!sourceEntryId) {
@@ -159,6 +160,7 @@ export async function POST(request: Request) {
         runBody: runBodyContent,
         linkedInventory: linkedInventorySnapshot,
         notes: "",
+        preRunNotes,
         interactionState: JSON.stringify({
           stepCompletion: {},
           components: {},

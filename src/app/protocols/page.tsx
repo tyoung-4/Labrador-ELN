@@ -550,6 +550,7 @@ function ProtocolsPageContent() {
   // Run/mock-run confirmation dialogs
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showMockRunModal, setShowMockRunModal] = useState(false);
+  const [preRunNotesInput, setPreRunNotesInput] = useState("");
 
   // New Protocol creation modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -891,14 +892,16 @@ function ProtocolsPageContent() {
 
   async function confirmStartRun(isMockRun = false) {
     if (!selected) return;
+    const notes = preRunNotesInput.trim();
     setShowConfirmModal(false);
     setShowMockRunModal(false);
+    setPreRunNotesInput("");
     setLoading(true);
     try {
       const res = await fetch("/api/protocol-runs", {
         method: "POST",
         headers: jsonHeaders,
-        body: JSON.stringify({ sourceEntryId: selected.id, isMockRun }),
+        body: JSON.stringify({ sourceEntryId: selected.id, isMockRun, preRunNotes: notes }),
       });
       if (!res.ok) { console.error("Failed to create run:", res.status); return; }
       const run = (await res.json()) as { id: string };
@@ -1461,10 +1464,18 @@ function ProtocolsPageContent() {
       {showConfirmModal && selected && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-sm rounded-lg border border-zinc-700 bg-zinc-900 p-6 shadow-2xl">
-            <p className="mb-6 text-sm text-zinc-200">
+            <p className="mb-3 text-sm text-zinc-200">
               Are you sure you want to start{" "}
               <span className="font-semibold text-zinc-100">{selected.title}</span>?
             </p>
+            <label className="mb-1 block text-xs text-zinc-400">Run Notes (optional)</label>
+            <textarea
+              value={preRunNotesInput}
+              onChange={(e) => setPreRunNotesInput(e.target.value)}
+              placeholder="Add any notes about this run before starting (e.g. sample info, conditions, deviations from standard protocol)..."
+              rows={4}
+              className="mb-4 w-full resize-none rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
+            />
             <div className="flex gap-3">
               <button
                 onClick={() => void confirmStartRun()}
@@ -1474,7 +1485,7 @@ function ProtocolsPageContent() {
                 ▶ Start Run
               </button>
               <button
-                onClick={() => setShowConfirmModal(false)}
+                onClick={() => { setShowConfirmModal(false); setPreRunNotesInput(""); }}
                 className="rounded border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-700"
               >
                 Cancel

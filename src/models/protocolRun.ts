@@ -42,6 +42,8 @@ export type ProtocolRun = {
   linkedInventory: string;
   operatorName: string;
   completedAt: string | null;
+  preRunNotes?: string;
+  abortNotes?: string;
   isMockRun?: boolean;
   createdAt: string;
   updatedAt: string;
