@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import GlobalClock from "./GlobalClock";
 
@@ -31,6 +31,7 @@ export function getCurrentUser() {
 
 export default function AppTopNav() {
   const pathname = usePathname();
+  const router   = useRouter();
   const [userId, setUserId] = useState(ELN_USERS[0].id);
 
   // Hydrate from localStorage after mount
@@ -46,6 +47,8 @@ export default function AppTopNav() {
     localStorage.setItem(USER_STORAGE_KEY, id);
     // Broadcast so other components on the page can react
     window.dispatchEvent(new StorageEvent("storage", { key: USER_STORAGE_KEY, newValue: id }));
+    // Sandbox-only: navigate to Home on profile switch so per-user state is fresh
+    router.push("/");
   }
 
   const currentUser = ELN_USERS.find((u) => u.id === userId) ?? ELN_USERS[0];
