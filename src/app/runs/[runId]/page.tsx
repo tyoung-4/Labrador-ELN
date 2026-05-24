@@ -16,14 +16,31 @@ import StepFileAttachment from "@/components/runs/StepFileAttachment";
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
+type ParsedField = {
+  key: string;
+  label: string;
+  required: boolean;
+  kind?: "measurement" | "timer";
+  timerSeconds?: number;
+  timerMaxSeconds?: number;
+  timerMode?: "countdown" | "countup";
+  timerTemp?: string;
+};
+
 type ParsedStep = {
   id: string;      // "step-0", "step-1", ...
   label: string;   // plain-text title of the step
   html: string;    // raw html content for display
   sectionTitle?: string;
   isSubstep: boolean;
-  requiredFields: { key: string; label: string; required: boolean }[]; // measurement/field nodes
+  requiredFields: ParsedField[];
   recipeRefs?: string[]; // recipe IDs attached to this step
+};
+
+type TimerFieldState = {
+  elapsed: number;         // ms accumulated so far
+  startedAt: number | null; // Date.now() timestamp when last started, null if paused/stopped
+  locked: boolean;
 };
 
 type ResultKind = "PASSED" | "FAILED" | "SKIPPED";
@@ -45,9 +62,10 @@ function safeParseLinkedInventory(raw: string): LinkedInventoryItem[] {
 // stepFailures and stepSkips are stored here for type-safety even though
 // PASS/FAIL/SKIP truth-of-record lives in StepResult rows.
 type RunInteractionState = {
-  currentStepIdx:   number;
-  stepFailures:     Record<string, boolean>;  // key: "step-N"
-  stepSkips:        Record<string, boolean>;  // key: "step-N"
+  currentStepIdx: number;
+  stepFailures:   Record<string, boolean>;    // key: "step-N"
+  stepSkips:      Record<string, boolean>;    // key: "step-N"
+  timers?:        Record<string, TimerFieldState>; // key: "${stepId}__${fieldKey}"
 };
 
 function parseInteractionState(raw: string): RunInteractionState {
@@ -55,8 +73,9 @@ function parseInteractionState(raw: string): RunInteractionState {
     const parsed = JSON.parse(raw || "{}") as Partial<RunInteractionState>;
     return {
       currentStepIdx: typeof parsed.currentStepIdx === "number" ? parsed.currentStepIdx : 0,
-      stepFailures:   typeof parsed.stepFailures   === "object" && parsed.stepFailures   !== null ? parsed.stepFailures   : {},
-      stepSkips:      typeof parsed.stepSkips      === "object" && parsed.stepSkips      !== null ? parsed.stepSkips      : {},
+      stepFailures:   typeof parsed.stepFailures === "object" && parsed.stepFailures !== null ? parsed.stepFailures : {},
+      stepSkips:      typeof parsed.stepSkips    === "object" && parsed.stepSkips    !== null ? parsed.stepSkips   : {},
+      timers:         typeof parsed.timers       === "object" && parsed.timers       !== null ? parsed.timers      : {},
     };
   } catch {
     return { currentStepIdx: 0, stepFailures: {}, stepSkips: {} };
@@ -75,7 +94,7 @@ function parseStepsFromBody(runBody: string): ParsedStep[] {
   //   A) ProtocolBodyJSON wrapper: { steps: "JSON-stringified StepsData" }
   //   B) Raw StepsData:            { version, sections: [...] }
   try {
-    type RawField  = { id: string; label: string; required?: boolean; [k: string]: unknown };
+    type RawField  = { id: string; label: string; required?: boolean; kind?: string; timerSeconds?: number; timerMaxSeconds?: number; timerMode?: string; timerTemp?: string };
     type RawSub    = { id: string; html?: string; text?: string; requiredFields?: RawField[]; fields?: RawField[] };
     type RawStep   = { id: string; html?: string; text?: string; requiredFields?: RawField[]; fields?: RawField[]; substeps?: RawSub[]; subSteps?: RawSub[]; recipeRefs?: string[] };
     type RawSection = { id: string; title: string; steps?: RawStep[] };
@@ -105,7 +124,12 @@ function parseStepsFromBody(runBody: string): ParsedStep[] {
             requiredFields: rawFields.map((f, fi) => ({
               key: `field-${globalIdx - 1}-${fi}`,
               label: f.label,
-              required: f.required !== false, // undefined → true for backward compat
+              required: f.kind === "timer" ? false : f.required !== false,
+              kind: (f.kind === "timer" ? "timer" : "measurement") as "measurement" | "timer",
+              timerSeconds: f.timerSeconds,
+              timerMaxSeconds: f.timerMaxSeconds,
+              timerMode: (f.timerMode === "countup" ? "countup" : "countdown") as "countdown" | "countup",
+              timerTemp: f.timerTemp,
             })),
             recipeRefs: step.recipeRefs ?? [],
           });
@@ -123,7 +147,12 @@ function parseStepsFromBody(runBody: string): ParsedStep[] {
               requiredFields: subFields.map((f, fi) => ({
                 key: `field-${globalIdx - 1}-${fi}`,
                 label: f.label,
-                required: f.required !== false,
+                required: f.kind === "timer" ? false : f.required !== false,
+                kind: (f.kind === "timer" ? "timer" : "measurement") as "measurement" | "timer",
+                timerSeconds: f.timerSeconds,
+                timerMaxSeconds: f.timerMaxSeconds,
+                timerMode: (f.timerMode === "countup" ? "countup" : "countdown") as "countdown" | "countup",
+                timerTemp: f.timerTemp,
               })),
             });
           }
@@ -169,6 +198,157 @@ function stripHtml(html: string): string {
     return (el.textContent || "").replace(/\s+/g, " ").trim();
   }
   return html.replace(/<[^>]+>/g, "").trim();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Timer helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function formatElapsed(ms: number): string {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+function formatSeconds(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+// ── StepTimerWidget ───────────────────────────────────────────────────────────
+
+function StepTimerWidget({
+  field,
+  timerState,
+  onStart,
+  onStop,
+  onUnlock,
+  disabled,
+  savedValue,
+}: {
+  field: ParsedField;
+  timerState?: TimerFieldState;
+  onStart: () => void;
+  onStop: () => void;
+  onUnlock: () => void;
+  disabled: boolean;
+  savedValue?: string;
+}) {
+  const [, forceRender] = useState(0);
+
+  // Tick every second while running
+  useEffect(() => {
+    if (!timerState?.startedAt) return;
+    const id = setInterval(() => forceRender((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [timerState?.startedAt]);
+
+  const isRunning = Boolean(timerState?.startedAt);
+  const isLocked  = Boolean(timerState?.locked);
+  const isIdle    = !timerState || (!isRunning && !isLocked && timerState.elapsed === 0);
+
+  const liveElapsedMs = timerState
+    ? timerState.elapsed + (isRunning && timerState.startedAt ? Date.now() - timerState.startedAt : 0)
+    : 0;
+
+  const mode           = field.timerMode ?? "countdown";
+  const targetSec      = field.timerSeconds ?? 0;
+  const maxSec         = field.timerMaxSeconds;
+  const hasRange       = maxSec != null && maxSec > targetSec;
+  const elapsedSec     = Math.floor(liveElapsedMs / 1000);
+  const remainingSec   = Math.max(0, targetSec - elapsedSec);
+  const displaySec     = mode === "countdown" ? remainingSec : elapsedSec;
+  const overtime       = mode === "countdown" && elapsedSec > targetSec;
+
+  // If step is already submitted (savedValue from fieldValues), show read-only
+  if (savedValue !== undefined) {
+    return (
+      <span className="flex items-center gap-1.5 rounded border border-sky-200 bg-sky-50 px-2 py-1 text-xs">
+        <span>⏱</span>
+        <span className="font-medium text-sky-800">{field.label}</span>
+        {field.timerTemp && <span className="text-sky-600 opacity-80">{field.timerTemp}</span>}
+        <span className="text-sky-700">{savedValue || "—"}</span>
+      </span>
+    );
+  }
+
+  return (
+    <div className="rounded border border-sky-200 bg-sky-50 px-2.5 py-2 text-xs">
+      {/* Header row: label + temp + target */}
+      <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+        <span>⏱</span>
+        <span className="font-semibold text-sky-800">{field.label}</span>
+        {field.timerTemp && (
+          <span className="rounded border border-sky-300 bg-white px-1.5 py-0.5 text-sky-700">{field.timerTemp}</span>
+        )}
+        {targetSec > 0 && (
+          <span className="text-sky-600 opacity-80">
+            {mode === "countdown" ? "↓" : "↑"} {formatSeconds(targetSec)}
+            {hasRange && ` – ${formatSeconds(maxSec!)}`}
+          </span>
+        )}
+      </div>
+
+      {/* Timer display */}
+      <div className="mb-2 flex items-center gap-2">
+        <span
+          className={`font-mono text-2xl font-bold tabular-nums ${
+            isRunning
+              ? overtime ? "text-red-600" : "text-sky-700"
+              : isLocked
+              ? "text-zinc-500"
+              : "text-sky-400"
+          }`}
+        >
+          {isIdle && targetSec > 0
+            ? formatSeconds(mode === "countdown" ? targetSec : 0)
+            : formatSeconds(displaySec)}
+        </span>
+        {isRunning && overtime && (
+          <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs font-semibold text-red-600">+{formatSeconds(elapsedSec - targetSec)} over</span>
+        )}
+        {isLocked && (
+          <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-500">Locked</span>
+        )}
+      </div>
+
+      {/* Buttons */}
+      {!disabled && (
+        <div className="flex gap-1.5">
+          {isLocked ? (
+            <button
+              onClick={onUnlock}
+              className="rounded border border-amber-400 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100"
+            >
+              Unlock
+            </button>
+          ) : isRunning ? (
+            <button
+              onClick={onStop}
+              className="rounded bg-sky-600 px-3 py-1 text-xs font-semibold text-white hover:bg-sky-700"
+            >
+              ■ Stop
+            </button>
+          ) : (
+            <button
+              onClick={onStart}
+              className="rounded bg-sky-600 px-3 py-1 text-xs font-semibold text-white hover:bg-sky-700"
+            >
+              ▶ {timerState && timerState.elapsed > 0 ? "Resume" : "Start"}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -358,6 +538,10 @@ function StepRow({
   expandedNotes,
   setExpandedNotes,
   recipesById,
+  timerStates,
+  onTimerStart,
+  onTimerStop,
+  onTimerUnlock,
 }: {
   step: ParsedStep;
   globalIdx: number;
@@ -379,6 +563,10 @@ function StepRow({
   expandedNotes: Set<string>;
   setExpandedNotes: React.Dispatch<React.SetStateAction<Set<string>>>;
   recipesById: Record<string, RecipeSummary>;
+  timerStates: Record<string, TimerFieldState>;
+  onTimerStart: (timerKey: string) => void;
+  onTimerStop: (timerKey: string) => void;
+  onTimerUnlock: (timerKey: string) => void;
 }) {
   const [showUnlockConfirm, setShowUnlockConfirm] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -490,6 +678,29 @@ function StepRow({
             {!isEditing && step.requiredFields.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {step.requiredFields.map((field) => {
+                  // ── Timer field ───────────────────────────────────────────
+                  if (field.kind === "timer") {
+                    const timerKey = `${step.id}__${field.key}`;
+                    let savedVal: string | undefined;
+                    if (result) {
+                      try { savedVal = (JSON.parse(result.fieldValues) as Record<string, string>)[field.key] ?? ""; }
+                      catch { savedVal = ""; }
+                    }
+                    return (
+                      <StepTimerWidget
+                        key={field.key}
+                        field={field}
+                        timerState={timerStates[timerKey]}
+                        onStart={() => onTimerStart(timerKey)}
+                        onStop={() => onTimerStop(timerKey)}
+                        onUnlock={() => onTimerUnlock(timerKey)}
+                        disabled={isRunComplete || Boolean(result)}
+                        savedValue={savedVal}
+                      />
+                    );
+                  }
+
+                  // ── Measurement field ─────────────────────────────────────
                   if (result) {
                     let savedVal = "";
                     try {
@@ -589,6 +800,10 @@ function RunProtocolScrollView({
   runId,
   userId,
   authHeaders,
+  timerStates,
+  onTimerStart,
+  onTimerStop,
+  onTimerUnlock,
 }: {
   steps: ParsedStep[];
   resultMap: Record<string, StepResult>;
@@ -609,6 +824,10 @@ function RunProtocolScrollView({
   runId: string;
   userId: string;
   authHeaders: Record<string, string>;
+  timerStates: Record<string, TimerFieldState>;
+  onTimerStart: (timerKey: string) => void;
+  onTimerStop: (timerKey: string) => void;
+  onTimerUnlock: (timerKey: string) => void;
 }) {
   const stepRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -718,6 +937,10 @@ function RunProtocolScrollView({
                   expandedNotes={expandedNotes}
                   setExpandedNotes={setExpandedNotes}
                   recipesById={recipesById}
+                  timerStates={timerStates}
+                  onTimerStart={onTimerStart}
+                  onTimerStop={onTimerStop}
+                  onTimerUnlock={onTimerUnlock}
                 />
                 <StepFileAttachment
                   runId={runId}
@@ -777,6 +1000,8 @@ export default function ActiveRunPage() {
   // Inventory usage confirmation
   const [showInventoryConfirm, setShowInventoryConfirm] = useState(false);
   const [inventoryConfirmed, setInventoryConfirmed] = useState<Set<string>>(new Set());
+  // Timer states — keyed by "${stepId}__${fieldKey}"
+  const [timerStates, setTimerStates] = useState<Record<string, TimerFieldState>>({});
 
   // Parse steps — only after run is loaded and we're client-side
   const steps = useMemo<ParsedStep[]>(() => {
@@ -840,9 +1065,10 @@ export default function ActiveRunPage() {
           if (!hasProjectTag) setShowTagNudge(true);
         }
 
-        // Restore active step from interactionState
+        // Restore active step + timer states from interactionState
         const iState = parseInteractionState(runData.interactionState);
         setActiveStepIdx(iState.currentStepIdx);
+        if (iState.timers) setTimerStates(iState.timers);
 
         if (runData.status === "COMPLETED") setShowCompleteBanner(true);
       } catch (e) {
@@ -897,6 +1123,67 @@ export default function ActiveRunPage() {
       [stepId]: { ...(prev[stepId] ?? {}), [fieldKey]: value },
     }));
   }, []);
+
+  // ── Timer callbacks ────────────────────────────────────────────────────────
+
+  const persistTimerStates = useCallback(
+    async (newStates: Record<string, TimerFieldState>) => {
+      if (!run || run.status === "COMPLETED") return;
+      try {
+        const existing = parseInteractionState(run.interactionState);
+        const next: RunInteractionState = { ...existing, timers: newStates };
+        // Update local run interactionState so subsequent parses are fresh
+        setRun((prev) => prev ? { ...prev, interactionState: JSON.stringify(next) } : prev);
+        await fetch(`/api/protocol-runs/${runId}`, {
+          method: "PUT",
+          headers: { ...authHeaders, "Content-Type": "application/json" },
+          body: JSON.stringify({ interactionState: JSON.stringify(next) }),
+        });
+      } catch {
+        // non-critical — timer state is best-effort
+      }
+    },
+    [run, runId, authHeaders]
+  );
+
+  const handleTimerStart = useCallback(
+    (timerKey: string) => {
+      setTimerStates((prev) => {
+        const existing = prev[timerKey] ?? { elapsed: 0, startedAt: null, locked: false };
+        const next = { ...prev, [timerKey]: { elapsed: existing.elapsed, startedAt: Date.now(), locked: false } };
+        void persistTimerStates(next);
+        return next;
+      });
+    },
+    [persistTimerStates]
+  );
+
+  const handleTimerStop = useCallback(
+    (timerKey: string) => {
+      setTimerStates((prev) => {
+        const existing = prev[timerKey];
+        if (!existing) return prev;
+        const elapsed = existing.elapsed + (existing.startedAt ? Date.now() - existing.startedAt : 0);
+        const next = { ...prev, [timerKey]: { elapsed, startedAt: null, locked: true } };
+        void persistTimerStates(next);
+        return next;
+      });
+    },
+    [persistTimerStates]
+  );
+
+  const handleTimerUnlock = useCallback(
+    (timerKey: string) => {
+      setTimerStates((prev) => {
+        const existing = prev[timerKey];
+        if (!existing) return prev;
+        const next = { ...prev, [timerKey]: { ...existing, locked: false } };
+        void persistTimerStates(next);
+        return next;
+      });
+    },
+    [persistTimerStates]
+  );
 
   // ── Non-sequential step selection ─────────────────────────────────────────
   function handleStepClick(globalIdx: number, step: ParsedStep) {
@@ -972,9 +1259,27 @@ export default function ActiveRunPage() {
       }
     }
 
+    // Auto-stop any running timers for this step and capture elapsed as formatted strings
+    const timerValues: Record<string, string> = {};
+    const now = Date.now();
+    const updatedTimerStates = { ...timerStates };
+    for (const field of step.requiredFields) {
+      if (field.kind === "timer") {
+        const timerKey = `${step.id}__${field.key}`;
+        const ts = timerStates[timerKey];
+        const elapsed = ts ? ts.elapsed + (ts.startedAt ? now - ts.startedAt : 0) : 0;
+        timerValues[field.key] = formatElapsed(elapsed);
+        updatedTimerStates[timerKey] = { elapsed, startedAt: null, locked: true };
+      }
+    }
+    if (Object.keys(timerValues).length > 0) {
+      setTimerStates(updatedTimerStates);
+      void persistTimerStates(updatedTimerStates);
+    }
+
     setSubmitting(true);
     try {
-      const stepFields = pendingFields[step.id] ?? {};
+      const stepFields = { ...(pendingFields[step.id] ?? {}), ...timerValues };
       const res = await fetch(`/api/protocol-runs/${runId}/step-results`, {
         method: "POST",
         headers: { ...authHeaders, "Content-Type": "application/json" },
@@ -1272,6 +1577,10 @@ export default function ActiveRunPage() {
             runId={runId}
             userId={currentUser.id}
             authHeaders={authHeaders}
+            timerStates={timerStates}
+            onTimerStart={handleTimerStart}
+            onTimerStop={handleTimerStop}
+            onTimerUnlock={handleTimerUnlock}
           />
         </div>
 

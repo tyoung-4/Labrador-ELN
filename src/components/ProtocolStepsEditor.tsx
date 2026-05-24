@@ -24,8 +24,10 @@ export type RequiredField = {
   label: string;
   unit: string;
   required?: boolean; // undefined/missing → treat as true for backward compat
-  timerSeconds?: number;
-  timerMode?: "countdown" | "countup" | "longrange";
+  timerSeconds?: number;    // target duration in seconds
+  timerMaxSeconds?: number; // optional max for range display (e.g. 20–40 min)
+  timerMode?: "countdown" | "countup";
+  timerTemp?: string;       // temperature label (e.g. "37°C", "Ice / 4°C")
 };
 
 export type SubStep = {
@@ -199,8 +201,11 @@ const FIELD_TYPE_OPTIONS = [
   { label: "Temperature",   defaultUnit: "°C",     units: ["°C", "°F", "K"] },
   { label: "Concentration", defaultUnit: "mg/mL",  units: ["mg/mL", "µg/mL", "mM", "µM", "nM"] },
   { label: "Time",          defaultUnit: "min",    units: ["hr", "min", "s"] },
+  { label: "Timer",         defaultUnit: "",       units: [] as string[] }, // live incubation timer
   { label: "Other",         defaultUnit: "",       units: [] as string[] },
 ] as const;
+
+const TIMER_TEMP_OPTIONS = ["Ice / 4°C", "RT", "37°C", "42°C", "Other"] as const;
 
 // ─── StepTextInput ─────────────────────────────────────────────────────────────
 // ContentEditable div that supports inline formatting (Italic, Underline).
@@ -299,13 +304,19 @@ function FieldPill({
       : "inline-flex items-center gap-1.5 rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs text-blue-900";
   return (
     <span className={cls}>
+      {field.kind === "timer" && <span>⏱</span>}
       <span className="font-medium">{field.label}</span>
-      {field.unit ? <span className="opacity-70">{field.unit}</span> : null}
-      {field.timerMode === "countdown" && field.timerSeconds != null && (
+      {field.kind === "timer" && field.timerTemp && (
+        <span className="opacity-70">{field.timerTemp}</span>
+      )}
+      {field.kind === "timer" && field.timerSeconds != null && (
         <span className="opacity-60">
-          {Math.floor(field.timerSeconds / 60)}m{field.timerSeconds % 60}s
+          {field.timerMode === "countup" ? "↑" : "↓"}
+          {Math.floor(field.timerSeconds / 60)}m
+          {field.timerMaxSeconds != null ? `–${Math.floor(field.timerMaxSeconds / 60)}m` : ""}
         </span>
       )}
+      {field.kind !== "timer" && field.unit ? <span className="opacity-70">{field.unit}</span> : null}
       <button
         type="button"
         onClick={onRemove}
@@ -334,18 +345,46 @@ function InputFieldModal({
   const [fieldLabel, setFieldLabel] = useState("");
   const [isRequired, setIsRequired] = useState(true);
 
+  // Timer-specific state
+  const [timerTemp, setTimerTemp] = useState<string>(TIMER_TEMP_OPTIONS[0]);
+  const [timerCustomTemp, setTimerCustomTemp] = useState("");
+  const [timerMinutes, setTimerMinutes] = useState(30);
+  const [timerSeconds, setTimerSeconds] = useState(0);
+  const [timerHasRange, setTimerHasRange] = useState(false);
+  const [timerMaxMinutes, setTimerMaxMinutes] = useState(40);
+  const [timerMaxSeconds, setTimerMaxSeconds] = useState(0);
+  const [timerMode, setTimerMode] = useState<"countdown" | "countup">("countdown");
+
   const currentOpt = FIELD_TYPE_OPTIONS.find((o) => o.label === fieldType) ?? FIELD_TYPE_OPTIONS[0];
   const isOther = fieldType === "Other";
+  const isTimer = fieldType === "Timer";
 
   function doInsert() {
-    const unit = isOther ? customUnit.trim() : fieldUnit;
-    onInsert({
-      id: uid(),
-      kind: "measurement",
-      label: fieldLabel.trim() || fieldType,
-      unit,
-      required: isRequired,
-    });
+    if (isTimer) {
+      const totalSeconds = timerMinutes * 60 + timerSeconds;
+      const totalMaxSeconds = timerHasRange ? timerMaxMinutes * 60 + timerMaxSeconds : undefined;
+      const resolvedTemp = timerTemp === "Other" ? timerCustomTemp.trim() : timerTemp;
+      onInsert({
+        id: uid(),
+        kind: "timer",
+        label: fieldLabel.trim() || "Incubation",
+        unit: "",
+        required: false,
+        timerSeconds: totalSeconds,
+        timerMaxSeconds: totalMaxSeconds,
+        timerMode,
+        timerTemp: resolvedTemp || undefined,
+      });
+    } else {
+      const unit = isOther ? customUnit.trim() : fieldUnit;
+      onInsert({
+        id: uid(),
+        kind: "measurement",
+        label: fieldLabel.trim() || fieldType,
+        unit,
+        required: isRequired,
+      });
+    }
   }
 
   return (
@@ -353,19 +392,21 @@ function InputFieldModal({
       <div className="mx-4 w-full max-w-md rounded bg-white p-6 shadow-xl">
         <h3 className="mb-4 text-lg font-semibold text-gray-900">Insert Input Field</h3>
         <div className="space-y-4">
-          {/* Required toggle */}
-          <label className="flex cursor-pointer items-center gap-2">
-            <input
-              type="checkbox"
-              checked={isRequired}
-              onChange={(e) => setIsRequired(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-blue-600"
-            />
-            <span className="text-sm font-medium text-gray-700">Required</span>
-            {!isRequired && (
-              <span className="text-xs text-gray-400">(user may leave blank)</span>
-            )}
-          </label>
+          {/* Required toggle — hidden for timers (always optional) */}
+          {!isTimer && (
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={isRequired}
+                onChange={(e) => setIsRequired(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600"
+              />
+              <span className="text-sm font-medium text-gray-700">Required</span>
+              {!isRequired && (
+                <span className="text-xs text-gray-400">(user may leave blank)</span>
+              )}
+            </label>
+          )}
 
           {/* Type selector */}
           <div>
@@ -396,34 +437,162 @@ function InputFieldModal({
               autoFocus
               value={fieldLabel}
               onChange={(e) => setFieldLabel(e.target.value)}
-              placeholder="e.g. Bead slurry volume"
+              placeholder={isTimer ? "e.g. Ice incubation" : "e.g. Bead slurry volume"}
               className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doInsert(); } }}
             />
           </div>
 
-          {/* Unit: dropdown for typed, text input for Other */}
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Unit</label>
-            {isOther ? (
-              <input
-                value={customUnit}
-                onChange={(e) => setCustomUnit(e.target.value)}
-                placeholder="Enter unit…"
-                className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
-              />
-            ) : (
-              <select
-                value={fieldUnit}
-                onChange={(e) => setFieldUnit(e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
-              >
-                {(currentOpt.units as readonly string[]).map((u) => (
-                  <option key={u} value={u}>{u}</option>
-                ))}
-              </select>
-            )}
-          </div>
+          {/* Unit: dropdown for typed, text input for Other — hidden for Timer */}
+          {!isTimer && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Unit</label>
+              {isOther ? (
+                <input
+                  value={customUnit}
+                  onChange={(e) => setCustomUnit(e.target.value)}
+                  placeholder="Enter unit…"
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
+                />
+              ) : (
+                <select
+                  value={fieldUnit}
+                  onChange={(e) => setFieldUnit(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
+                >
+                  {(currentOpt.units as readonly string[]).map((u) => (
+                    <option key={u} value={u}>{u}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+
+          {/* Timer-specific fields */}
+          {isTimer && (
+            <>
+              {/* Temperature */}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Temperature</label>
+                <select
+                  value={timerTemp}
+                  onChange={(e) => setTimerTemp(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
+                >
+                  {TIMER_TEMP_OPTIONS.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+                {timerTemp === "Other" && (
+                  <input
+                    value={timerCustomTemp}
+                    onChange={(e) => setTimerCustomTemp(e.target.value)}
+                    placeholder="e.g. 55°C"
+                    className="mt-1.5 w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
+                  />
+                )}
+              </div>
+
+              {/* Target duration */}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Target Duration</label>
+                <div className="flex items-center gap-2">
+                  <div className="flex flex-1 items-center gap-1">
+                    <input
+                      type="number"
+                      min={0}
+                      value={timerMinutes}
+                      onChange={(e) => setTimerMinutes(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
+                    />
+                    <span className="shrink-0 text-sm text-gray-500">min</span>
+                  </div>
+                  <div className="flex flex-1 items-center gap-1">
+                    <input
+                      type="number"
+                      min={0}
+                      max={59}
+                      value={timerSeconds}
+                      onChange={(e) => setTimerSeconds(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
+                      className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
+                    />
+                    <span className="shrink-0 text-sm text-gray-500">sec</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Range toggle + max duration */}
+              <div>
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={timerHasRange}
+                    onChange={(e) => setTimerHasRange(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Variable duration (range)</span>
+                </label>
+                {timerHasRange && (
+                  <div className="mt-2">
+                    <label className="mb-1 block text-sm text-gray-600">Maximum Duration</label>
+                    <div className="flex items-center gap-2">
+                      <div className="flex flex-1 items-center gap-1">
+                        <input
+                          type="number"
+                          min={0}
+                          value={timerMaxMinutes}
+                          onChange={(e) => setTimerMaxMinutes(Math.max(0, parseInt(e.target.value) || 0))}
+                          className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
+                        />
+                        <span className="shrink-0 text-sm text-gray-500">min</span>
+                      </div>
+                      <div className="flex flex-1 items-center gap-1">
+                        <input
+                          type="number"
+                          min={0}
+                          max={59}
+                          value={timerMaxSeconds}
+                          onChange={(e) => setTimerMaxSeconds(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
+                          className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
+                        />
+                        <span className="shrink-0 text-sm text-gray-500">sec</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Timer mode */}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Timer Mode</label>
+                <div className="flex gap-3">
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="radio"
+                      name="timerMode"
+                      value="countdown"
+                      checked={timerMode === "countdown"}
+                      onChange={() => setTimerMode("countdown")}
+                      className="h-4 w-4 border-gray-300 text-blue-600"
+                    />
+                    <span className="text-sm text-gray-700">↓ Countdown</span>
+                    <span className="text-xs text-gray-400">(default)</span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="radio"
+                      name="timerMode"
+                      value="countup"
+                      checked={timerMode === "countup"}
+                      onChange={() => setTimerMode("countup")}
+                      className="h-4 w-4 border-gray-300 text-blue-600"
+                    />
+                    <span className="text-sm text-gray-700">↑ Count Up</span>
+                  </label>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="mt-6 flex justify-end gap-2">

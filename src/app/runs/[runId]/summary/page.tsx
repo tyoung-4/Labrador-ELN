@@ -11,11 +11,18 @@ import { assembleRunExport } from "@/utils/assembleRunExport";
 import { exportRun } from "@/utils/exportRun";
 import ProtocolsRunsSubNav from "@/components/ProtocolsRunsSubNav";
 
+type StepFieldConfig = {
+  key: string;
+  label: string;
+  kind: "measurement" | "timer";
+};
+
 type ParsedStep = {
   id: string;
   label: string;
   sectionTitle?: string;
   isSubstep: boolean;
+  fields: StepFieldConfig[];
 };
 
 function stripHtml(html: string): string {
@@ -30,33 +37,47 @@ function stripHtml(html: string): string {
 function parseStepsFromBody(runBody: string): ParsedStep[] {
   const steps: ParsedStep[] = [];
   try {
-    const parsed = JSON.parse(runBody) as {
-      sections?: Array<{
-        id: string;
-        title: string;
-        steps?: Array<{
-          id: string;
-          html: string;
-          substeps?: Array<{ id: string; html: string }>;
-        }>;
-      }>;
-    };
+    type RawField = { id?: string; label?: string; kind?: string };
+    type RawSub = { id: string; html?: string; text?: string; requiredFields?: RawField[]; fields?: RawField[] };
+    type RawStep = { id: string; html?: string; text?: string; requiredFields?: RawField[]; fields?: RawField[]; substeps?: RawSub[]; subSteps?: RawSub[] };
+    type RawSection = { id: string; title: string; steps?: RawStep[] };
+    type RawData = { version?: number; sections?: RawSection[]; steps?: unknown };
+
+    let parsed = JSON.parse(runBody) as RawData;
+    if (typeof parsed.steps === "string" && !Array.isArray((parsed as RawData).sections)) {
+      parsed = JSON.parse(parsed.steps) as RawData;
+    }
+
     if (parsed.sections && Array.isArray(parsed.sections)) {
       let idx = 0;
       for (const section of parsed.sections) {
         for (const step of section.steps ?? []) {
+          const rawFields = step.requiredFields ?? step.fields ?? [];
+          const globalIdx = idx;
           steps.push({
             id: `step-${idx++}`,
-            label: stripHtml(step.html || "") || `Step ${steps.length + 1}`,
+            label: stripHtml(step.html ?? step.text ?? "") || `Step ${steps.length + 1}`,
             sectionTitle: section.title,
             isSubstep: false,
+            fields: rawFields.map((f, fi) => ({
+              key: `field-${globalIdx}-${fi}`,
+              label: f.label ?? `Field ${fi + 1}`,
+              kind: f.kind === "timer" ? "timer" : "measurement",
+            })),
           });
-          for (const sub of step.substeps ?? []) {
+          for (const sub of step.substeps ?? step.subSteps ?? []) {
+            const subRawFields = sub.requiredFields ?? sub.fields ?? [];
+            const subGlobalIdx = idx;
             steps.push({
               id: `step-${idx++}`,
-              label: stripHtml(sub.html || "") || `Sub-step ${steps.length + 1}`,
+              label: stripHtml(sub.html ?? sub.text ?? "") || `Sub-step ${steps.length + 1}`,
               sectionTitle: section.title,
               isSubstep: true,
+              fields: subRawFields.map((f, fi) => ({
+                key: `field-${subGlobalIdx}-${fi}`,
+                label: f.label ?? `Field ${fi + 1}`,
+                kind: f.kind === "timer" ? "timer" : "measurement",
+              })),
             });
           }
         }
@@ -77,6 +98,7 @@ function parseStepsFromBody(runBody: string): ParsedStep[] {
         id: `step-${idx}`,
         label: (contentDiv.textContent || "").replace(/\s+/g, " ").trim() || `Step ${idx + 1}`,
         isSubstep: false,
+        fields: [],
       });
     });
   }
@@ -314,12 +336,24 @@ export default function RunSummaryPage() {
                           )}
                           {r.fieldValues && r.fieldValues !== "{}" && (() => {
                             try {
-                              const fields = JSON.parse(r.fieldValues) as Record<string, string>;
-                              const entries = Object.entries(fields).filter(([, v]) => v);
+                              const fieldVals = JSON.parse(r.fieldValues) as Record<string, string>;
+                              const stepCfg = steps.find((s) => s.id === r.stepId);
+                              const entries = Object.entries(fieldVals).filter(([, v]) => v);
                               if (entries.length === 0) return null;
                               return (
-                                <div className="text-xs text-zinc-400">
-                                  Fields: {entries.map(([k, v]) => `${k}: ${v}`).join(", ")}
+                                <div className="mt-1 flex flex-wrap gap-1.5">
+                                  {entries.map(([k, v]) => {
+                                    const cfg = stepCfg?.fields.find((f) => f.key === k);
+                                    const label = cfg?.label ?? k;
+                                    const isTimer = cfg?.kind === "timer";
+                                    return (
+                                      <span key={k} className="inline-flex items-center gap-1 rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-xs text-zinc-300">
+                                        {isTimer && <span>⏱</span>}
+                                        <span className="text-zinc-400">{label}:</span>
+                                        <span>{v}</span>
+                                      </span>
+                                    );
+                                  })}
                                 </div>
                               );
                             } catch { return null; }
