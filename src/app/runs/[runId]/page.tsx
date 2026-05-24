@@ -22,7 +22,7 @@ type ParsedStep = {
   html: string;    // raw html content for display
   sectionTitle?: string;
   isSubstep: boolean;
-  requiredFields: { key: string; label: string }[]; // measurement/field nodes
+  requiredFields: { key: string; label: string; required: boolean }[]; // measurement/field nodes
   recipeRefs?: string[]; // recipe IDs attached to this step
 };
 
@@ -75,7 +75,7 @@ function parseStepsFromBody(runBody: string): ParsedStep[] {
   //   A) ProtocolBodyJSON wrapper: { steps: "JSON-stringified StepsData" }
   //   B) Raw StepsData:            { version, sections: [...] }
   try {
-    type RawField  = { id: string; label: string; [k: string]: unknown };
+    type RawField  = { id: string; label: string; required?: boolean; [k: string]: unknown };
     type RawSub    = { id: string; html?: string; text?: string; requiredFields?: RawField[]; fields?: RawField[] };
     type RawStep   = { id: string; html?: string; text?: string; requiredFields?: RawField[]; fields?: RawField[]; substeps?: RawSub[]; subSteps?: RawSub[]; recipeRefs?: string[] };
     type RawSection = { id: string; title: string; steps?: RawStep[] };
@@ -105,6 +105,7 @@ function parseStepsFromBody(runBody: string): ParsedStep[] {
             requiredFields: rawFields.map((f, fi) => ({
               key: `field-${globalIdx - 1}-${fi}`,
               label: f.label,
+              required: f.required !== false, // undefined → true for backward compat
             })),
             recipeRefs: step.recipeRefs ?? [],
           });
@@ -122,6 +123,7 @@ function parseStepsFromBody(runBody: string): ParsedStep[] {
               requiredFields: subFields.map((f, fi) => ({
                 key: `field-${globalIdx - 1}-${fi}`,
                 label: f.label,
+                required: f.required !== false,
               })),
             });
           }
@@ -151,6 +153,7 @@ function parseStepsFromBody(runBody: string): ParsedStep[] {
         requiredFields: fieldNodes.map((f, fi) => ({
           key: `field-${idx}-${fi}`,
           label: f.getAttribute("label") || `Field ${fi + 1}`,
+          required: true,
         })),
       });
     });
@@ -494,7 +497,11 @@ function StepRow({
                     } catch { /* */ }
                     return (
                       <span key={field.key} className="flex items-center gap-1 rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs">
-                        <span className="text-zinc-500">{field.label}:</span>
+                        <span className="text-zinc-500">
+                          {field.label}
+                          {!field.required && <span className="ml-1 text-zinc-400">(optional)</span>}
+                          :
+                        </span>
                         <span className="text-zinc-700">{savedVal || "—"}</span>
                       </span>
                     );
@@ -502,7 +509,11 @@ function StepRow({
                   const val = (pendingFields[step.id] ?? {})[field.key] ?? "";
                   return (
                     <label key={field.key} className="flex cursor-text items-center gap-1 rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs">
-                      <span className="text-zinc-500">{field.label}:</span>
+                      <span className="text-zinc-500">
+                        {field.label}
+                        {!field.required && <span className="ml-1 text-zinc-400">(optional)</span>}
+                        :
+                      </span>
                       <input
                         type="text"
                         value={val}
@@ -951,10 +962,10 @@ export default function ActiveRunPage() {
   async function handleResult(step: ParsedStep, kind: ResultKind) {
     if (isRunComplete || submitting) return;
 
-    // Validate required fields
+    // Validate required fields (optional fields — required === false — are skipped)
     if (kind === "PASSED" && step.requiredFields.length > 0) {
       const stepFields = pendingFields[step.id] ?? {};
-      const missing = step.requiredFields.filter((f) => !(stepFields[f.key] ?? "").trim());
+      const missing = step.requiredFields.filter((f) => f.required && !(stepFields[f.key] ?? "").trim());
       if (missing.length > 0) {
         alert(`Please fill required fields before passing:\n${missing.map((f) => `• ${f.label}`).join("\n")}`);
         return;

@@ -959,13 +959,13 @@ export default function Editor({
           />
         )}
         {!protocolShell && <CustomFieldsPanel fields={customFields} onChange={setCustomFields} />}
-        {initial.id && (
+        {!protocolShell && initial.id && (
           <AttachmentsPanel
             entryId={initial.id}
             initialAttachments={initial.attachments ?? []}
           />
         )}
-        {!initial.id && (
+        {!protocolShell && !initial.id && (
           <p className="text-[11px] text-zinc-600 px-1">
             💡 Save this entry first to enable file attachments.
           </p>
@@ -1097,19 +1097,6 @@ export default function Editor({
                       }`}
                     >
                       Delete Step
-                    </button>
-                    {/* + Recipe */}
-                    <button
-                      onClick={() => stepsEditorRef.current?.openRecipePicker()}
-                      disabled={focusType !== "step"}
-                      title={focusType !== "step" ? "Select a step first" : "Attach a recipe to the selected step"}
-                      className={`w-full rounded border px-3 py-2 text-left transition ${
-                        focusType !== "step"
-                          ? "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-700"
-                          : "border-indigo-700/50 bg-indigo-900/20 text-indigo-300 hover:bg-indigo-900/40"
-                      }`}
-                    >
-                      + Recipe
                     </button>
                   </div>
                 </>

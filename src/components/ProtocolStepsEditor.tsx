@@ -23,6 +23,7 @@ export type RequiredField = {
   kind: FieldKind;
   label: string;
   unit: string;
+  required?: boolean; // undefined/missing → treat as true for backward compat
   timerSeconds?: number;
   timerMode?: "countdown" | "countup" | "longrange";
 };
@@ -192,33 +193,13 @@ function historyReducer(state: HistoryState, action: HistoryAction): HistoryStat
 
 // ─── Entry type options ───────────────────────────────────────────────────────
 
-const ENTRY_TYPE_OPTIONS = [
-  { label: "Undefined", defaultUnit: "" },
-  { label: "Mass",        defaultUnit: "g" },
-  { label: "Volume",      defaultUnit: "mL" },
-  { label: "Concentration", defaultUnit: "mM" },
-  { label: "Cell Count",  defaultUnit: "cells" },
-  { label: "Temperature", defaultUnit: "deg C" },
-  { label: "pH",          defaultUnit: "pH" },
-  { label: "Time",        defaultUnit: "min" },
-];
-
-const UNIT_OPTIONS = [
-  "g","mg","ug","mL","uL","L","mM","uM","nM","cells","%","min","hr","deg C","pH",
-];
-
-const RECIPE_ITEMS = [
-  { label: "Amount",          entryType: "Mass"          },
-  { label: "Sample",          entryType: "Volume"        },
-  { label: "Concentration",   entryType: "Concentration" },
-  { label: "Temperature",     entryType: "Temperature"   },
-  { label: "Duration",        entryType: "Time"          },
-  { label: "Document",        entryType: "Undefined"     },
-  { label: "Equipment",       entryType: "Undefined"     },
-  { label: "Reagent",         entryType: "Volume"        },
-  { label: "Note",            entryType: "Undefined"     },
-  { label: "Expected Result", entryType: "Undefined"     },
-  { label: "Timer",           entryType: "Timer"         },
+const FIELD_TYPE_OPTIONS = [
+  { label: "Mass",          defaultUnit: "g",      units: ["kg", "g", "mg"] },
+  { label: "Volume",        defaultUnit: "mL",     units: ["L", "mL", "µL"] },
+  { label: "Temperature",   defaultUnit: "°C",     units: ["°C", "°F", "K"] },
+  { label: "Concentration", defaultUnit: "mg/mL",  units: ["mg/mL", "µg/mL", "mM", "µM", "nM"] },
+  { label: "Time",          defaultUnit: "min",    units: ["hr", "min", "s"] },
+  { label: "Other",         defaultUnit: "",       units: [] as string[] },
 ] as const;
 
 // ─── StepTextInput ─────────────────────────────────────────────────────────────
@@ -337,7 +318,7 @@ function FieldPill({
   );
 }
 
-function RequiredFieldModal({
+function InputFieldModal({
   initialType,
   onClose,
   onInsert,
@@ -346,20 +327,47 @@ function RequiredFieldModal({
   onClose: () => void;
   onInsert: (field: RequiredField) => void;
 }) {
-  const init = ENTRY_TYPE_OPTIONS.find((o) => o.label === initialType) ?? ENTRY_TYPE_OPTIONS[0];
-  const [fieldType, setFieldType] = useState(init.label);
-  const [fieldUnit, setFieldUnit] = useState(init.defaultUnit);
+  const init = FIELD_TYPE_OPTIONS.find((o) => o.label === initialType) ?? FIELD_TYPE_OPTIONS[0];
+  const [fieldType, setFieldType] = useState<string>(init.label);
+  const [fieldUnit, setFieldUnit] = useState<string>(init.defaultUnit);
+  const [customUnit, setCustomUnit] = useState("");
   const [fieldLabel, setFieldLabel] = useState("");
+  const [isRequired, setIsRequired] = useState(true);
+
+  const currentOpt = FIELD_TYPE_OPTIONS.find((o) => o.label === fieldType) ?? FIELD_TYPE_OPTIONS[0];
+  const isOther = fieldType === "Other";
 
   function doInsert() {
-    onInsert({ id: uid(), kind: "measurement", label: fieldLabel.trim() || fieldType, unit: fieldUnit });
+    const unit = isOther ? customUnit.trim() : fieldUnit;
+    onInsert({
+      id: uid(),
+      kind: "measurement",
+      label: fieldLabel.trim() || fieldType,
+      unit,
+      required: isRequired,
+    });
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="mx-4 w-full max-w-md rounded bg-white p-6 shadow-xl">
-        <h3 className="mb-4 text-lg font-semibold text-gray-900">Insert Required Field</h3>
+        <h3 className="mb-4 text-lg font-semibold text-gray-900">Insert Input Field</h3>
         <div className="space-y-4">
+          {/* Required toggle */}
+          <label className="flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              checked={isRequired}
+              onChange={(e) => setIsRequired(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600"
+            />
+            <span className="text-sm font-medium text-gray-700">Required</span>
+            {!isRequired && (
+              <span className="text-xs text-gray-400">(user may leave blank)</span>
+            )}
+          </label>
+
+          {/* Type selector */}
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Field Type</label>
             <select
@@ -367,19 +375,22 @@ function RequiredFieldModal({
               onChange={(e) => {
                 const v = e.target.value;
                 setFieldType(v);
-                const opt = ENTRY_TYPE_OPTIONS.find((o) => o.label === v);
-                if (opt) setFieldUnit(opt.defaultUnit);
+                const opt = FIELD_TYPE_OPTIONS.find((o) => o.label === v);
+                setFieldUnit(opt?.defaultUnit ?? "");
+                setCustomUnit("");
               }}
               className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
             >
-              {ENTRY_TYPE_OPTIONS.map((o) => (
+              {FIELD_TYPE_OPTIONS.map((o) => (
                 <option key={o.label} value={o.label}>{o.label}</option>
               ))}
             </select>
           </div>
+
+          {/* Custom label */}
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
-              Custom Label <span className="text-gray-400 font-normal">(optional)</span>
+              Label <span className="text-gray-400 font-normal">(optional — defaults to type name)</span>
             </label>
             <input
               autoFocus
@@ -390,19 +401,31 @@ function RequiredFieldModal({
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doInsert(); } }}
             />
           </div>
+
+          {/* Unit: dropdown for typed, text input for Other */}
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Unit</label>
-            <select
-              value={fieldUnit}
-              onChange={(e) => setFieldUnit(e.target.value)}
-              disabled={fieldType === "Undefined"}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
-            >
-              <option value="">No unit</option>
-              {UNIT_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
-            </select>
+            {isOther ? (
+              <input
+                value={customUnit}
+                onChange={(e) => setCustomUnit(e.target.value)}
+                placeholder="Enter unit…"
+                className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
+              />
+            ) : (
+              <select
+                value={fieldUnit}
+                onChange={(e) => setFieldUnit(e.target.value)}
+                className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
+              >
+                {(currentOpt.units as readonly string[]).map((u) => (
+                  <option key={u} value={u}>{u}</option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
+
         <div className="mt-6 flex justify-end gap-2">
           <button onClick={onClose} className="rounded border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50">
             Cancel
@@ -416,140 +439,6 @@ function RequiredFieldModal({
   );
 }
 
-type TimerMode = "countdown" | "countup" | "longrange";
-
-function RecipesModal({
-  onClose,
-  onInsert,
-}: {
-  onClose: () => void;
-  onInsert: (field: RequiredField) => void;
-}) {
-  const [step, setStep] = useState<"pick" | "configure">("pick");
-  const [chosen, setChosen] = useState<(typeof RECIPE_ITEMS)[number] | null>(null);
-  const [label, setLabel] = useState("");
-  const [unit, setUnit] = useState("");
-  const [timerLabel, setTimerLabel] = useState("Step Timer");
-  const [timerMode, setTimerMode] = useState<TimerMode>("countdown");
-  const [timerMinutes, setTimerMinutes] = useState(5);
-  const [timerSeconds, setTimerSeconds] = useState(0);
-
-  function pickItem(item: (typeof RECIPE_ITEMS)[number]) {
-    setChosen(item);
-    if (item.entryType !== "Timer") {
-      const opt = ENTRY_TYPE_OPTIONS.find((o) => o.label === item.entryType);
-      setUnit(opt?.defaultUnit ?? "");
-      setLabel("");
-    } else {
-      setTimerLabel("Step Timer");
-      setTimerMode("countdown");
-      setTimerMinutes(5);
-      setTimerSeconds(0);
-    }
-    setStep("configure");
-  }
-
-  function doInsert() {
-    if (!chosen) return;
-    if (chosen.entryType === "Timer") {
-      const totalSec = timerMinutes * 60 + timerSeconds;
-      onInsert({ id: uid(), kind: "timer", label: timerLabel.trim() || "Step Timer", unit: "",
-        timerSeconds: timerMode === "countdown" ? Math.max(1, totalSec) : 0, timerMode });
-    } else {
-      onInsert({ id: uid(), kind: "component", label: label.trim() || chosen.label, unit });
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="mx-4 w-full max-w-md rounded bg-white p-6 shadow-xl">
-        {step === "pick" ? (
-          <>
-            <h3 className="mb-4 text-lg font-semibold text-gray-900">Insert Recipe</h3>
-            <div className="grid grid-cols-2 gap-2">
-              {RECIPE_ITEMS.map((item) => (
-                <button key={item.label} onClick={() => pickItem(item)}
-                  className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-left text-sm text-gray-700 hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-800 transition-colors">
-                  {item.label}
-                </button>
-              ))}
-            </div>
-            <div className="mt-6 flex justify-end">
-              <button onClick={onClose} className="rounded border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50">Cancel</button>
-            </div>
-          </>
-        ) : (
-          <>
-            <h3 className="mb-4 text-lg font-semibold text-gray-900">Configure: {chosen?.label}</h3>
-            {chosen?.entryType === "Timer" ? (
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Timer Label</label>
-                  <input autoFocus value={timerLabel} onChange={(e) => setTimerLabel(e.target.value)}
-                    className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Timer Type</label>
-                  <select value={timerMode} onChange={(e) => setTimerMode(e.target.value as TimerMode)}
-                    className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900">
-                    <option value="countdown">Countdown</option>
-                    <option value="countup">Count Up</option>
-                    <option value="longrange">Long-range</option>
-                  </select>
-                </div>
-                <div className={`grid grid-cols-2 gap-3 ${timerMode !== "countdown" ? "opacity-50" : ""}`}>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-700">Minutes</label>
-                    <input type="number" min="0" value={timerMinutes}
-                      onChange={(e) => setTimerMinutes(Math.max(0, parseInt(e.target.value) || 0))}
-                      disabled={timerMode !== "countdown"}
-                      className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-700">Seconds</label>
-                    <input type="number" min="0" max="59" value={timerSeconds}
-                      onChange={(e) => setTimerSeconds(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
-                      disabled={timerMode !== "countdown"}
-                      className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900" />
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Custom Label <span className="text-gray-400 font-normal">(optional)</span>
-                  </label>
-                  <input autoFocus value={label} onChange={(e) => setLabel(e.target.value)}
-                    placeholder={`e.g. ${chosen?.label}`}
-                    className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doInsert(); onClose(); } }} />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Unit</label>
-                  <select value={unit} onChange={(e) => setUnit(e.target.value)}
-                    disabled={chosen?.entryType === "Undefined"}
-                    className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900">
-                    <option value="">No unit</option>
-                    {UNIT_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
-                  </select>
-                </div>
-              </div>
-            )}
-            <div className="mt-6 flex justify-between">
-              <button onClick={() => setStep("pick")} className="rounded border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50 text-sm">← Back</button>
-              <div className="flex gap-2">
-                <button onClick={onClose} className="rounded border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50">Cancel</button>
-                <button onClick={() => { doInsert(); onClose(); }} className="rounded bg-emerald-600 px-4 py-2 text-white hover:bg-emerald-700">Insert</button>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ─── Public handle type ───────────────────────────────────────────────────────
 
 export type ProtocolStepsEditorHandle = {
@@ -558,8 +447,7 @@ export type ProtocolStepsEditorHandle = {
   insertSubStep: () => void;
   convertFocused: () => void;
   deleteFocused: () => void;
-  openRequiredField: (entryType?: string) => void;
-  openRecipes: () => void;
+  openInputField: (entryType?: string) => void;
   openRecipePicker: () => void;
 };
 
@@ -612,11 +500,13 @@ function StepRecipeRow({
 function RecipePickerDropdown({
   recipes,
   attachedIds,
+  noStepFocused,
   onPick,
   onClose,
 }: {
   recipes: RecipeSummary[];
   attachedIds: string[];
+  noStepFocused?: boolean;
   onPick: (id: string) => void;
   onClose: () => void;
 }) {
@@ -633,17 +523,22 @@ function RecipePickerDropdown({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // Search by name only
   const filtered = recipes.filter((r) =>
-    r.name.toLowerCase().includes(query.toLowerCase()) ||
-    (r.description ?? "").toLowerCase().includes(query.toLowerCase())
+    r.name.toLowerCase().includes(query.toLowerCase())
   );
 
   const hoveredRecipe = hovered ? recipes.find((r) => r.id === hovered) : null;
 
   return (
-    <div className="absolute left-0 top-full z-50 mt-1 flex gap-2" style={{ minWidth: 220 }}>
+    <div className="flex gap-2" style={{ minWidth: 220 }}>
       {/* Picker panel */}
       <div className="w-52 rounded border border-zinc-200 bg-white shadow-lg">
+        {noStepFocused && (
+          <p className="border-b border-amber-100 bg-amber-50 px-3 py-1.5 text-xs text-amber-700">
+            Select a step first
+          </p>
+        )}
         <div className="border-b border-zinc-100 px-2 py-1.5">
           <input
             ref={inputRef}
@@ -659,16 +554,18 @@ function RecipePickerDropdown({
           )}
           {filtered.map((r) => {
             const attached = attachedIds.includes(r.id);
+            const disabled = attached || noStepFocused;
             return (
               <button
                 key={r.id}
-                onClick={() => { onPick(r.id); onClose(); }}
-                disabled={attached}
+                onClick={() => { if (!disabled) { onPick(r.id); onClose(); } }}
+                disabled={disabled}
+                title={noStepFocused ? "Select a step first" : undefined}
                 onMouseEnter={() => setHovered(r.id)}
                 onMouseLeave={() => setHovered(null)}
                 className={`w-full px-3 py-1.5 text-left text-xs transition ${
-                  attached
-                    ? "text-zinc-400 cursor-default"
+                  disabled
+                    ? "cursor-not-allowed text-zinc-400"
                     : "text-zinc-700 hover:bg-indigo-50 hover:text-indigo-800"
                 }`}
               >
@@ -737,17 +634,19 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
 
     const [fieldModalOpen, setFieldModalOpen] = useState(false);
     const [fieldModalInitialType, setFieldModalInitialType] = useState<string | undefined>(undefined);
-    const [recipesModalOpen, setRecipesModalOpen] = useState(false);
     const [recipePickerOpen, setRecipePickerOpen] = useState(false);
 
-    // ── Recipe data ───────────────────────────────────────────────────────────
+    // ── Recipe data — lazy fetch on first open ────────────────────────────────
     const [allRecipes, setAllRecipes] = useState<RecipeSummary[]>([]);
+    const recipeFetchedRef = useRef(false);
     useEffect(() => {
+      if (!recipePickerOpen || recipeFetchedRef.current) return;
+      recipeFetchedRef.current = true;
       fetch("/api/recipes")
         .then((r) => r.ok ? r.json() : [])
         .then((list: RecipeSummary[]) => setAllRecipes(list))
         .catch(() => {/* non-critical */});
-    }, []);
+    }, [recipePickerOpen]);
 
     const numbers = useMemo(() => computeNumbers(data), [data]);
 
@@ -1140,15 +1039,11 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
         });
         setFocusCtx(null, null);
       },
-      openRequiredField(entryType?: string) {
+      openInputField(entryType?: string) {
         setFieldModalInitialType(entryType);
         setFieldModalOpen(true);
       },
-      openRecipes() {
-        setRecipesModalOpen(true);
-      },
       openRecipePicker() {
-        if (focusTypeRef.current !== "step") return;
         setRecipePickerOpen(true);
       },
     }));
@@ -1161,17 +1056,18 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-1 border-b border-gray-200 bg-gray-50 px-3 py-2">
           <button
-            title="Required fields must be filled in each time this protocol is run."
+            title="Add an input field that must be filled in each time this step is run."
             onClick={() => setFieldModalOpen(true)}
             className="rounded border border-gray-300 bg-white px-2 py-1 text-sm text-gray-700 hover:bg-gray-50"
           >
-            + Required Field
+            + Input Field
           </button>
           <button
-            onClick={() => setRecipesModalOpen(true)}
+            onClick={() => setRecipePickerOpen(true)}
+            title={focusType !== "step" ? "Select a step first" : "Attach a recipe to the selected step"}
             className="rounded border border-gray-300 bg-white px-2 py-1 text-sm text-gray-700 hover:bg-gray-50"
           >
-            + Recipes
+            + Recipe
           </button>
 
           <div className="mx-1 h-5 w-px bg-gray-300" />
@@ -1374,38 +1270,31 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
 
         {/* Modals */}
         {fieldModalOpen && (
-          <RequiredFieldModal
+          <InputFieldModal
             initialType={fieldModalInitialType}
             onClose={() => setFieldModalOpen(false)}
             onInsert={(field) => { addFieldToFocused(field); setFieldModalOpen(false); }}
-          />
-        )}
-        {recipesModalOpen && (
-          <RecipesModal
-            onClose={() => setRecipesModalOpen(false)}
-            onInsert={(field) => { addFieldToFocused(field); setRecipesModalOpen(false); }}
           />
         )}
         {recipePickerOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
             onMouseDown={(e) => { if (e.target === e.currentTarget) setRecipePickerOpen(false); }}
           >
-            <div className="w-80 rounded-lg border border-zinc-700 bg-zinc-900 shadow-2xl">
-              <RecipePickerDropdown
-                recipes={allRecipes}
-                attachedIds={
-                  (() => {
-                    const target = focusTargetRef.current;
-                    if (!target) return [];
-                    const section = data.sections.find((s) => s.id === target.sectionId);
-                    const step = section?.steps.find((st) => st.id === target.stepId);
-                    return step?.recipeRefs ?? [];
-                  })()
-                }
-                onPick={(id) => { addRecipeToFocused(id); setRecipePickerOpen(false); }}
-                onClose={() => setRecipePickerOpen(false)}
-              />
-            </div>
+            <RecipePickerDropdown
+              recipes={allRecipes}
+              attachedIds={
+                (() => {
+                  const target = focusTargetRef.current;
+                  if (!target) return [];
+                  const section = data.sections.find((s) => s.id === target.sectionId);
+                  const step = section?.steps.find((st) => st.id === target.stepId);
+                  return step?.recipeRefs ?? [];
+                })()
+              }
+              noStepFocused={focusTypeRef.current !== "step"}
+              onPick={(id) => { addRecipeToFocused(id); setRecipePickerOpen(false); }}
+              onClose={() => setRecipePickerOpen(false)}
+            />
           </div>
         )}
       </div>
