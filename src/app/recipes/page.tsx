@@ -24,7 +24,7 @@ type Recipe = {
   id: string;
   name: string;
   description: string;
-  notes: string;
+  notes: string | null;
   createdById: string;
   createdAt: string;
   updatedAt: string;
@@ -602,7 +602,8 @@ function RecipeCard({
   onClick: () => void;
   onDelete: () => void;
 }) {
-  const notesPreview = recipe.notes.length > 80 ? recipe.notes.slice(0, 80) + "…" : recipe.notes;
+  const n = recipe.notes ?? "";
+  const notesPreview = n.length > 80 ? n.slice(0, 80) + "…" : n;
 
   return (
     <div
