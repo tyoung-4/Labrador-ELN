@@ -6,6 +6,7 @@ export type RecipeSummary = {
   id: string;
   name: string;
   description?: string;
+  notes?: string;
   components: {
     id: string;
     reagentName: string;
@@ -13,6 +14,8 @@ export type RecipeSummary = {
     unit: string;
     notes: string;
     order: number;
+    inventoryId?: string;
+    inventoryName?: string;
   }[];
 };
 
@@ -20,7 +23,7 @@ export type RecipeSummary = {
 
 function RecipePreview({ recipe }: { recipe: RecipeSummary }) {
   return (
-    <div className="absolute bottom-full left-0 z-50 mb-1.5 w-64 rounded border border-zinc-700 bg-zinc-900 p-3 shadow-xl">
+    <div className="absolute bottom-full left-0 z-50 mb-1.5 w-72 rounded border border-zinc-700 bg-zinc-900 p-3 shadow-xl">
       <p className="mb-1 text-xs font-semibold text-zinc-100">{recipe.name}</p>
       {recipe.description && (
         <p className="mb-2 text-xs text-zinc-400">{recipe.description}</p>
@@ -30,7 +33,14 @@ function RecipePreview({ recipe }: { recipe: RecipeSummary }) {
           <tbody>
             {recipe.components.map((c) => (
               <tr key={c.id} className="border-b border-zinc-800 last:border-0">
-                <td className="py-0.5 pr-2 text-zinc-300">{c.reagentName}</td>
+                <td className="py-0.5 pr-2 text-zinc-300">
+                  {c.inventoryId ? (
+                    <span className="inline-flex items-center gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      {c.reagentName}
+                    </span>
+                  ) : c.reagentName}
+                </td>
                 <td className="py-0.5 text-right text-zinc-400 tabular-nums">
                   {c.concentration != null ? `${c.concentration} ${c.unit}`.trim() : c.unit || "—"}
                 </td>
@@ -38,6 +48,12 @@ function RecipePreview({ recipe }: { recipe: RecipeSummary }) {
             ))}
           </tbody>
         </table>
+      )}
+      {recipe.notes && (
+        <>
+          <div className="my-2 border-t border-zinc-700" />
+          <p className="text-xs text-zinc-400 italic">{recipe.notes}</p>
+        </>
       )}
     </div>
   );
