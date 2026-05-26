@@ -32,7 +32,6 @@ type Recipe = {
   components: Component[];
 };
 
-type InventoryReagent = { id: string; name: string };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Permission helper
@@ -96,7 +95,6 @@ function ComponentRow({
   onDragStart,
   onDragOver,
   onDrop,
-  authHeaders,
 }: {
   comp: Component;
   index: number;
@@ -105,62 +103,7 @@ function ComponentRow({
   onDragStart: (index: number) => void;
   onDragOver: (e: React.DragEvent, index: number) => void;
   onDrop: (index: number) => void;
-  authHeaders: Record<string, string>;
 }) {
-  const [inventorySearch, setInventorySearch] = useState("");
-  const [inventoryResults, setInventoryResults] = useState<InventoryReagent[]>([]);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searching, setSearching] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
-
-  // Close on outside click
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-        setSearchOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
-
-  // Debounced reagent search
-  useEffect(() => {
-    if (!searchOpen || inventorySearch.length < 1) {
-      setInventoryResults([]);
-      return;
-    }
-    const timeout = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const res = await fetch(`/api/inventory/reagents?search=${encodeURIComponent(inventorySearch)}`, {
-          headers: authHeaders,
-        });
-        if (res.ok) {
-          const data = (await res.json()) as { id: string; name: string }[];
-          setInventoryResults(data.slice(0, 8).map((r) => ({ id: r.id, name: r.name })));
-        }
-      } catch { /* non-critical */ }
-      finally { setSearching(false); }
-    }, 250);
-    return () => clearTimeout(timeout);
-  }, [inventorySearch, searchOpen, authHeaders]);
-
-  function selectInventoryItem(item: InventoryReagent) {
-    onChange(index, "reagentName",   item.name);
-    onChange(index, "inventoryId",   item.id);
-    onChange(index, "inventoryName", item.name);
-    setSearchOpen(false);
-    setInventorySearch("");
-  }
-
-  function clearInventoryLink() {
-    onChange(index, "inventoryId",   "");
-    onChange(index, "inventoryName", "");
-  }
-
-  const isLinked = Boolean(comp.inventoryId);
-
   return (
     <div
       draggable
@@ -175,75 +118,14 @@ function ComponentRow({
       </div>
 
       <div className="flex flex-1 flex-wrap gap-2">
-        {/* Reagent name + inventory link */}
-        <div className="relative flex min-w-[160px] flex-1 items-center gap-1" ref={searchRef}>
-          {isLinked && (
-            <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" title={`Linked: ${comp.inventoryName}`} />
-          )}
+        {/* Reagent name */}
+        <div className="flex min-w-[160px] flex-1">
           <input
             value={comp.reagentName}
-            onChange={(e) => {
-              onChange(index, "reagentName", e.target.value);
-              if (isLinked) clearInventoryLink(); // unlink if manually edited
-            }}
+            onChange={(e) => onChange(index, "reagentName", e.target.value)}
             placeholder="Reagent name"
             className="flex-1 rounded border border-gray-300 px-2 py-1 text-sm text-gray-900 placeholder:text-gray-400"
           />
-          <button
-            type="button"
-            onClick={() => { setSearchOpen((o) => !o); setInventorySearch(""); }}
-            title="Search inventory"
-            className={`shrink-0 rounded border px-1.5 py-1 text-sm transition ${
-              isLinked
-                ? "border-emerald-400 bg-emerald-50 text-emerald-600 hover:bg-emerald-100"
-                : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50"
-            }`}
-          >
-            🔗
-          </button>
-
-          {searchOpen && (
-            <div className="absolute left-0 top-full z-20 mt-1 w-full min-w-[200px] rounded border border-gray-200 bg-white shadow-lg">
-              <div className="p-1.5">
-                <input
-                  autoFocus
-                  value={inventorySearch}
-                  onChange={(e) => setInventorySearch(e.target.value)}
-                  placeholder="Search reagents…"
-                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
-                />
-              </div>
-              <div className="max-h-48 overflow-y-auto">
-                {searching && (
-                  <p className="px-3 py-2 text-xs text-gray-400">Searching…</p>
-                )}
-                {!searching && inventorySearch.length > 0 && inventoryResults.length === 0 && (
-                  <p className="px-3 py-2 text-xs text-gray-400">No reagents found.</p>
-                )}
-                {inventoryResults.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => selectInventoryItem(item)}
-                    className="block w-full px-3 py-1.5 text-left text-sm text-gray-800 hover:bg-gray-100"
-                  >
-                    {item.name}
-                  </button>
-                ))}
-              </div>
-              {isLinked && (
-                <div className="border-t border-gray-100 p-1.5">
-                  <button
-                    type="button"
-                    onClick={() => { clearInventoryLink(); setSearchOpen(false); }}
-                    className="w-full rounded py-1 text-xs text-red-500 hover:bg-red-50"
-                  >
-                    Unlink
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
         {/* Concentration */}
@@ -495,7 +377,6 @@ function RecipeEditorPanel({
                     onDragStart={handleDragStart}
                     onDragOver={handleDragOver}
                     onDrop={handleDrop}
-                    authHeaders={authHeaders}
                   />
                 ))}
                 <button
