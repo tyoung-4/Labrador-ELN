@@ -13,10 +13,26 @@ export async function GET() {
   return NextResponse.json(recipes);
 }
 
+type ComponentInput = {
+  reagentName: string;
+  concentration?: number | null;
+  unit?: string;
+  notes?: string;
+  order?: number;
+  inventoryId?: string;
+  inventoryName?: string;
+};
+
 // POST /api/recipes — create a new recipe
 export async function POST(req: Request) {
   const body = await req.json();
-  const { name, description = "", components = [], createdById } = body;
+  const { name, description = "", notes = "", components = [], createdById } = body as {
+    name: string;
+    description?: string;
+    notes?: string;
+    components?: ComponentInput[];
+    createdById: string;
+  };
 
   if (!name || !createdById) {
     return NextResponse.json({ error: "name and createdById are required" }, { status: 400 });
@@ -26,20 +42,17 @@ export async function POST(req: Request) {
     data: {
       name,
       description,
+      notes,
       createdById,
       components: {
-        create: (components as {
-          reagentName: string;
-          concentration?: number;
-          unit?: string;
-          notes?: string;
-          order?: number;
-        }[]).map((c, i) => ({
+        create: components.map((c, i) => ({
           reagentName:   c.reagentName,
           concentration: c.concentration ?? null,
-          unit:          c.unit  ?? "",
-          notes:         c.notes ?? "",
-          order:         c.order ?? i,
+          unit:          c.unit          ?? "",
+          notes:         c.notes         ?? "",
+          order:         c.order         ?? i,
+          inventoryId:   c.inventoryId   ?? "",
+          inventoryName: c.inventoryName ?? "",
         })),
       },
     },

@@ -15,9 +15,11 @@ const NAV_ITEMS = [
 ];
 
 export const ELN_USERS = [
-  { id: "finn-user",  name: "Finn",  role: "MEMBER" as const },
-  { id: "jake-user",  name: "Jake",  role: "MEMBER" as const },
-  { id: "admin-user", name: "Admin", role: "ADMIN"  as const },
+  { id: "finn-user",  name: "Finn",              role: "MEMBER" as const },
+  { id: "jake-user",  name: "Jake",              role: "MEMBER" as const },
+  { id: "admin-user", name: "Admin",             role: "ADMIN"  as const },
+  { id: "pb-user",    name: "Princess Bubblegum", role: "MEMBER" as const },
+  { id: "marceline-user", name: "Marceline",     role: "MEMBER" as const },
 ];
 
 export const USER_STORAGE_KEY = "eln-current-user-id";

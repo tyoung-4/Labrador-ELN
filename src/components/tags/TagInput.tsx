@@ -25,7 +25,7 @@ interface Assignment {
 }
 
 export interface TagInputProps {
-  entityType: "RUN" | "ENTRY" | "INVENTORY" | "KNOWLEDGE_HUB";
+  entityType: "RUN" | "ENTRY" | "INVENTORY" | "KNOWLEDGE_HUB" | "RECIPE";
   entityId: string;
   currentUser: string;
   entityOwner: string;
@@ -41,6 +41,7 @@ const ENTITY_LABELS: Record<TagInputProps["entityType"], string> = {
   ENTRY: "entry",
   INVENTORY: "inventory item",
   KNOWLEDGE_HUB: "knowledge hub item",
+  RECIPE: "recipe",
 };
 
 const PRESET_COLORS = [

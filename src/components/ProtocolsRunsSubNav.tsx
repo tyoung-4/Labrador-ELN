@@ -7,11 +7,13 @@ export default function ProtocolsRunsSubNav() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const isProtocols = pathname.startsWith("/protocols");
-  const isRuns = pathname.startsWith("/runs");
+  const isProtocols   = pathname.startsWith("/protocols");
+  const isActiveRuns  = pathname.startsWith("/runs") && !pathname.includes("/summary") && searchParams.get("view") !== "history";
+  const isRunHistory  = pathname.startsWith("/runs") && (searchParams.get("view") === "history");
+  const isRecipes     = pathname.startsWith("/recipes");
 
-  const base = "rounded px-3 py-1.5 text-sm font-medium transition";
-  const active = "bg-zinc-100 text-zinc-900";
+  const base     = "rounded px-3 py-1.5 text-sm font-medium transition";
+  const active   = "bg-zinc-100 text-zinc-900";
   const inactive = "bg-zinc-800 text-zinc-300 hover:bg-zinc-700";
 
   return (
@@ -20,8 +22,14 @@ export default function ProtocolsRunsSubNav() {
         <Link href="/protocols" className={`${base} ${isProtocols ? active : inactive}`}>
           Protocols
         </Link>
-        <Link href="/runs" className={`${base} ${isRuns ? active : inactive}`}>
-          Runs
+        <Link href="/runs" className={`${base} ${isActiveRuns ? active : inactive}`}>
+          Active Runs
+        </Link>
+        <Link href="/runs?view=history" className={`${base} ${isRunHistory ? active : inactive}`}>
+          Run History
+        </Link>
+        <Link href="/recipes" className={`${base} ${isRecipes ? active : inactive}`}>
+          Recipes
         </Link>
       </div>
     </div>
