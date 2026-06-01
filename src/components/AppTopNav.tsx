@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import GlobalClock from "./GlobalClock";
 
 const NAV_ITEMS = [
@@ -34,11 +34,14 @@ export function getCurrentUser() {
 export default function AppTopNav() {
   const pathname = usePathname();
   const router   = useRouter();
-  const [userId, setUserId] = useState(() => {
-    if (typeof window === "undefined") return ELN_USERS[0].id;
+  const [userId, setUserId] = useState(ELN_USERS[0].id);
+
+  // useLayoutEffect fires before the browser paints, so localStorage is read
+  // and state corrected before the user sees anything — no Finn flash.
+  useLayoutEffect(() => {
     const stored = localStorage.getItem(USER_STORAGE_KEY);
-    return (stored && ELN_USERS.find((u) => u.id === stored)) ? stored : ELN_USERS[0].id;
-  });
+    if (stored && ELN_USERS.find((u) => u.id === stored)) setUserId(stored);
+  }, []);
 
   function handleUserChange(id: string) {
     setUserId(id);
