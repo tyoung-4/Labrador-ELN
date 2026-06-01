@@ -34,15 +34,11 @@ export function getCurrentUser() {
 export default function AppTopNav() {
   const pathname = usePathname();
   const router   = useRouter();
-  const [userId, setUserId] = useState(ELN_USERS[0].id);
-
-  // Hydrate from localStorage after mount
-  useEffect(() => {
+  const [userId, setUserId] = useState(() => {
+    if (typeof window === "undefined") return ELN_USERS[0].id;
     const stored = localStorage.getItem(USER_STORAGE_KEY);
-    if (stored && ELN_USERS.find((u) => u.id === stored)) {
-      setUserId(stored);
-    }
-  }, []);
+    return (stored && ELN_USERS.find((u) => u.id === stored)) ? stored : ELN_USERS[0].id;
+  });
 
   function handleUserChange(id: string) {
     setUserId(id);
