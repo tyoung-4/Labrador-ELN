@@ -489,23 +489,23 @@ function RecipeCard({
   return (
     <div
       onClick={onClick}
-      className="cursor-pointer rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:border-emerald-300 hover:shadow-md"
+      className="block cursor-pointer rounded border border-zinc-800 bg-zinc-900 p-4 transition hover:border-zinc-600 hover:bg-zinc-800"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold text-gray-900">{recipe.name}</h3>
-            <span className="rounded-full border border-gray-200 bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
+            <h3 className="text-sm font-semibold text-zinc-100">{recipe.name}</h3>
+            <span className="rounded-full border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
               {recipe.components.length} component{recipe.components.length !== 1 ? "s" : ""}
             </span>
           </div>
           {recipe.description && (
-            <p className="mt-0.5 text-xs text-gray-500">{recipe.description}</p>
+            <p className="mt-0.5 text-xs text-zinc-400">{recipe.description}</p>
           )}
           {recipe.notes && (
-            <p className="mt-1 text-xs text-gray-400 italic">{notesPreview}</p>
+            <p className="mt-1 text-xs text-zinc-500 italic">{notesPreview}</p>
           )}
-          <p className="mt-2 text-xs text-gray-400">
+          <p className="mt-2 text-xs text-zinc-500">
             By {recipe.createdBy.name} · Updated {new Date(recipe.updatedAt).toLocaleDateString()}
           </p>
         </div>
@@ -514,13 +514,13 @@ function RecipeCard({
           <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={onClick}
-              className="rounded border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 transition"
+              className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200 transition"
             >
               Edit
             </button>
             <button
               onClick={onDelete}
-              className="rounded border border-red-200 px-2 py-1 text-xs text-red-500 hover:bg-red-50 transition"
+              className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-400 hover:border-red-700 hover:text-red-400 transition"
             >
               Delete
             </button>
@@ -624,12 +624,12 @@ function RecipesPageContent() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-950 text-zinc-100">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <AppTopNav />
       <ProtocolsRunsSubNav />
 
       {/* Page content */}
-      <div className="mx-auto w-full max-w-4xl flex-1 px-6 py-6">
+      <div className="p-6">
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-xl font-bold text-zinc-100">Recipes</h1>
