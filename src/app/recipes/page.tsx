@@ -624,14 +624,14 @@ function RecipesPageContent() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="flex min-h-screen flex-col gap-3 bg-zinc-950 p-0 text-zinc-100">
       <AppTopNav />
       <ProtocolsRunsSubNav />
 
       {/* Page content */}
-      <div className="p-6">
-        {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
+      <div className="flex flex-col gap-3 p-6">
+        {/* Header row — sits on a border like the protocol tab bar */}
+        <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
           <h1 className="text-xl font-bold text-zinc-100">Recipes</h1>
           <button
             onClick={openNew}
@@ -642,7 +642,7 @@ function RecipesPageContent() {
         </div>
 
         {/* Search */}
-        <div className="mb-4">
+        <div>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
