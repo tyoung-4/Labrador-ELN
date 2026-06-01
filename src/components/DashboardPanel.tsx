@@ -2234,11 +2234,12 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
 
           {/* LEFT — personal schedule controls */}
           <div className="flex flex-1 flex-col gap-1">
-            {/* Title + toggle + date nav — all on one line */}
+            {/* Title — own line so long names don't compress the controls */}
+            <span className="text-sm font-semibold text-indigo-300">
+              {currentUser.name}&apos;s Dashboard
+            </span>
+            {/* Toggle + date nav */}
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-indigo-300">
-                {currentUser.name}&apos;s Dashboard
-              </span>
               <div className="flex overflow-hidden rounded border border-zinc-700 bg-zinc-800">
                 <button
                   onClick={() => setScheduleView("daily")}
