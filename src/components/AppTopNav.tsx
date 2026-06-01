@@ -7,7 +7,7 @@ import GlobalClock from "./GlobalClock";
 
 const NAV_ITEMS = [
   { href: "/",              label: "Home",           exact: true,  activeClass: "bg-sky-500 text-white",     hard: false },
-  { href: "/projects",      label: "Projects",       exact: false, activeClass: "bg-emerald-600 text-white", hard: false },
+  { href: "/projects",      label: "Projects",       exact: false, activeClass: "bg-emerald-600 text-white", hard: true  },
   { href: "/protocols",     label: "Protocols/Runs", exact: false, activeClass: "bg-indigo-600 text-white",  hard: false },
   { href: "/inventory",     label: "Inventory",      exact: false, activeClass: "bg-teal-600 text-white",    hard: false },
   { href: "/equipment",     label: "Equipment",      exact: false, activeClass: "bg-purple-600 text-white",  hard: false },
