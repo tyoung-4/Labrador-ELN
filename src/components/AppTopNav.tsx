@@ -6,12 +6,12 @@ import { useLayoutEffect, useState } from "react";
 import GlobalClock from "./GlobalClock";
 
 const NAV_ITEMS = [
-  { href: "/",              label: "Home",           exact: true,  activeClass: "bg-sky-500 text-white",     hard: false },
-  { href: "/projects",      label: "Projects",       exact: false, activeClass: "bg-emerald-600 text-white", hard: true  },
-  { href: "/protocols",     label: "Protocols/Runs", exact: false, activeClass: "bg-indigo-600 text-white",  hard: false },
-  { href: "/inventory",     label: "Inventory",      exact: false, activeClass: "bg-teal-600 text-white",    hard: false },
-  { href: "/equipment",     label: "Equipment",      exact: false, activeClass: "bg-purple-600 text-white",  hard: false },
-  { href: "/knowledge-hub", label: "Knowledge Hub",  exact: false, activeClass: "bg-amber-600 text-white",   hard: false },
+  { href: "/",              label: "Home",           exact: true,  activeClass: "bg-sky-500 text-white",     hard: false, alsoActive: [] as string[] },
+  { href: "/projects",      label: "Projects",       exact: false, activeClass: "bg-emerald-600 text-white", hard: true,  alsoActive: [] as string[] },
+  { href: "/protocols",     label: "Protocols/Runs", exact: false, activeClass: "bg-indigo-600 text-white",  hard: false, alsoActive: ["/runs", "/recipes"] },
+  { href: "/inventory",     label: "Inventory",      exact: false, activeClass: "bg-teal-600 text-white",    hard: false, alsoActive: [] as string[] },
+  { href: "/equipment",     label: "Equipment",      exact: false, activeClass: "bg-purple-600 text-white",  hard: false, alsoActive: [] as string[] },
+  { href: "/knowledge-hub", label: "Knowledge Hub",  exact: false, activeClass: "bg-amber-600 text-white",   hard: false, alsoActive: [] as string[] },
 ];
 
 export const ELN_USERS = [
@@ -70,7 +70,8 @@ export default function AppTopNav() {
       {NAV_ITEMS.map((item) => {
         const active = item.exact
           ? pathname === item.href
-          : pathname === item.href || pathname.startsWith(item.href + "/");
+          : pathname === item.href || pathname.startsWith(item.href + "/") ||
+            item.alsoActive.some(p => pathname === p || pathname.startsWith(p + "/"));
         const cls = `rounded px-3 py-1.5 text-sm transition ${
           active ? item.activeClass : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
         }`;

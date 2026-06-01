@@ -625,7 +625,9 @@ function RecipesPageContent() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <AppTopNav />
+      <div className="px-6 pt-6 [&>nav]:mb-0">
+        <AppTopNav />
+      </div>
       <ProtocolsRunsSubNav />
 
       {/* Page content */}
