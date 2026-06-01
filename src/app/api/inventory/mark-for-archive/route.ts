@@ -3,9 +3,11 @@ import prisma from "@/lib/prisma";
 
 // ELN users — kept in sync with AppTopNav
 const ELN_USERS = [
-  { id: "finn-user",  name: "Finn" },
-  { id: "jake-user",  name: "Jake" },
-  { id: "admin-user", name: "Admin" },
+  { id: "finn-user",      name: "Finn" },
+  { id: "jake-user",      name: "Jake" },
+  { id: "admin-user",     name: "Admin" },
+  { id: "pb-user",        name: "Princess Bubblegum" },
+  { id: "marceline-user", name: "Marceline" },
 ];
 
 type EntityType = "reagent" | "cell_line" | "plasmid" | "protein_stock";
