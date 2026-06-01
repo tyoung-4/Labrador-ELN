@@ -7,7 +7,7 @@ import GlobalClock from "./GlobalClock";
 
 const NAV_ITEMS = [
   { href: "/",              label: "Home",           exact: true,  activeClass: "bg-sky-500 text-white",     hard: false },
-  { href: "/projects",      label: "Projects",       exact: false, activeClass: "bg-emerald-600 text-white", hard: true  },
+  { href: "/projects",      label: "Projects",       exact: false, activeClass: "bg-emerald-600 text-white", hard: false },
   { href: "/protocols",     label: "Protocols/Runs", exact: false, activeClass: "bg-indigo-600 text-white",  hard: false },
   { href: "/inventory",     label: "Inventory",      exact: false, activeClass: "bg-teal-600 text-white",    hard: false },
   { href: "/equipment",     label: "Equipment",      exact: false, activeClass: "bg-purple-600 text-white",  hard: false },
@@ -24,6 +24,10 @@ export const ELN_USERS = [
 
 export const USER_STORAGE_KEY = "eln-current-user-id";
 
+// Module-level cache — survives component remounts during soft navigation,
+// so the correct user is available synchronously on re-mount with no flash.
+let _cachedUserId: string | null = null;
+
 /** Read current user from localStorage (safe to call client-side only). */
 export function getCurrentUser() {
   if (typeof window === "undefined") return ELN_USERS[0];
@@ -36,14 +40,21 @@ export default function AppTopNav() {
   const router   = useRouter();
   const [userId, setUserId] = useState(ELN_USERS[0].id);
 
-  // useLayoutEffect fires before the browser paints, so localStorage is read
-  // and state corrected before the user sees anything — no Finn flash.
+  // useLayoutEffect fires before the browser paints. On a soft-nav remount
+  // the module cache is already populated, so the correction is instantaneous.
   useLayoutEffect(() => {
+    if (_cachedUserId) {
+      setUserId(_cachedUserId);
+      return;
+    }
     const stored = localStorage.getItem(USER_STORAGE_KEY);
-    if (stored && ELN_USERS.find((u) => u.id === stored)) setUserId(stored);
+    const resolved = (stored && ELN_USERS.find((u) => u.id === stored)) ? stored : ELN_USERS[0].id;
+    _cachedUserId = resolved;
+    setUserId(resolved);
   }, []);
 
   function handleUserChange(id: string) {
+    _cachedUserId = id;
     setUserId(id);
     localStorage.setItem(USER_STORAGE_KEY, id);
     // Broadcast so other components on the page can react
