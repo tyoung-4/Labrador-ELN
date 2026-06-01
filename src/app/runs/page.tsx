@@ -70,12 +70,7 @@ function RunsPageContent() {
         const res = await fetch("/api/protocol-runs", { headers: authHeaders });
         if (!res.ok) return;
         const data = (await res.json()) as ProtocolRun[];
-        if (!cancelled) {
-          setRuns(data);
-          if (!searchParams.get("view") && !data.some((r) => r.status === "IN_PROGRESS")) {
-            router.replace("/runs?view=history");
-          }
-        }
+        if (!cancelled) setRuns(data);
       } finally {
         if (!cancelled) setLoading(false);
       }
