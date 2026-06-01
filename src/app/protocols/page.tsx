@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation";
 import Editor from "@/components/Editor";
 import AppTopNav from "@/components/AppTopNav";
-import { USER_STORAGE_KEY } from "@/components/AppTopNav";
+import { ELN_USERS, USER_STORAGE_KEY } from "@/components/AppTopNav";
 import { TECHNIQUE_OPTIONS, PROTOCOL_TECHNIQUES, type Entry } from "@/models/entry";
 import { parseTypedData } from "@/lib/entryTypes";
 import { printProtocol } from "@/utils/printProtocol";
@@ -17,14 +17,8 @@ type CurrentUser = {
   role: "ADMIN" | "MEMBER";
 };
 
-const FINN_USER:  CurrentUser = { id: "finn-user",  name: "Finn",  role: "MEMBER" };
-const JAKE_USER:  CurrentUser = { id: "jake-user",  name: "Jake",  role: "MEMBER" };
-const ADMIN_USER: CurrentUser = { id: "admin-user", name: "Admin", role: "ADMIN"  };
-
 function userFromId(id: string): CurrentUser {
-  if (id === "admin-user") return ADMIN_USER;
-  if (id === "jake-user")  return JAKE_USER;
-  return FINN_USER;
+  return ELN_USERS.find((u) => u.id === id) ?? ELN_USERS[0];
 }
 
 // ─── Version helpers ──────────────────────────────────────────────────────────
@@ -515,7 +509,9 @@ function ProtocolsPageContent() {
   const searchParams = useSearchParams();
 
   // ── User (synced with global AppTopNav selection) ──────────────────────────
-  const [currentUser, setCurrentUser] = useState<CurrentUser>(FINN_USER);
+  const [currentUser, setCurrentUser] = useState<CurrentUser>(() => userFromId(
+    typeof window !== "undefined" ? (localStorage.getItem(USER_STORAGE_KEY) ?? "") : ""
+  ));
 
   useEffect(() => {
     const stored = localStorage.getItem(USER_STORAGE_KEY);

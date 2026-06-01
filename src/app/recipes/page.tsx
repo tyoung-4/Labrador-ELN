@@ -624,7 +624,7 @@ function RecipesPageContent() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col gap-3 bg-zinc-950 p-0 text-zinc-100">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <AppTopNav />
       <ProtocolsRunsSubNav />
 
