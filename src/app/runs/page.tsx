@@ -55,9 +55,7 @@ function RunsPageContent() {
     [currentUser]
   );
 
-  const [viewMode, setViewMode] = useState<ViewMode>(() =>
-    searchParams.get("view") === "history" ? "history" : "active"
-  );
+  const viewMode: ViewMode = searchParams.get("view") === "history" ? "history" : "active";
   const [runs, setRuns] = useState<ProtocolRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -75,7 +73,7 @@ function RunsPageContent() {
         if (!cancelled) {
           setRuns(data);
           if (!searchParams.get("view") && !data.some((r) => r.status === "IN_PROGRESS")) {
-            setViewMode("history");
+            router.replace("/runs?view=history");
           }
         }
       } finally {
@@ -122,44 +120,13 @@ function RunsPageContent() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="p-6">
       {/* Header */}
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-zinc-100">Protocol Runs</h1>
-          {activeCount > 0 && (
-            <p className="text-sm text-zinc-400">
-              {activeCount} active run{activeCount !== 1 ? "s" : ""} in progress
-            </p>
-          )}
-        </div>
-
-        {/* View toggle */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setViewMode("active")}
-            className={`rounded px-3 py-1.5 text-sm font-medium transition ${
-              viewMode === "active"
-                ? "bg-indigo-600 text-white"
-                : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-            }`}
-          >
-            ▶ Active Runs
-            {activeCount > 0 && (
-              <span className="ml-1.5 rounded-full bg-indigo-400 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                {activeCount}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setViewMode("history")}
-            className={`rounded px-3 py-1.5 text-sm font-medium transition ${
-              viewMode === "history"
-                ? "bg-zinc-600 text-white"
-                : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-            }`}
-          >
-            Run History
-          </button>
-        </div>
+      <div className="mb-5">
+        <h1 className="text-xl font-bold text-zinc-100">Protocol Runs</h1>
+        {activeCount > 0 && (
+          <p className="text-sm text-zinc-400">
+            {activeCount} active run{activeCount !== 1 ? "s" : ""} in progress
+          </p>
+        )}
       </div>
 
       {/* Search + untagged filter */}
