@@ -3,13 +3,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import AppTopNav from "@/components/AppTopNav";
 import { getCurrentUser } from "@/components/AppTopNav";
 import type { ProtocolRun, StepResult } from "@/models/protocolRun";
 import TagInput from "@/components/tags/TagInput";
 import { assembleRunExport } from "@/utils/assembleRunExport";
 import { exportRun } from "@/utils/exportRun";
-import ProtocolsRunsSubNav from "@/components/ProtocolsRunsSubNav";
 
 type StepFieldConfig = {
   key: string;
@@ -202,8 +200,7 @@ export default function RunSummaryPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-zinc-950 p-6 text-zinc-100">
-        <AppTopNav />
+      <div className="flex-1 overflow-y-auto bg-zinc-950 p-6 text-zinc-100">
         <p className="mt-10 text-center text-sm text-zinc-400">Loading summary…</p>
       </div>
     );
@@ -211,8 +208,7 @@ export default function RunSummaryPage() {
 
   if (error || !run) {
     return (
-      <div className="min-h-screen bg-zinc-950 p-6 text-zinc-100">
-        <AppTopNav />
+      <div className="flex-1 overflow-y-auto bg-zinc-950 p-6 text-zinc-100">
         <div className="mx-auto mt-10 max-w-md rounded border border-red-500/40 bg-red-500/10 p-4 text-center text-sm text-red-200">
           {error ?? "Run not found."}
         </div>
@@ -221,9 +217,7 @@ export default function RunSummaryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 p-6 text-zinc-100">
-      <AppTopNav />
-      <ProtocolsRunsSubNav />
+    <div className="flex-1 overflow-y-auto bg-zinc-950 p-6 text-zinc-100">
 
       {/* Breadcrumb */}
       <div className="mb-4 flex items-center gap-2 text-xs text-zinc-500">

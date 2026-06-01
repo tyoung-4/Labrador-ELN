@@ -3,11 +3,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import AppTopNav from "@/components/AppTopNav";
 import { getCurrentUser } from "@/components/AppTopNav";
 import type { ProtocolRun, StepResult } from "@/models/protocolRun";
 import TagInput from "@/components/tags/TagInput";
-import ProtocolsRunsSubNav from "@/components/ProtocolsRunsSubNav";
 import SidebarWidgets from "@/components/runs/SidebarWidgets";
 import RecipeChip, { type RecipeSummary } from "@/components/recipes/RecipeChip";
 import StepFileAttachment from "@/components/runs/StepFileAttachment";
@@ -990,6 +988,7 @@ export default function ActiveRunPage() {
   const [submitting, setSubmitting] = useState(false);
   const [completingRun, setCompletingRun] = useState(false);
   const [showCompleteBanner, setShowCompleteBanner] = useState(false);
+  const [showMockRunEndModal, setShowMockRunEndModal] = useState(false);
   const [runTagAssignments, setRunTagAssignments] = useState<NonNullable<ProtocolRun["tagAssignments"]>>([]);
   const [showTagNudge, setShowTagNudge] = useState(false);
   const [tagNudgeDismissed, setTagNudgeDismissed] = useState(false);
@@ -1093,6 +1092,13 @@ export default function ActiveRunPage() {
       })
       .catch(() => {/* non-critical */});
   }, [authHeaders]);
+
+  // ── Mock run: show end-of-run popup when all steps are resolved ────────────
+  useEffect(() => {
+    if (run?.isMockRun && allResolved && !isRunComplete) {
+      setShowMockRunEndModal(true);
+    }
+  }, [run?.isMockRun, allResolved, isRunComplete]);
 
   // ── Persist active step index to interactionState ──────────────────────────
   const persistActiveStep = useCallback(
@@ -1388,8 +1394,7 @@ export default function ActiveRunPage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen flex-col overflow-hidden bg-zinc-950 text-zinc-100">
-        <AppTopNav />
+      <div className="flex flex-1 flex-col overflow-hidden text-zinc-100">
         <p className="mt-10 text-center text-sm text-zinc-400">Loading run…</p>
       </div>
     );
@@ -1397,8 +1402,7 @@ export default function ActiveRunPage() {
 
   if (error || !run) {
     return (
-      <div className="flex h-screen flex-col overflow-hidden bg-zinc-950 text-zinc-100">
-        <AppTopNav />
+      <div className="flex flex-1 flex-col overflow-hidden text-zinc-100">
         <div className="mx-auto mt-10 max-w-md rounded border border-red-500/40 bg-red-500/10 p-4 text-center text-sm text-red-200">
           {error ?? "Run not found."}
         </div>
@@ -1410,9 +1414,7 @@ export default function ActiveRunPage() {
   }
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-zinc-950 text-zinc-100">
-      <AppTopNav />
-      <ProtocolsRunsSubNav />
+    <div className="flex flex-1 flex-col overflow-hidden bg-zinc-950 text-zinc-100">
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <div className="shrink-0 border-b border-zinc-800 px-6 py-3">
@@ -1457,7 +1459,7 @@ export default function ActiveRunPage() {
                 Completed: {new Date(run.completedAt).toLocaleString()}
               </p>
             )}
-            {isRunComplete && (
+            {isRunComplete && !run.isMockRun && (
               <Link
                 href={`/runs/${runId}/summary`}
                 className="mt-2 inline-block rounded bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600"
@@ -1539,7 +1541,7 @@ export default function ActiveRunPage() {
         );
       })()}
 
-      {showCompleteBanner && (
+      {showCompleteBanner && !run.isMockRun && (
         <div className="shrink-0 flex items-center justify-between border-b border-emerald-500/50 bg-emerald-500/10 px-6 py-2">
           <span className="text-sm font-semibold text-emerald-200">
             🎉 All steps resolved — run completed and locked!
@@ -1611,9 +1613,40 @@ export default function ActiveRunPage() {
             currentUserName={currentUser.name}
             runnerName={run.runner?.name ?? "Admin"}
             onAbortRun={handleAbortRun}
+            isMockRun={run.isMockRun}
           />
         </div>
       </div>
+
+      {/* ── Mock Run end-of-run popup ──────────────────────────────────────── */}
+      {showMockRunEndModal && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-sm rounded-xl border border-amber-600/40 bg-zinc-900 p-6 shadow-2xl">
+            <p className="mb-1 text-sm font-semibold text-amber-400">🧪 End of Mock Run</p>
+            <p className="mb-5 text-sm text-zinc-300">
+              All steps are resolved. Would you like to close this mock run?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={async () => {
+                  setShowMockRunEndModal(false);
+                  await fetch(`/api/protocol-runs/${run.id}`, { method: "DELETE", headers: authHeaders });
+                  router.push("/protocols");
+                }}
+                className="flex-1 rounded border border-amber-500/50 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-300 hover:bg-amber-500/20"
+              >
+                Yes, close run
+              </button>
+              <button
+                onClick={() => setShowMockRunEndModal(false)}
+                className="flex-1 rounded border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-700"
+              >
+                No, review steps
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1654,6 +1687,7 @@ function RunSidebar({
   onDismissTagNudge,
   currentUserName,
   runnerName,
+  isMockRun,
 }: {
   steps: ParsedStep[];
   resolvedCount: number;
@@ -1675,6 +1709,7 @@ function RunSidebar({
   onDismissTagNudge: () => void;
   currentUserName: string;
   runnerName: string;
+  isMockRun?: boolean;
 }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const [showFailMenu, setShowFailMenu] = useState(false);
@@ -1704,9 +1739,11 @@ function RunSidebar({
         <div className="space-y-3">
           <div className="rounded border border-emerald-500/30 bg-emerald-500/10 p-3">
             <p className="text-sm font-semibold text-emerald-300">All steps resolved!</p>
-            <p className="mt-0.5 text-xs text-zinc-400">Add final run notes before finishing.</p>
+            <p className="mt-0.5 text-xs text-zinc-400">
+              {isMockRun ? "Review the steps above, then close this mock run." : "Add final run notes before finishing."}
+            </p>
           </div>
-          {!isRunComplete ? (
+          {!isMockRun && (!isRunComplete ? (
             <button
               onClick={onCompleteRun}
               disabled={completingRun}
@@ -1721,7 +1758,7 @@ function RunSidebar({
             >
               View Summary →
             </Link>
-          )}
+          ))}
         </div>
       ) : activeStep ? (
         <div className="space-y-2">
