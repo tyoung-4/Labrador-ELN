@@ -28,9 +28,31 @@ function toEvent(b: DbBooking): ScheduleEvent {
   };
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const { searchParams } = new URL(req.url);
+    const dateParam   = searchParams.get("date");    // YYYY-MM-DD filter (matches startTime date)
+    const userIdParam = searchParams.get("userId");  // userId filter
+
+    // Build optional where clause
+    const where: {
+      userId?: string;
+      startTime?: { gte: Date; lt: Date };
+    } = {};
+
+    if (userIdParam) {
+      where.userId = userIdParam;
+    }
+    if (dateParam) {
+      // Keep events whose startTime falls within the requested calendar day (local midnight boundaries)
+      const dayStart = new Date(dateParam + "T00:00:00");
+      const dayEnd   = new Date(dateParam + "T00:00:00");
+      dayEnd.setDate(dayEnd.getDate() + 1);
+      where.startTime = { gte: dayStart, lt: dayEnd };
+    }
+
     const bookings = await prisma.equipmentBooking.findMany({
+      where,
       orderBy: { startTime: "asc" },
     });
     return NextResponse.json(bookings.map(toEvent));

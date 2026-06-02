@@ -23,7 +23,8 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { USER_STORAGE_KEY, ELN_USERS } from "@/components/AppTopNav";
 import { defaultEndTime } from "@/config/equipmentDefaults";
-import type { ResourceId } from "@/components/EquipmentShared";
+import type { ResourceId, ScheduleEvent } from "@/components/EquipmentShared";
+import EquipmentBadge from "@/components/dashboard/EquipmentBadge";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -579,17 +580,33 @@ function DroppableHour({ h }: { h: number }) {
   );
 }
 
+/** Returns bookings whose time window overlaps with [startMins, endMins) on the same day */
+function getOverlappingBookings(
+  startMins: number,
+  endMins: number,
+  bookings: ScheduleEvent[]
+): ScheduleEvent[] {
+  return bookings.filter(b => {
+    const bStart = timeToMinutes(b.startTime ?? "00:00");
+    const bEnd   = timeToMinutes(b.endTime   ?? "00:00");
+    return startMins < bEnd && endMins > bStart;
+  });
+}
+
 /** Absolutely-positioned block representing a timed todo item in the grid */
 function ScheduleBlock({
   item,
   onUpdateItem,
   col = 0,
   totalCols = 1,
+  equipmentBookings = [],
 }: {
   item: TodoItem;
   onUpdateItem: (id: string, updates: Partial<TodoItem>) => void;
   col?: number;
   totalCols?: number;
+  /** Equipment bookings for the current user on this date — used to show overlap badges */
+  equipmentBookings?: ScheduleEvent[];
 }) {
   const startMins = timeToMinutes(item.time!);
   const endMins   = item.endTime ? timeToMinutes(item.endTime) : startMins + 60;
@@ -606,6 +623,9 @@ function ScheduleBlock({
         right: "auto" as const,
       }
     : { left: LABEL_W, right: PAD_R };
+
+  // Equipment badge overlap detection
+  const overlapping = getOverlappingBookings(startMins, endMins, equipmentBookings);
 
   // Ref-based drag state for resize handles (native mousemove, not dnd-kit)
   const dragRef = useRef<{
@@ -658,34 +678,47 @@ function ScheduleBlock({
   }
 
   return (
+    /* Outer wrapper — flex so badges sit to the right of the todo block */
     <div
       style={{ position: "absolute", top, height, zIndex: 3, ...colStyle }}
-      className="group/block rounded ring-2 ring-indigo-400 bg-indigo-500/25 overflow-hidden select-none"
+      className="group/block flex items-start gap-1 select-none"
     >
-      {/* Top resize handle */}
-      <div
-        onMouseDown={e => startResize("top", e)}
-        className="absolute top-0 left-0 right-0 h-2 cursor-n-resize flex items-center justify-center opacity-0 group-hover/block:opacity-100 transition"
-      >
-        <div className="w-5 h-0.5 rounded bg-indigo-300/70" />
+      {/* Todo item block — unchanged visual style; flex-1 so it fills remaining width */}
+      <div className="relative min-w-0 flex-1 h-full rounded ring-2 ring-indigo-400 bg-indigo-500/25 overflow-hidden">
+        {/* Top resize handle */}
+        <div
+          onMouseDown={e => startResize("top", e)}
+          className="absolute top-0 left-0 right-0 h-2 cursor-n-resize flex items-center justify-center opacity-0 group-hover/block:opacity-100 transition"
+        >
+          <div className="w-5 h-0.5 rounded bg-indigo-300/70" />
+        </div>
+
+        {/* Content */}
+        <div className="px-1.5 pt-2.5 pb-1">
+          <p className="text-[9px] text-indigo-300/60 leading-none">
+            {formatTimeShort(item.time!)}
+            {item.endTime ? `–${formatTimeShort(item.endTime)}` : ""}
+          </p>
+          <p className="text-sm font-semibold text-indigo-100 leading-tight truncate">{item.text}</p>
+        </div>
+
+        {/* Bottom resize handle */}
+        <div
+          onMouseDown={e => startResize("bottom", e)}
+          className="absolute bottom-0 left-0 right-0 h-2 cursor-s-resize flex items-center justify-center opacity-0 group-hover/block:opacity-100 transition"
+        >
+          <div className="w-5 h-0.5 rounded bg-indigo-300/70" />
+        </div>
       </div>
 
-      {/* Content */}
-      <div className="px-1.5 pt-2.5 pb-1">
-        <p className="text-[9px] text-indigo-300/60 leading-none">
-          {formatTimeShort(item.time!)}
-          {item.endTime ? `–${formatTimeShort(item.endTime)}` : ""}
-        </p>
-        <p className="text-sm font-semibold text-indigo-100 leading-tight truncate">{item.text}</p>
-      </div>
-
-      {/* Bottom resize handle */}
-      <div
-        onMouseDown={e => startResize("bottom", e)}
-        className="absolute bottom-0 left-0 right-0 h-2 cursor-s-resize flex items-center justify-center opacity-0 group-hover/block:opacity-100 transition"
-      >
-        <div className="w-5 h-0.5 rounded bg-indigo-300/70" />
-      </div>
+      {/* Equipment overlap badges — stack vertically to the right, daily view only */}
+      {overlapping.length > 0 && (
+        <div className="flex shrink-0 flex-col gap-0.5 pt-0.5">
+          {overlapping.map(booking => (
+            <EquipmentBadge key={booking.id} booking={booking} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -698,6 +731,7 @@ function DailySchedulePanel({
   scrollTrigger,
   hourScrollTrigger,
   hourScrollTarget,
+  equipmentBookings = [],
 }: {
   items: TodoItem[];
   onUpdateItem: (id: string, updates: Partial<TodoItem>) => void;
@@ -706,6 +740,8 @@ function DailySchedulePanel({
   scrollTrigger: number;
   hourScrollTrigger?: number;
   hourScrollTarget?: number;
+  /** Current user's equipment bookings for this date — shown as badges on overlapping todo blocks */
+  equipmentBookings?: ScheduleEvent[];
 }) {
   const today       = localDateStr();
   const isToday     = date === today;
@@ -889,6 +925,7 @@ function DailySchedulePanel({
               onUpdateItem={onUpdateItem}
               col={col}
               totalCols={totalCols}
+              equipmentBookings={equipmentBookings}
             />
           ))}
         </div>
@@ -1461,7 +1498,6 @@ function EditItemModal({
   const [showEndTime,   setShowEndTime]   = useState(!!item.endTime);
   const [links,         setLinks]         = useState<LinkRef[]>(item.links);
   const [showProtoPicker, setShowProtoPicker] = useState(false);
-  const [showEquipPicker, setShowEquipPicker] = useState(false);
 
   function handleSave() {
     const trimmed = text.trim();
@@ -1491,16 +1527,6 @@ function EditItemModal({
           onClose={() => setShowProtoPicker(false)}
         />
       )}
-      {showEquipPicker && (
-        <EquipmentPicker
-          todoTitle={text.trim()}
-          userId={userId}
-          userName={userName}
-          onAdd={link => setLinks(s => [...s, link])}
-          onClose={() => setShowEquipPicker(false)}
-        />
-      )}
-
       <div
         className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
         onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
@@ -1585,14 +1611,9 @@ function EditItemModal({
             {/* Link to */}
             <div>
               <p className="mb-1.5 text-[10px] text-zinc-500">Link to…</p>
-              <div className="flex flex-col gap-1.5">
-                <button onClick={() => setShowProtoPicker(true)} className="flex-1 rounded border border-emerald-500/40 bg-emerald-500/10 py-1.5 text-[10px] font-semibold text-emerald-300 transition hover:bg-emerald-500/20">
-                  Protocols
-                </button>
-                <button onClick={() => setShowEquipPicker(true)} className="w-full rounded border border-purple-500/40 bg-purple-500/10 py-1.5 text-[10px] font-semibold text-purple-300 transition hover:bg-purple-500/20">
-                  Equipment
-                </button>
-              </div>
+              <button onClick={() => setShowProtoPicker(true)} className="w-full rounded border border-emerald-500/40 bg-emerald-500/10 py-1.5 text-[10px] font-semibold text-emerald-300 transition hover:bg-emerald-500/20">
+                Protocols
+              </button>
             </div>
 
             {/* Link chips */}
@@ -1896,11 +1917,12 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
   const [newEndTime,      setNewEndTime]      = useState("");
   const [newLinks,        setNewLinks]        = useState<LinkRef[]>([]);
   const [showProtoPicker, setShowProtoPicker] = useState(false);
-  const [showEquipPicker, setShowEquipPicker] = useState(false);
-  const [showFeatureEquipPicker, setShowFeatureEquipPicker] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
   const [protocolEntries, setProtocolEntries] = useState<ProtocolEntry[]>([]);
   const [editingItemId,   setEditingItemId]   = useState<string | null>(null);
+
+  // ── Equipment bookings for badge overlay (current user, current schedule date) ──
+  const [equipmentBookings, setEquipmentBookings] = useState<ScheduleEvent[]>([]);
 
   // Stay in sync with AppTopNav user selection
   useEffect(() => {
@@ -1921,6 +1943,23 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
     window.addEventListener("storage", handleStorage);
     return () => window.removeEventListener("storage", handleStorage);
   }, []);
+
+  // Fetch the current user's equipment bookings for the viewed date (daily view only)
+  // Used to show overlap badges on todo items in the schedule grid.
+  useEffect(() => {
+    if (scheduleView !== "daily") { setEquipmentBookings([]); return; }
+    let cancelled = false;
+    fetch(`/api/equipment-bookings?date=${scheduleDate}&userId=${userId}`)
+      .then(r => r.ok ? r.json() : [])
+      .then((data: unknown) => {
+        if (!cancelled) {
+          const bookings = Array.isArray(data) ? data : (data as { bookings?: ScheduleEvent[] }).bookings ?? [];
+          setEquipmentBookings(bookings as ScheduleEvent[]);
+        }
+      })
+      .catch(() => { if (!cancelled) setEquipmentBookings([]); });
+    return () => { cancelled = true; };
+  }, [scheduleDate, userId, scheduleView]);
 
   // Persist todo list per user (migrate old items that lack timeSensitive).
   // Also runs nightly cleanup: removes done items and flags remaining as carryover
@@ -2193,29 +2232,6 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
           onClose={() => setShowProtoPicker(false)}
         />
       )}
-      {showEquipPicker && (
-        <EquipmentPicker
-          todoTitle={newText.trim()}
-          userId={userId}
-          userName={currentUser.name}
-          onAdd={link => setNewLinks(s => [...s, link])}
-          onClose={() => setShowEquipPicker(false)}
-        />
-      )}
-      {showFeatureEquipPicker && (
-        <EquipmentPicker
-          userId={userId}
-          userName={currentUser.name}
-          onCreateItem={newItem =>
-            setItems(prev => [{
-              id: crypto.randomUUID(),
-              done: false,
-              ...newItem,
-            }, ...prev])
-          }
-          onClose={() => setShowFeatureEquipPicker(false)}
-        />
-      )}
       {editingItem && (
         <EditItemModal
           item={editingItem}
@@ -2391,6 +2407,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
                 scrollTrigger={scrollTrigger}
                 hourScrollTrigger={hourScrollTrigger}
                 hourScrollTarget={hourScrollTarget}
+                equipmentBookings={equipmentBookings}
               />
             ) : (
               <WeeklySchedulePanel
