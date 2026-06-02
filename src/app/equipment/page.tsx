@@ -13,6 +13,7 @@ import {
   DailyView,
   WeeklyView,
   BookingModal,
+  getDefaultStartTime,
   type ResourceId,
   type ResourceGroup,
   type ScheduleEvent,
@@ -108,8 +109,9 @@ export default function EquipmentPage() {
   // Booking modal
   const [showModal,    setShowModal]    = useState(false);
   const [editEventId,  setEditEventId]  = useState<string | null>(null);
-  const [draft,        setDraft]        = useState<BookingDraft>({
-    resourceId: "", date: localDateStr(), startTime: "09:00", endTime: "10:00", title: "",
+  const [draft,        setDraft]        = useState<BookingDraft>(() => {
+    const s = getDefaultStartTime();
+    return { resourceId: "", date: localDateStr(), startTime: s, endTime: defaultEndTime("" as ResourceId, s), title: "" };
   });
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [saving,       setSaving]       = useState(false);
@@ -117,7 +119,7 @@ export default function EquipmentPage() {
   function handleDraftChange(next: BookingDraft) {
     setBookingError(null);
     if (next.resourceId && next.resourceId !== draft.resourceId) {
-      const end = defaultEndTime(next.resourceId as ResourceId, next.startTime || "09:00");
+      const end = defaultEndTime(next.resourceId as ResourceId, next.startTime || getDefaultStartTime());
       setDraft({ ...next, endTime: end });
     } else {
       setDraft(next);
@@ -125,11 +127,11 @@ export default function EquipmentPage() {
   }
 
   function openNew(params: Partial<BookingDraft> = {}) {
-    const resourceId = (params.resourceId ?? "") as ResourceId | "";
-    const startTime  = params.startTime ?? "09:00";
+    const resourceId  = (params.resourceId ?? "") as ResourceId | "";
+    const startTime   = params.startTime ?? getDefaultStartTime();
     const computedEnd = resourceId
       ? defaultEndTime(resourceId as ResourceId, startTime)
-      : "10:00";
+      : defaultEndTime("tc147", startTime); // fallback: 1-hour default
     setEditEventId(null);
     setBookingError(null);
     setDraft({
@@ -149,9 +151,10 @@ export default function EquipmentPage() {
     setDraft({
       resourceId: ev.resourceId,
       date:       ev.date,
-      startTime:  ev.startTime ?? "09:00",
-      endTime:    ev.endTime   ?? "10:00",
+      startTime:  ev.startTime ?? getDefaultStartTime(),
+      endTime:    ev.endTime   ?? defaultEndTime(ev.resourceId as ResourceId, ev.startTime ?? getDefaultStartTime()),
       title:      ev.title,
+      isOvernight: ev.isOvernight,
     });
     setShowModal(true);
   }
@@ -358,6 +361,7 @@ export default function EquipmentPage() {
           canDelete={editEventId
             ? canUserDelete(events.find(e => e.id === editEventId)!, userId)
             : false}
+          existingEvents={events}
         />
       )}
     </div>

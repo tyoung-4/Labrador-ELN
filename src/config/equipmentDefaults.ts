@@ -1,5 +1,34 @@
 import type { ResourceId } from "@/components/EquipmentShared";
 
+// ─── Slot-based equipment ─────────────────────────────────────────────────────
+
+/**
+ * A fixed time slot offered by slot-based equipment (e.g. Plasmid Pro).
+ * Slot-based equipment shows a slot picker instead of free start/end time inputs.
+ */
+export type EquipmentSlot = {
+  id: string;
+  label: string;     // human-readable, e.g. "Slot 1 · 8:00 – 9:30 am"
+  startTime: string; // HH:MM (24h)
+  endTime: string;   // HH:MM (24h)
+};
+
+/**
+ * Fixed time slots per equipment type. When a resource has an entry here,
+ * BookingModal renders a slot picker instead of free start/end time inputs.
+ */
+export const EQUIPMENT_SLOTS: Partial<Record<ResourceId, EquipmentSlot[]>> = {
+  "plasmid-pro": [
+    { id: "slot-1", label: "Slot 1 · 8:00 – 9:30 am",   startTime: "08:00", endTime: "09:30" },
+    { id: "slot-2", label: "Slot 2 · 10:00 – 11:30 am",  startTime: "10:00", endTime: "11:30" },
+    { id: "slot-3", label: "Slot 3 · 1:00 – 2:30 pm",    startTime: "13:00", endTime: "14:30" },
+    { id: "slot-4", label: "Slot 4 · 3:00 – 4:30 pm",    startTime: "15:00", endTime: "16:30" },
+    { id: "slot-5", label: "Slot 5 · 5:00 – 6:30 pm",    startTime: "17:00", endTime: "18:30" },
+  ],
+};
+
+// ─── Default durations ────────────────────────────────────────────────────────
+
 /**
  * Default booking duration (minutes) per equipment type.
  * This is the single source of truth — to add a new equipment type with a

@@ -1,6 +1,7 @@
 "use client";
 
 import { MouseEvent, useEffect, useMemo, useState } from "react";
+import { defaultEndTime, EQUIPMENT_SLOTS } from "@/config/equipmentDefaults";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,12 +26,13 @@ export type ResourceGroup = {
 export type ScheduleEvent = {
   id: string;
   resourceId: ResourceId;
-  date: string;        // YYYY-MM-DD  (start date)
-  startTime?: string;  // HH:MM (24h)
-  endTime?: string;    // HH:MM (24h) — may be on the next calendar day if overnight
+  date: string;           // YYYY-MM-DD  (start date)
+  startTime?: string;     // HH:MM (24h)
+  endTime?: string;       // HH:MM (24h) — may be on the next calendar day if overnight
   title: string;
   userId: string;
   userName: string;
+  isOvernight?: boolean;
 };
 
 export type BookingDraft = {
@@ -153,6 +155,23 @@ function gen30MinOptions(): { value: string; label: string }[] {
 }
 
 const TIME_OPTIONS = gen30MinOptions();
+
+/**
+ * Returns the nearest half-hour at or after the current time as "HH:MM" (24h).
+ * Examples: 10:07 → "10:30", 10:31 → "11:00", 10:00 → "10:00"
+ */
+export function getDefaultStartTime(): string {
+  const now = new Date();
+  const mins = now.getMinutes();
+  if (mins === 0) {
+    // already on the hour — use as-is
+  } else if (mins <= 30) {
+    now.setMinutes(30, 0, 0);
+  } else {
+    now.setHours(now.getHours() + 1, 0, 0, 0);
+  }
+  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
 
 /** Advance a YYYY-MM-DD string by one calendar day */
 export function nextDayStr(dateStr: string): string {
@@ -532,6 +551,7 @@ export function BookingModal({
   errorMessage,
   saving,
   canDelete,
+  existingEvents = [],
 }: {
   draft: BookingDraft;
   editEventId: string | null;
@@ -543,7 +563,22 @@ export function BookingModal({
   saving?: boolean;
   /** Show the Delete button — only true when the current user owns the booking */
   canDelete?: boolean;
+  /** All existing events — used to compute slot availability for slot-based equipment */
+  existingEvents?: ScheduleEvent[];
 }) {
+  // ── Past-booking warning state ──────────────────────────────────────────────
+  const [showPastWarning, setShowPastWarning] = useState(false);
+
+  // Reset warning whenever the user changes date or start time
+  useEffect(() => { setShowPastWarning(false); }, [draft.date, draft.startTime]);
+
+  // ── Slot-based equipment ────────────────────────────────────────────────────
+  const slots       = draft.resourceId ? (EQUIPMENT_SLOTS[draft.resourceId as ResourceId] ?? null) : null;
+  const isSlotBased = !!slots;
+  const slotValid   = !isSlotBased || !!slots!.find(
+    s => s.startTime === draft.startTime && s.endTime === draft.endTime
+  );
+
   // ── Client-side validation ──────────────────────────────────────────────────
   const startMins    = timeToMins(draft.startTime || "00:00");
   const endMins      = timeToMins(draft.endTime   || "00:00");
@@ -554,16 +589,18 @@ export function BookingModal({
   const durationMins     = effectiveEndMins - startMins;
 
   let validationError: string | null = null;
-  if (!isOvernight && endMins <= startMins) {
-    validationError = "End time must be after start time";
-  } else if (durationMins > 1440) {
-    validationError = "Bookings cannot exceed 24 hours";
-  } else if (isOvernight && durationMins <= 0) {
-    validationError = "End time must be after start time";
+  if (!isSlotBased) {
+    if (!isOvernight && endMins <= startMins) {
+      validationError = "End time must be after start time";
+    } else if (durationMins > 1440) {
+      validationError = "Bookings cannot exceed 24 hours";
+    } else if (isOvernight && durationMins <= 0) {
+      validationError = "End time must be after start time";
+    }
   }
 
   const displayError = validationError ?? errorMessage ?? null;
-  const canSubmit    = !saving && !!draft.resourceId && !!draft.date && !validationError;
+  const canSubmit    = !saving && !!draft.resourceId && !!draft.date && !validationError && slotValid;
 
   // Compute the displayed end date for overnight runs
   const endDateDisplay = isOvernight && draft.date
@@ -620,7 +657,7 @@ export function BookingModal({
             </select>
           </div>
 
-          {/* Date + Overnight toggle */}
+          {/* Date + Overnight toggle (hidden for slot-based equipment) */}
           <div className="flex items-end gap-3">
             <div className="flex-1">
               <label className="mb-1 block text-xs font-medium text-zinc-400">Start date</label>
@@ -631,53 +668,109 @@ export function BookingModal({
                 className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none"
               />
             </div>
-            <label className="flex shrink-0 cursor-pointer items-center gap-1.5 pb-2.5 text-xs text-zinc-400">
-              <input
-                type="checkbox"
-                checked={isOvernight}
-                onChange={e => onDraftChange({ ...draft, isOvernight: e.target.checked })}
-                className="rounded border-zinc-600 bg-zinc-800 accent-indigo-500"
-              />
-              Overnight run
-            </label>
+            {!isSlotBased && (
+              <label className="flex shrink-0 cursor-pointer items-center gap-1.5 pb-2.5 text-xs text-zinc-400">
+                <input
+                  type="checkbox"
+                  checked={isOvernight}
+                  onChange={e => {
+                    const checked = e.target.checked;
+                    onDraftChange({
+                      ...draft,
+                      isOvernight: checked,
+                      // Auto-set 9 AM end on check; restore resource default on uncheck
+                      endTime: checked
+                        ? "09:00"
+                        : defaultEndTime(draft.resourceId as ResourceId, draft.startTime),
+                    });
+                  }}
+                  className="rounded border-zinc-600 bg-zinc-800 accent-indigo-500"
+                />
+                Overnight run
+              </label>
+            )}
           </div>
 
-          {/* Overnight end-date indicator */}
+          {/* Overnight end-date indicator + hint */}
           {isOvernight && nextDateDisplay && (
-            <p className="text-[10px] text-indigo-300">
-              Ends on: <span className="font-semibold">{nextDateDisplay}</span>
-            </p>
+            <div className="space-y-0.5">
+              <p className="text-[10px] text-indigo-300">
+                Ends on: <span className="font-semibold">{nextDateDisplay}</span>
+              </p>
+              <p className="text-[10px] text-zinc-500">
+                Default end: 9:00 AM next day — adjust if needed
+              </p>
+            </div>
           )}
 
-          {/* Start / End time selects */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Time input — slot picker for slot-based equipment, free selects otherwise */}
+          {isSlotBased ? (
             <div>
-              <label className="mb-1 block text-xs font-medium text-zinc-400">Start time</label>
-              <select
-                value={draft.startTime}
-                onChange={e => onDraftChange({ ...draft, startTime: e.target.value })}
-                className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none"
-              >
-                {TIME_OPTIONS.map(o => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
+              <label className="mb-2 block text-xs font-medium text-zinc-400">Time slot</label>
+              <div className="space-y-1.5">
+                {slots!.map(slot => {
+                  const isBooked = existingEvents.some(
+                    e => e.resourceId === draft.resourceId
+                      && e.date === draft.date
+                      && e.startTime === slot.startTime
+                      && e.id !== editEventId
+                  );
+                  const isSelected = draft.startTime === slot.startTime && draft.endTime === slot.endTime;
+                  return (
+                    <button
+                      key={slot.id}
+                      type="button"
+                      onClick={() => { if (!isBooked) onDraftChange({ ...draft, startTime: slot.startTime, endTime: slot.endTime }); }}
+                      disabled={isBooked}
+                      className={`flex w-full items-center justify-between rounded border px-3 py-2 text-xs transition ${
+                        isSelected
+                          ? "border-indigo-500 bg-indigo-600/20 text-indigo-200"
+                          : isBooked
+                            ? "cursor-not-allowed border-zinc-800 bg-zinc-900/50 text-zinc-600"
+                            : "border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-600 hover:bg-zinc-700"
+                      }`}
+                    >
+                      <span>{slot.label}</span>
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                        isBooked ? "bg-red-900/40 text-red-400" : "bg-emerald-900/40 text-emerald-400"
+                      }`}>
+                        {isBooked ? "Booked" : "Available"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-zinc-400">
-                End time {isOvernight && <span className="text-indigo-300">(next day)</span>}
-              </label>
-              <select
-                value={draft.endTime}
-                onChange={e => onDraftChange({ ...draft, endTime: e.target.value })}
-                className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none"
-              >
-                {TIME_OPTIONS.map(o => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-zinc-400">Start time</label>
+                <select
+                  value={draft.startTime}
+                  onChange={e => onDraftChange({ ...draft, startTime: e.target.value })}
+                  className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none"
+                >
+                  {TIME_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-zinc-400">
+                  End time {isOvernight && <span className="text-indigo-300">(next day)</span>}
+                </label>
+                <select
+                  value={draft.endTime}
+                  onChange={e => onDraftChange({ ...draft, endTime: e.target.value })}
+                  className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:outline-none"
+                >
+                  {TIME_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Validation / API error */}
           {displayError && (
@@ -686,6 +779,30 @@ export function BookingModal({
             </div>
           )}
         </div>
+
+        {/* Past-booking warning — shown inline, non-blocking */}
+        {showPastWarning && (
+          <div className="mt-4 rounded border border-amber-500/40 bg-amber-900/20 px-3 py-3 text-xs">
+            <p className="font-semibold text-amber-300">This time slot is in the past.</p>
+            <p className="mt-0.5 text-amber-400/80">You can still book it for record-keeping purposes.</p>
+            <div className="mt-2.5 flex gap-2">
+              <button
+                onClick={() => { setShowPastWarning(false); onSave(); }}
+                disabled={saving}
+                className="rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+              >
+                Book Anyway
+              </button>
+              <button
+                onClick={() => setShowPastWarning(false)}
+                disabled={saving}
+                className="rounded border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="mt-6 flex items-center gap-2">
           {editEventId && canDelete && (
@@ -706,7 +823,18 @@ export function BookingModal({
               Cancel
             </button>
             <button
-              onClick={() => { if (canSubmit) onSave(); }}
+              onClick={() => {
+                if (!canSubmit) return;
+                // Check if booking start is in the past — prompt once before saving
+                if (!showPastWarning) {
+                  const bookingStart = new Date(draft.date + "T" + draft.startTime);
+                  if (bookingStart < new Date()) {
+                    setShowPastWarning(true);
+                    return;
+                  }
+                }
+                onSave();
+              }}
               disabled={!canSubmit}
               className="rounded bg-indigo-600 px-4 py-2 text-xs text-white hover:bg-indigo-500 disabled:opacity-50"
             >
