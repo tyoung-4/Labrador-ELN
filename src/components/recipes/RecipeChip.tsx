@@ -65,10 +65,20 @@ type RecipeChipProps = {
   recipe: RecipeSummary;
   /** If provided, renders an × button to remove the recipe ref */
   onRemove?: () => void;
+  /** "orange" renders run-view orange styling; default is indigo (editor) */
+  variant?: "orange";
 };
 
-export default function RecipeChip({ recipe, onRemove }: RecipeChipProps) {
+export default function RecipeChip({ recipe, onRemove, variant }: RecipeChipProps) {
   const [hovered, setHovered] = useState(false);
+
+  const chipClass = variant === "orange"
+    ? "inline-flex items-center gap-1 rounded-full border border-orange-500/50 bg-orange-500/10 px-2 py-0.5 text-xs text-orange-400"
+    : "inline-flex items-center gap-1 rounded-full border border-indigo-700/60 bg-indigo-900/40 px-2 py-0.5 text-xs text-indigo-300";
+
+  const removeClass = variant === "orange"
+    ? "ml-0.5 rounded-full text-orange-400 hover:text-orange-100 transition"
+    : "ml-0.5 rounded-full text-indigo-400 hover:text-indigo-100 transition";
 
   return (
     <span
@@ -76,13 +86,13 @@ export default function RecipeChip({ recipe, onRemove }: RecipeChipProps) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <span className="inline-flex items-center gap-1 rounded-full border border-indigo-700/60 bg-indigo-900/40 px-2 py-0.5 text-xs text-indigo-300">
+      <span className={chipClass}>
         <span className="opacity-60">⚗</span>
         <span>{recipe.name}</span>
         {onRemove && (
           <button
             onClick={(e) => { e.stopPropagation(); onRemove(); }}
-            className="ml-0.5 rounded-full text-indigo-400 hover:text-indigo-100 transition"
+            className={removeClass}
             title="Remove recipe"
           >
             ×

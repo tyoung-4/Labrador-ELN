@@ -641,7 +641,7 @@ function StepRow({
                 {(step.recipeRefs ?? []).map((rid) => {
                   const recipe = recipesById[rid];
                   if (!recipe) return null;
-                  return <RecipeChip key={rid} recipe={recipe} />;
+                  return <RecipeChip key={rid} recipe={recipe} variant="orange" />;
                 })}
               </div>
             )}
