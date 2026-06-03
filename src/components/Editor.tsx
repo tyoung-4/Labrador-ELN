@@ -1098,6 +1098,37 @@ export default function Editor({
                     >
                       Delete Step
                     </button>
+
+                    {/* Divider */}
+                    <div className="border-t border-zinc-700/50 my-2" />
+
+                    {/* Entry Field */}
+                    <button
+                      onClick={() => stepsEditorRef.current?.openInputField()}
+                      disabled={focusType !== "step"}
+                      title={focusType !== "step" ? "Select a step first" : "Insert an input field into this step"}
+                      className={`w-full rounded border px-3 py-2 text-left transition ${
+                        focusType !== "step"
+                          ? "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-700"
+                          : "border-zinc-700 bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
+                      }`}
+                    >
+                      + Entry Field
+                    </button>
+
+                    {/* Recipe */}
+                    <button
+                      onClick={() => stepsEditorRef.current?.openRecipePicker()}
+                      disabled={focusType !== "step"}
+                      title={focusType !== "step" ? "Select a step first" : "Attach a recipe to this step"}
+                      className={`w-full rounded border px-3 py-2 text-left transition ${
+                        focusType !== "step"
+                          ? "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-700"
+                          : "border-zinc-700 bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
+                      }`}
+                    >
+                      + Recipe
+                    </button>
                   </div>
                 </>
               )}
