@@ -71,12 +71,12 @@ export default function RecipeChip({ recipe, onRemove }: RecipeChipProps) {
   const [hovered, setHovered] = useState(false);
 
   return (
-    <span className="relative inline-flex items-center">
-      <span
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        className="inline-flex items-center gap-1 rounded-full border border-indigo-700/60 bg-indigo-900/40 px-2 py-0.5 text-xs text-indigo-300"
-      >
+    <span
+      className="relative inline-flex items-center"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <span className="inline-flex items-center gap-1 rounded-full border border-indigo-700/60 bg-indigo-900/40 px-2 py-0.5 text-xs text-indigo-300">
         <span className="opacity-60">⚗</span>
         <span>{recipe.name}</span>
         {onRemove && (

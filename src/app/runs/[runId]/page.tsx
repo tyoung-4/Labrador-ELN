@@ -1002,6 +1002,11 @@ export default function ActiveRunPage() {
   // Timer states — keyed by "${stepId}__${fieldKey}"
   const [timerStates, setTimerStates] = useState<Record<string, TimerFieldState>>({});
 
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (sidebarRef.current) sidebarRef.current.scrollTop = 0;
+  }, []);
+
   // Parse steps — only after run is loaded and we're client-side
   const steps = useMemo<ParsedStep[]>(() => {
     if (!run) return [];
@@ -1587,7 +1592,7 @@ export default function ActiveRunPage() {
         </div>
 
         {/* Right sidebar */}
-        <div className="w-80 shrink-0 overflow-y-auto p-6">
+        <div ref={sidebarRef} className="w-80 shrink-0 overflow-y-auto p-6">
           <RunSidebar
             steps={steps}
             resolvedCount={resolvedCount}
@@ -1725,15 +1730,7 @@ function RunSidebar({
   const done = allResolved || isRunComplete;
 
   return (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto pb-4">
-      {/* Progress */}
-      <div>
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
-          Run Progress: {resolvedCount} / {steps.length} steps
-        </p>
-        <ProgressDog progress={progress} />
-      </div>
-
+    <div className="flex h-full flex-col gap-5 pb-4">
       {/* Actions */}
       {done ? (
         <div className="space-y-3">
@@ -1852,6 +1849,14 @@ function RunSidebar({
           )}
         </div>
       ) : null}
+
+      {/* Progress */}
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+          Run Progress: {resolvedCount} / {steps.length} steps
+        </p>
+        <ProgressDog progress={progress} />
+      </div>
 
       {/* Widgets */}
       <SidebarWidgets />

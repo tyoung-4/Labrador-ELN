@@ -11,7 +11,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Italic, Redo2, Underline, Undo2 } from "lucide-react";
+import { Redo2, Undo2 } from "lucide-react";
 import RecipeChip, { type RecipeSummary } from "@/components/recipes/RecipeChip";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -771,6 +771,67 @@ function RecipePickerDropdown({
   );
 }
 
+// ── T-button formatting popup (uses document.execCommand for contentEditable) ──
+
+const GREEK_LETTERS = [
+  { label: "α", name: "alpha" },
+  { label: "β", name: "beta" },
+  { label: "γ", name: "gamma" },
+  { label: "δ", name: "delta" },
+  { label: "ε", name: "epsilon" },
+  { label: "φ", name: "phi" },
+  { label: "ψ", name: "psi" },
+  { label: "ζ", name: "zeta" },
+  { label: "σ", name: "sigma" },
+];
+
+function FormattingPopupExecCmd({ onClose }: { onClose: () => void }) {
+  function cmd(command: string) {
+    document.execCommand(command);
+    onClose();
+  }
+  function insertText(text: string) {
+    document.execCommand("insertText", false, text);
+    onClose();
+  }
+  const btnBase = "rounded px-2 py-1 text-sm transition-colors text-gray-300 hover:bg-white/10";
+  return (
+    <div className="absolute top-full left-0 mt-1 z-50 min-w-[11rem] rounded-lg border border-gray-300 bg-white shadow-xl p-3">
+      {/* Formatting row */}
+      <div className="flex gap-1 mb-3">
+        <button onMouseDown={(e) => { e.preventDefault(); cmd("bold"); }}
+          className={`${btnBase} font-bold text-gray-700 hover:bg-gray-100`} title="Bold">B</button>
+        <button onMouseDown={(e) => { e.preventDefault(); cmd("italic"); }}
+          className={`${btnBase} italic text-gray-700 hover:bg-gray-100`} title="Italic">I</button>
+        <button onMouseDown={(e) => { e.preventDefault(); cmd("underline"); }}
+          className={`${btnBase} underline text-gray-700 hover:bg-gray-100`} title="Underline">U</button>
+        <button onMouseDown={(e) => { e.preventDefault(); cmd("superscript"); }}
+          className={`${btnBase} text-xs text-gray-700 hover:bg-gray-100`} title="Superscript">x²</button>
+        <button onMouseDown={(e) => { e.preventDefault(); cmd("subscript"); }}
+          className={`${btnBase} text-xs text-gray-700 hover:bg-gray-100`} title="Subscript">x₂</button>
+      </div>
+      {/* Divider */}
+      <div className="border-t border-gray-200 mb-2" />
+      {/* Greek letters */}
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Greek Letters</p>
+      <div className="grid grid-cols-5 gap-1">
+        {GREEK_LETTERS.map(({ label, name }) => (
+          <button
+            key={name}
+            onMouseDown={(e) => { e.preventDefault(); insertText(label); }}
+            className="rounded px-1.5 py-1 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+            title={name}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
   function ProtocolStepsEditor(
     { initialContent = "", onChange, showSectionErrors = false, onFocusTypeChange },
@@ -804,6 +865,19 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
     const [fieldModalOpen, setFieldModalOpen] = useState(false);
     const [fieldModalInitialType, setFieldModalInitialType] = useState<string | undefined>(undefined);
     const [recipePickerOpen, setRecipePickerOpen] = useState(false);
+
+    const [showFormattingPopup, setShowFormattingPopup] = useState(false);
+    const formattingPopupRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+      if (!showFormattingPopup) return;
+      function handleClickOutside(e: MouseEvent) {
+        if (formattingPopupRef.current && !formattingPopupRef.current.contains(e.target as Node)) {
+          setShowFormattingPopup(false);
+        }
+      }
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [showFormattingPopup]);
 
     // ── Recipe data — lazy fetch on first open ────────────────────────────────
     const [allRecipes, setAllRecipes] = useState<RecipeSummary[]>([]);
@@ -1224,40 +1298,19 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
 
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-1 border-b border-gray-200 bg-gray-50 px-3 py-2">
-          <button
-            title="Add an input field that must be filled in each time this step is run."
-            onClick={() => setFieldModalOpen(true)}
-            className="rounded border border-gray-300 bg-white px-2 py-1 text-sm text-gray-700 hover:bg-gray-50"
-          >
-            + Input Field
-          </button>
-          <button
-            onClick={() => setRecipePickerOpen(true)}
-            title={focusType !== "step" ? "Select a step first" : "Attach a recipe to the selected step"}
-            className="rounded border border-gray-300 bg-white px-2 py-1 text-sm text-gray-700 hover:bg-gray-50"
-          >
-            + Recipe
-          </button>
-
-          <div className="mx-1 h-5 w-px bg-gray-300" />
-
-          {/* Italic — onMouseDown prevents stealing focus from contentEditable */}
-          <button
-            title="Italic (Ctrl+I / Cmd+I)"
-            onMouseDown={(e) => { e.preventDefault(); document.execCommand("italic"); }}
-            className="inline-flex items-center justify-center rounded border border-gray-300 bg-white p-1.5 text-gray-700 hover:bg-gray-50"
-          >
-            <Italic size={14} />
-          </button>
-
-          {/* Underline */}
-          <button
-            title="Underline (Ctrl+U / Cmd+U)"
-            onMouseDown={(e) => { e.preventDefault(); document.execCommand("underline"); }}
-            className="inline-flex items-center justify-center rounded border border-gray-300 bg-white p-1.5 text-gray-700 hover:bg-gray-50"
-          >
-            <Underline size={14} />
-          </button>
+          {/* T button — text formatting popup */}
+          <div ref={formattingPopupRef} className="relative">
+            <button
+              onMouseDown={(e) => { e.preventDefault(); setShowFormattingPopup((v) => !v); }}
+              title="Text formatting"
+              className="rounded border border-gray-300 bg-white px-2.5 py-1 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+            >
+              T
+            </button>
+            {showFormattingPopup && (
+              <FormattingPopupExecCmd onClose={() => setShowFormattingPopup(false)} />
+            )}
+          </div>
 
           <div className="mx-1 h-5 w-px bg-gray-300" />
 

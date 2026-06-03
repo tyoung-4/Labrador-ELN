@@ -1,8 +1,11 @@
 "use client";
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EditorContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, type NodeViewProps } from "@tiptap/react";
-import { mergeAttributes, Node } from "@tiptap/core";
+import { mergeAttributes, Node, type Editor } from "@tiptap/core";
+import Highlight from "@tiptap/extension-highlight";
+import Superscript from "@tiptap/extension-superscript";
+import Subscript from "@tiptap/extension-subscript";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import Table from "@tiptap/extension-table";
@@ -324,6 +327,67 @@ const ComponentFieldNode = Node.create({
   },
 });
 
+// ── T-button formatting popup (TipTap-based) ─────────────────────────────────
+
+const GREEK_LETTERS_RT = [
+  { label: "α", name: "alpha" },
+  { label: "β", name: "beta" },
+  { label: "γ", name: "gamma" },
+  { label: "δ", name: "delta" },
+  { label: "ε", name: "epsilon" },
+  { label: "φ", name: "phi" },
+  { label: "ψ", name: "psi" },
+  { label: "ζ", name: "zeta" },
+  { label: "σ", name: "sigma" },
+];
+
+function FormattingPopup({ editor, onClose }: { editor: Editor; onClose: () => void }) {
+  function applyAndClose(fn: () => void) {
+    fn();
+    onClose();
+  }
+  const fmtBtn = (active: boolean, extra = "") =>
+    `rounded px-2 py-1 text-sm transition-colors ${active ? "bg-white/20 text-white" : "text-gray-700 hover:bg-gray-100"} ${extra}`;
+  return (
+    <div className="absolute top-full left-0 mt-1 z-50 min-w-[11rem] rounded-lg border border-gray-300 bg-white shadow-xl p-3">
+      {/* Formatting row */}
+      <div className="flex gap-1 mb-3">
+        <button onClick={() => applyAndClose(() => editor.chain().focus().toggleBold().run())}
+          className={fmtBtn(editor.isActive("bold"), "font-bold")} title="Bold">B</button>
+        <button onClick={() => applyAndClose(() => editor.chain().focus().toggleItalic().run())}
+          className={fmtBtn(editor.isActive("italic"), "italic")} title="Italic">I</button>
+        <button onClick={() => applyAndClose(() => editor.chain().focus().toggleUnderline().run())}
+          className={fmtBtn(editor.isActive("underline"), "underline")} title="Underline">U</button>
+        <button onClick={() => applyAndClose(() => editor.chain().focus().toggleHighlight().run())}
+          className={`rounded px-2 py-1 text-sm transition-colors ${editor.isActive("highlight") ? "bg-yellow-200 text-yellow-800" : "text-gray-700 hover:bg-gray-100"}`}
+          title="Highlight">H</button>
+        <button onClick={() => applyAndClose(() => editor.chain().focus().toggleSuperscript().run())}
+          className={fmtBtn(editor.isActive("superscript"), "text-xs")} title="Superscript">x²</button>
+        <button onClick={() => applyAndClose(() => editor.chain().focus().toggleSubscript().run())}
+          className={fmtBtn(editor.isActive("subscript"), "text-xs")} title="Subscript">x₂</button>
+      </div>
+      {/* Divider */}
+      <div className="border-t border-gray-200 mb-2" />
+      {/* Greek letters */}
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Greek Letters</p>
+      <div className="grid grid-cols-5 gap-1">
+        {GREEK_LETTERS_RT.map(({ label, name }) => (
+          <button
+            key={name}
+            onClick={() => { editor.chain().focus().insertContent(label).run(); onClose(); }}
+            className="rounded px-1.5 py-1 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
+            title={name}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function RichTextEditor({ initialContent = "", onChange, editable = true, mode = "full", externalAction = null }: Props) {
   const [tableRows, setTableRows] = useState(3);
   const [tableCols, setTableCols] = useState(3);
@@ -341,6 +405,19 @@ export default function RichTextEditor({ initialContent = "", onChange, editable
   const [componentType, setComponentType] = useState(ENTRY_TYPE_OPTIONS[0].label);
   const [componentUnit, setComponentUnit] = useState(ENTRY_TYPE_OPTIONS[0].defaultUnit);
   const [componentCustomLabel, setComponentCustomLabel] = useState("");
+
+  const [showFormattingPopup, setShowFormattingPopup] = useState(false);
+  const formattingPopupRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showFormattingPopup) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (formattingPopupRef.current && !formattingPopupRef.current.contains(e.target as Node)) {
+        setShowFormattingPopup(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showFormattingPopup]);
 
   const handleUpdate = useCallback(
     ({ editor }: { editor: { getHTML: () => string } }) => {
@@ -364,6 +441,9 @@ export default function RichTextEditor({ initialContent = "", onChange, editable
             listItem: { HTMLAttributes: { class: "leading-relaxed" } },
           }),
           Underline,
+          Highlight,
+          Superscript,
+          Subscript,
         ];
       }
       return [
@@ -420,6 +500,9 @@ export default function RichTextEditor({ initialContent = "", onChange, editable
           },
         }),
         Underline,
+        Highlight,
+        Superscript,
+        Subscript,
         Link.configure({ openOnClick: false }),
         MeasurementFieldNode,
         TimerFieldNode,
@@ -614,41 +697,19 @@ export default function RichTextEditor({ initialContent = "", onChange, editable
       {editable && mode === "simple" && (
         <div className="border-b border-gray-200 bg-gray-50 p-3">
           <div className="flex flex-wrap gap-1">
-            <button
-              onClick={() => editor.chain().focus().toggleBold().run()}
-              disabled={!editor.can().chain().focus().toggleBold().run()}
-              className={`rounded px-2 py-1 text-sm transition ${
-                editor.isActive("bold")
-                  ? "bg-blue-600 text-white"
-                  : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-              }`}
-              title="Bold (Ctrl+B)"
-            >
-              <strong>B</strong>
-            </button>
-            <button
-              onClick={() => editor.chain().focus().toggleItalic().run()}
-              disabled={!editor.can().chain().focus().toggleItalic().run()}
-              className={`rounded px-2 py-1 text-sm transition ${
-                editor.isActive("italic")
-                  ? "bg-blue-600 text-white"
-                  : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-              }`}
-              title="Italic (Ctrl+I)"
-            >
-              <em>I</em>
-            </button>
-            <button
-              onClick={() => editor.chain().focus().toggleUnderline().run()}
-              className={`rounded px-2 py-1 text-sm transition ${
-                editor.isActive("underline")
-                  ? "bg-blue-600 text-white"
-                  : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-              }`}
-              title="Underline (Ctrl+U)"
-            >
-              <u>U</u>
-            </button>
+            {/* T button — formatting popup */}
+            <div ref={formattingPopupRef} className="relative">
+              <button
+                onClick={() => setShowFormattingPopup((v) => !v)}
+                className="rounded border border-gray-300 bg-white px-2.5 py-1 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                title="Text formatting"
+              >
+                T
+              </button>
+              {showFormattingPopup && editor && (
+                <FormattingPopup editor={editor} onClose={() => setShowFormattingPopup(false)} />
+              )}
+            </div>
             <div className="w-px bg-gray-300" />
             <button
               onClick={() => editor.chain().focus().undo().run()}
@@ -694,43 +755,19 @@ export default function RichTextEditor({ initialContent = "", onChange, editable
               <option value="h6">Subheader 3</option>
             </select>
 
-            <button
-              onClick={() => editor.chain().focus().toggleBold().run()}
-              disabled={!editor.can().chain().focus().toggleBold().run()}
-              className={`rounded px-2 py-1 text-sm transition ${
-                editor.isActive("bold")
-                  ? "bg-blue-600 text-white"
-                  : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-              }`}
-              title="Bold (Ctrl+B)"
-            >
-              <strong>B</strong>
-            </button>
-
-            <button
-              onClick={() => editor.chain().focus().toggleItalic().run()}
-              disabled={!editor.can().chain().focus().toggleItalic().run()}
-              className={`rounded px-2 py-1 text-sm transition ${
-                editor.isActive("italic")
-                  ? "bg-blue-600 text-white"
-                  : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-              }`}
-              title="Italic (Ctrl+I)"
-            >
-              <em>I</em>
-            </button>
-
-            <button
-              onClick={() => editor.chain().focus().toggleUnderline().run()}
-              className={`rounded px-2 py-1 text-sm transition ${
-                editor.isActive("underline")
-                  ? "bg-blue-600 text-white"
-                  : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-              }`}
-              title="Underline (Ctrl+U)"
-            >
-              <u>U</u>
-            </button>
+            {/* T button — formatting popup */}
+            <div ref={formattingPopupRef} className="relative">
+              <button
+                onClick={() => setShowFormattingPopup((v) => !v)}
+                className="rounded border border-gray-300 bg-white px-2.5 py-1 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                title="Text formatting"
+              >
+                T
+              </button>
+              {showFormattingPopup && editor && (
+                <FormattingPopup editor={editor} onClose={() => setShowFormattingPopup(false)} />
+              )}
+            </div>
 
             <div className="w-px bg-gray-300" />
 
