@@ -916,7 +916,7 @@ function DailySchedulePanel({
             return (
               <div
                 key={booking.id}
-                style={{ position: "absolute", top, height, right: 2, width: "25%", zIndex: 2 }}
+                style={{ position: "absolute", top, height, right: 2, width: "25%", zIndex: 1, pointerEvents: "none" }}
               >
                 <EquipmentBadge booking={booking} badgeHeight={height} />
               </div>
