@@ -1,8 +1,10 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Undo2, Redo2 } from "lucide-react";
 import RichTextEditor from "./RichTextEditor";
 import ProtocolStepsEditor, {
   parseStepsData as parseStepsDataV2,
+  FormattingPopupExecCmd,
   type FocusType,
   type ProtocolStepsEditorHandle,
 } from "./ProtocolStepsEditor";
@@ -815,6 +817,22 @@ export default function Editor({
   const [showVersionPanel, setShowVersionPanel] = useState(false);
   const [focusType, setFocusType] = useState<FocusType>(null);
 
+  // Formatting popup + undo/redo state (lifted from ProtocolStepsEditor toolbar)
+  const [showFormattingPopup, setShowFormattingPopup] = useState(false);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const formattingPopupRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showFormattingPopup) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (formattingPopupRef.current && !formattingPopupRef.current.contains(e.target as Node)) {
+        setShowFormattingPopup(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showFormattingPopup]);
+
   // ── Version info (read-only, derived from initial.typedData) ──────────────
   const semVer = useMemo(() => {
     const td = initial.typedData;
@@ -860,7 +878,10 @@ export default function Editor({
 
   // Clear focus context when leaving Steps tab
   useEffect(() => {
-    if (activeTab !== "steps") setFocusType(null);
+    if (activeTab !== "steps") {
+      setFocusType(null);
+      setShowFormattingPopup(false);
+    }
   }, [activeTab]);
 
   // Title is always managed internally (the metadata row renders a title input in protocolShell mode)
@@ -1129,6 +1150,54 @@ export default function Editor({
                     >
                       + Recipe
                     </button>
+
+                    {/* Divider */}
+                    <div className="border-t border-zinc-700/50 my-2" />
+
+                    {/* Text formatting + Undo/Redo — in a single row */}
+                    <div className="flex items-center gap-1">
+                      <div ref={formattingPopupRef} className="relative">
+                        <button
+                          onMouseDown={(e) => { e.preventDefault(); if (focusType === "step") setShowFormattingPopup((v) => !v); }}
+                          disabled={focusType !== "step"}
+                          title={focusType !== "step" ? "Select a step first" : "Text formatting"}
+                          className={`rounded border px-2.5 py-1.5 text-sm font-semibold transition ${
+                            focusType !== "step"
+                              ? "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-700"
+                              : "border-zinc-700 bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
+                          }`}
+                        >
+                          T
+                        </button>
+                        {showFormattingPopup && focusType === "step" && (
+                          <FormattingPopupExecCmd onClose={() => setShowFormattingPopup(false)} />
+                        )}
+                      </div>
+                      <button
+                        onClick={() => stepsEditorRef.current?.undo()}
+                        disabled={!canUndo}
+                        title="Undo (Ctrl+Z / Cmd+Z)"
+                        className={`inline-flex items-center justify-center rounded border p-1.5 transition ${
+                          !canUndo
+                            ? "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-700"
+                            : "border-zinc-700 bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
+                        }`}
+                      >
+                        <Undo2 size={14} />
+                      </button>
+                      <button
+                        onClick={() => stepsEditorRef.current?.redo()}
+                        disabled={!canRedo}
+                        title="Redo (Ctrl+Shift+Z / Cmd+Shift+Z)"
+                        className={`inline-flex items-center justify-center rounded border p-1.5 transition ${
+                          !canRedo
+                            ? "cursor-not-allowed border-zinc-800 bg-zinc-900 text-zinc-700"
+                            : "border-zinc-700 bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
+                        }`}
+                      >
+                        <Redo2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 </>
               )}
@@ -1160,6 +1229,7 @@ export default function Editor({
                   onChange={setSteps}
                   showSectionErrors={showSectionErrors}
                   onFocusTypeChange={setFocusType}
+                  onHistoryChange={(u, r) => { setCanUndo(u); setCanRedo(r); }}
                 />
               )}
               {activeTab === "description" && (

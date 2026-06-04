@@ -11,7 +11,6 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Redo2, Undo2 } from "lucide-react";
 import RecipeChip, { type RecipeSummary } from "@/components/recipes/RecipeChip";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -618,6 +617,8 @@ export type ProtocolStepsEditorHandle = {
   deleteFocused: () => void;
   openInputField: (entryType?: string) => void;
   openRecipePicker: () => void;
+  undo: () => void;
+  redo: () => void;
 };
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -627,6 +628,7 @@ type Props = {
   onChange?: (content: string) => void;
   showSectionErrors?: boolean;
   onFocusTypeChange?: (type: FocusType) => void;
+  onHistoryChange?: (canUndo: boolean, canRedo: boolean) => void;
 };
 
 export type FocusTarget = {
@@ -785,7 +787,7 @@ const GREEK_LETTERS = [
   { label: "σ", name: "sigma" },
 ];
 
-function FormattingPopupExecCmd({ onClose }: { onClose: () => void }) {
+export function FormattingPopupExecCmd({ onClose }: { onClose: () => void }) {
   function cmd(command: string) {
     document.execCommand(command);
     onClose();
@@ -834,7 +836,7 @@ function FormattingPopupExecCmd({ onClose }: { onClose: () => void }) {
 
 const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
   function ProtocolStepsEditor(
-    { initialContent = "", onChange, showSectionErrors = false, onFocusTypeChange },
+    { initialContent = "", onChange, showSectionErrors = false, onFocusTypeChange, onHistoryChange },
     ref
   ) {
     const [history, dispatch] = useReducer(historyReducer, {
@@ -866,18 +868,10 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
     const [fieldModalInitialType, setFieldModalInitialType] = useState<string | undefined>(undefined);
     const [recipePickerOpen, setRecipePickerOpen] = useState(false);
 
-    const [showFormattingPopup, setShowFormattingPopup] = useState(false);
-    const formattingPopupRef = useRef<HTMLDivElement>(null);
+    // Notify parent when undo/redo availability changes
     useEffect(() => {
-      if (!showFormattingPopup) return;
-      function handleClickOutside(e: MouseEvent) {
-        if (formattingPopupRef.current && !formattingPopupRef.current.contains(e.target as Node)) {
-          setShowFormattingPopup(false);
-        }
-      }
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [showFormattingPopup]);
+      onHistoryChange?.(history.past.length > 0, history.future.length > 0);
+    }, [history.past.length, history.future.length, onHistoryChange]);
 
     // ── Recipe data — lazy fetch on first open ────────────────────────────────
     const [allRecipes, setAllRecipes] = useState<RecipeSummary[]>([]);
@@ -1289,48 +1283,14 @@ const ProtocolStepsEditor = forwardRef<ProtocolStepsEditorHandle, Props>(
       openRecipePicker() {
         setRecipePickerOpen(true);
       },
+      undo() { undo(); },
+      redo() { redo(); },
     }));
 
     // ── Render ────────────────────────────────────────────────────────────────
 
     return (
       <div className="w-full overflow-hidden rounded border border-gray-300 bg-white">
-
-        {/* Toolbar */}
-        <div className="flex flex-wrap items-center gap-1 border-b border-gray-200 bg-gray-50 px-3 py-2">
-          {/* T button — text formatting popup */}
-          <div ref={formattingPopupRef} className="relative">
-            <button
-              onMouseDown={(e) => { e.preventDefault(); setShowFormattingPopup((v) => !v); }}
-              title="Text formatting"
-              className="rounded border border-gray-300 bg-white px-2.5 py-1 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-            >
-              T
-            </button>
-            {showFormattingPopup && (
-              <FormattingPopupExecCmd onClose={() => setShowFormattingPopup(false)} />
-            )}
-          </div>
-
-          <div className="mx-1 h-5 w-px bg-gray-300" />
-
-          <button
-            onClick={undo}
-            disabled={history.past.length === 0}
-            title="Undo (Ctrl+Z / Cmd+Z)"
-            className="inline-flex items-center justify-center rounded border border-gray-300 bg-white p-1.5 text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Undo2 size={14} />
-          </button>
-          <button
-            onClick={redo}
-            disabled={history.future.length === 0}
-            title="Redo (Ctrl+Shift+Z / Cmd+Shift+Z)"
-            className="inline-flex items-center justify-center rounded border border-gray-300 bg-white p-1.5 text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <Redo2 size={14} />
-          </button>
-        </div>
 
         {/* Content */}
         <div className="min-h-64 space-y-6 bg-white p-4">
