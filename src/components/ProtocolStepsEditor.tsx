@@ -15,7 +15,7 @@ import RecipeChip, { type RecipeSummary } from "@/components/recipes/RecipeChip"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type FieldKind = "measurement" | "component" | "timer";
+export type FieldKind = "measurement" | "component" | "timer" | "counter";
 
 export type RequiredField = {
   id: string;
@@ -27,6 +27,7 @@ export type RequiredField = {
   timerMaxSeconds?: number; // optional max for range display (e.g. 20–40 min)
   timerMode?: "countdown" | "countup";
   timerTemp?: string;       // temperature label (e.g. "37°C", "Ice / 4°C")
+  targetCount?: number;     // counter field: goal number of increments
 };
 
 export type SubStep = {
@@ -201,6 +202,7 @@ const FIELD_TYPE_OPTIONS = [
   { label: "Concentration", defaultUnit: "mg/mL",  units: ["mg/mL", "µg/mL", "mM", "µM", "nM"] },
   { label: "Time",          defaultUnit: "min",    units: ["hr", "min", "s"] },
   { label: "Timer",         defaultUnit: "",       units: [] as string[] }, // live incubation timer
+  { label: "Counter",       defaultUnit: "",       units: [] as string[] }, // track incremental counts
   { label: "Other",         defaultUnit: "",       units: [] as string[] },
 ] as const;
 
@@ -298,12 +300,15 @@ function FieldPill({
   const cls =
     field.kind === "timer"
       ? "inline-flex items-center gap-1.5 rounded border border-sky-300 bg-sky-50 px-2 py-0.5 text-xs text-sky-800"
+      : field.kind === "counter"
+      ? "inline-flex items-center gap-1.5 rounded border border-purple-300 bg-purple-50 px-2 py-0.5 text-xs text-purple-800"
       : field.kind === "component"
       ? "inline-flex items-center gap-1.5 rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-800"
       : "inline-flex items-center gap-1.5 rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-xs text-blue-900";
   return (
     <span className={cls}>
-      {field.kind === "timer" && <span>⏱</span>}
+      {field.kind === "timer"   && <span>⏱</span>}
+      {field.kind === "counter" && <span>#</span>}
       <span className="font-medium">{field.label}</span>
       {field.kind === "timer" && field.timerTemp && (
         <span className="opacity-70">{field.timerTemp}</span>
@@ -315,7 +320,10 @@ function FieldPill({
           {field.timerMaxSeconds != null ? `–${Math.floor(field.timerMaxSeconds / 60)}m` : ""}
         </span>
       )}
-      {field.kind !== "timer" && field.unit ? <span className="opacity-70">{field.unit}</span> : null}
+      {field.kind === "counter" && field.targetCount != null && (
+        <span className="opacity-60">0/{field.targetCount}</span>
+      )}
+      {field.kind !== "timer" && field.kind !== "counter" && field.unit ? <span className="opacity-70">{field.unit}</span> : null}
       <button
         type="button"
         onClick={onRemove}
@@ -355,8 +363,13 @@ function InputFieldModal({
   const [timerMode, setTimerMode] = useState<"countdown" | "countup">("countdown");
 
   const currentOpt = FIELD_TYPE_OPTIONS.find((o) => o.label === fieldType) ?? FIELD_TYPE_OPTIONS[0];
-  const isOther = fieldType === "Other";
-  const isTimer = fieldType === "Timer";
+  const isOther   = fieldType === "Other";
+  const isTimer   = fieldType === "Timer";
+  const isCounter = fieldType === "Counter";
+
+  // Counter-specific state
+  const [counterLabel, setCounterLabel] = useState("");
+  const [targetCount,  setTargetCount]  = useState(6);
 
   function doInsert() {
     if (isTimer) {
@@ -373,6 +386,15 @@ function InputFieldModal({
         timerMaxSeconds: totalMaxSeconds,
         timerMode,
         timerTemp: resolvedTemp || undefined,
+      });
+    } else if (isCounter) {
+      onInsert({
+        id: uid(),
+        kind: "counter",
+        label: counterLabel.trim() || "Count",
+        unit: "",
+        required: false,
+        targetCount: Math.max(1, targetCount),
       });
     } else {
       const unit = isOther ? customUnit.trim() : fieldUnit;
@@ -427,7 +449,36 @@ function InputFieldModal({
             </select>
           </div>
 
-          {/* Custom label */}
+          {/* Counter-specific fields — shown instead of label/unit fields */}
+          {isCounter && (
+            <div className="flex gap-3 items-end">
+              <div className="flex-1">
+                <label className="mb-1 block text-sm font-medium text-gray-700">Label</label>
+                <input
+                  autoFocus
+                  type="text"
+                  value={counterLabel}
+                  onChange={(e) => setCounterLabel(e.target.value)}
+                  placeholder="e.g. Washes"
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doInsert(); } }}
+                />
+              </div>
+              <div className="w-24">
+                <label className="mb-1 block text-sm font-medium text-gray-700">Target</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={targetCount}
+                  onChange={(e) => setTargetCount(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Custom label — hidden for counter (uses its own fields above) */}
+          {!isCounter && (
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
               Label <span className="text-gray-400 font-normal">(optional — defaults to type name)</span>
@@ -441,9 +492,10 @@ function InputFieldModal({
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doInsert(); } }}
             />
           </div>
+          )}
 
-          {/* Unit: dropdown for typed, text input for Other — hidden for Timer */}
-          {!isTimer && (
+          {/* Unit: dropdown for typed, text input for Other — hidden for Timer and Counter */}
+          {!isTimer && !isCounter && (
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">Unit</label>
               {isOther ? (

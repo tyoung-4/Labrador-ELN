@@ -19,11 +19,12 @@ type ParsedField = {
   label: string;
   required: boolean;
   unit?: string;
-  kind?: "measurement" | "timer";
+  kind?: "measurement" | "timer" | "counter";
   timerSeconds?: number;
   timerMaxSeconds?: number;
   timerMode?: "countdown" | "countup";
   timerTemp?: string;
+  targetCount?: number;
 };
 
 type ParsedStep = {
@@ -93,7 +94,7 @@ function parseStepsFromBody(runBody: string): ParsedStep[] {
   //   A) ProtocolBodyJSON wrapper: { steps: "JSON-stringified StepsData" }
   //   B) Raw StepsData:            { version, sections: [...] }
   try {
-    type RawField  = { id: string; label: string; unit?: string; required?: boolean; kind?: string; timerSeconds?: number; timerMaxSeconds?: number; timerMode?: string; timerTemp?: string };
+    type RawField  = { id: string; label: string; unit?: string; required?: boolean; kind?: string; timerSeconds?: number; timerMaxSeconds?: number; timerMode?: string; timerTemp?: string; targetCount?: number };
     type RawSub    = { id: string; html?: string; text?: string; requiredFields?: RawField[]; fields?: RawField[] };
     type RawStep   = { id: string; html?: string; text?: string; requiredFields?: RawField[]; fields?: RawField[]; substeps?: RawSub[]; subSteps?: RawSub[]; recipeRefs?: string[] };
     type RawSection = { id: string; title: string; steps?: RawStep[] };
@@ -124,12 +125,13 @@ function parseStepsFromBody(runBody: string): ParsedStep[] {
               key: `field-${globalIdx - 1}-${fi}`,
               label: f.label,
               unit: f.unit,
-              required: f.kind === "timer" ? false : f.required !== false,
-              kind: (f.kind === "timer" ? "timer" : "measurement") as "measurement" | "timer",
+              required: (f.kind === "timer" || f.kind === "counter") ? false : f.required !== false,
+              kind: (f.kind === "timer" ? "timer" : f.kind === "counter" ? "counter" : "measurement") as "measurement" | "timer" | "counter",
               timerSeconds: f.timerSeconds,
               timerMaxSeconds: f.timerMaxSeconds,
               timerMode: (f.timerMode === "countup" ? "countup" : "countdown") as "countdown" | "countup",
               timerTemp: f.timerTemp,
+              targetCount: f.targetCount,
             })),
             recipeRefs: step.recipeRefs ?? [],
           });
@@ -148,12 +150,13 @@ function parseStepsFromBody(runBody: string): ParsedStep[] {
                 key: `field-${globalIdx - 1}-${fi}`,
                 label: f.label,
                 unit: f.unit,
-                required: f.kind === "timer" ? false : f.required !== false,
-                kind: (f.kind === "timer" ? "timer" : "measurement") as "measurement" | "timer",
+                required: (f.kind === "timer" || f.kind === "counter") ? false : f.required !== false,
+                kind: (f.kind === "timer" ? "timer" : f.kind === "counter" ? "counter" : "measurement") as "measurement" | "timer" | "counter",
                 timerSeconds: f.timerSeconds,
                 timerMaxSeconds: f.timerMaxSeconds,
                 timerMode: (f.timerMode === "countup" ? "countup" : "countdown") as "countdown" | "countup",
                 timerTemp: f.timerTemp,
+                targetCount: f.targetCount,
               })),
             });
           }
@@ -223,6 +226,54 @@ function formatSeconds(sec: number): string {
   if (h > 0) return `${h}h ${m}m ${s}s`;
   if (m > 0) return `${m}m ${s}s`;
   return `${s}s`;
+}
+
+// ── CounterFieldWidget ────────────────────────────────────────────────────────
+
+function CounterFieldWidget({
+  field,
+  value,
+  onChange,
+  disabled,
+}: {
+  field: ParsedField;
+  value: string;
+  onChange: (v: string) => void;
+  disabled: boolean;
+}) {
+  const current    = parseInt(value || "0", 10) || 0;
+  const target     = field.targetCount ?? 1;
+  const isComplete = current >= target;
+
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs">
+      <span className="text-zinc-500">{field.label}:</span>
+      <span className={`font-bold tabular-nums ${isComplete ? "text-emerald-600" : "text-zinc-800"}`}>
+        {current}/{target}
+      </span>
+      {isComplete && <span className="text-emerald-500">✓</span>}
+      {!disabled && (
+        <>
+          <button
+            onClick={() => onChange(String(Math.min(target, current + 1)))}
+            disabled={isComplete}
+            title="Increment"
+            className="flex h-6 w-6 items-center justify-center rounded-full bg-purple-600 text-white text-base font-bold leading-none transition hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            +
+          </button>
+          <button
+            onClick={() => onChange(String(Math.max(0, current - 1)))}
+            disabled={current === 0}
+            title="Decrement"
+            className="flex h-4 w-4 items-center justify-center rounded-full bg-zinc-200 text-zinc-700 text-[10px] leading-none transition hover:bg-zinc-300 disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            −
+          </button>
+        </>
+      )}
+    </span>
+  );
 }
 
 // ── StepTimerWidget ───────────────────────────────────────────────────────────
@@ -702,6 +753,22 @@ function StepRow({
                     );
                   }
 
+                  // ── Counter field ─────────────────────────────────────────
+                  if (field.kind === "counter") {
+                    const val = result
+                      ? (() => { try { return (JSON.parse(result.fieldValues) as Record<string, string>)[field.key] ?? "0"; } catch { return "0"; } })()
+                      : (pendingFields[step.id] ?? {})[field.key] ?? "0";
+                    return (
+                      <CounterFieldWidget
+                        key={field.key}
+                        field={field}
+                        value={val}
+                        onChange={(v) => onFieldChange(step.id, field.key, v)}
+                        disabled={isRunComplete || Boolean(result)}
+                      />
+                    );
+                  }
+
                   // ── Measurement field ─────────────────────────────────────
                   if (result) {
                     let savedVal = "";
@@ -992,6 +1059,9 @@ export default function ActiveRunPage() {
   const [pendingNotes, setPendingNotes] = useState<Record<string, string>>({});
   const [pendingFields, setPendingFields] = useState<Record<string, Record<string, string>>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [counterWarning, setCounterWarning] = useState<string | null>(null);
+  const [pendingResult, setPendingResult]   = useState<{ step: ParsedStep; kind: ResultKind } | null>(null);
+  const bypassCounterRef = useRef(false);
   const [completingRun, setCompletingRun] = useState(false);
   const [showCompleteBanner, setShowCompleteBanner] = useState(false);
   const [showMockRunEndModal, setShowMockRunEndModal] = useState(false);
@@ -1275,6 +1345,26 @@ export default function ActiveRunPage() {
         return;
       }
     }
+
+    // Counter incomplete check — warn before passing (Fail/Skip bypass this)
+    if (kind === "PASSED" && !bypassCounterRef.current) {
+      const stepFields = pendingFields[step.id] ?? {};
+      const incomplete = step.requiredFields.filter(
+        (f) => f.kind === "counter" && f.targetCount != null &&
+               (parseInt(stepFields[f.key] ?? "0", 10) || 0) < f.targetCount
+      );
+      if (incomplete.length > 0) {
+        const names = incomplete.map(
+          (f) => `${f.label} (${parseInt(stepFields[f.key] ?? "0", 10) || 0}/${f.targetCount})`
+        ).join(", ");
+        setCounterWarning(
+          `Counter${incomplete.length > 1 ? "s" : ""} not complete: ${names}. Continue anyway?`
+        );
+        setPendingResult({ step, kind });
+        return;
+      }
+    }
+    bypassCounterRef.current = false; // reset after first use
 
     // Auto-stop any running timers for this step and capture elapsed as formatted strings
     const timerValues: Record<string, string> = {};
@@ -1628,6 +1718,38 @@ export default function ActiveRunPage() {
           />
         </div>
       </div>
+
+      {/* ── Counter incomplete warning ────────────────────────────────────── */}
+      {counterWarning && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-sm rounded-xl border border-amber-500/50 bg-zinc-900 p-6 shadow-2xl">
+            <p className="mb-1 text-sm font-semibold text-amber-400">⚠ Incomplete Counter</p>
+            <p className="mb-5 text-sm text-zinc-300">{counterWarning}</p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => { setCounterWarning(null); setPendingResult(null); }}
+                className="rounded px-3 py-1.5 text-sm text-zinc-400 hover:text-zinc-100 transition"
+              >
+                Go Back
+              </button>
+              <button
+                onClick={() => {
+                  const pr = pendingResult;
+                  setCounterWarning(null);
+                  setPendingResult(null);
+                  if (pr) {
+                    bypassCounterRef.current = true;
+                    void handleResult(pr.step, pr.kind);
+                  }
+                }}
+                className="rounded bg-amber-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-amber-500"
+              >
+                Continue Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Mock Run end-of-run popup ──────────────────────────────────────── */}
       {showMockRunEndModal && (
