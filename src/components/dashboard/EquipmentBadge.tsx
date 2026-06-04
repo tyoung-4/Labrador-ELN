@@ -24,33 +24,50 @@ function fmt12h(hhmm: string): string {
   return `${h12}:${m} ${period}`;
 }
 
-export default function EquipmentBadge({ booking }: { booking: ScheduleEvent }) {
-  const resource = ALL_RESOURCES.find(r => r.id === booking.resourceId);
-  const label    = resource?.label ?? String(booking.resourceId);
-  const color    = getGroupColor(resource?.group.id ?? "");
-
+export default function EquipmentBadge({
+  booking,
+  badgeHeight = 20,
+}: {
+  booking: ScheduleEvent;
+  badgeHeight?: number;
+}) {
+  const resource   = ALL_RESOURCES.find(r => r.id === booking.resourceId);
+  const label      = resource?.label ?? String(booking.resourceId);
+  const color      = getGroupColor(resource?.group.id ?? "");
   const startLabel = booking.startTime ? fmt12h(booking.startTime) : "";
+  const endLabel   = booking.endTime   ? fmt12h(booking.endTime)   : "";
 
   return (
     <div
-      className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium whitespace-nowrap select-none"
+      className="w-full h-full rounded-full px-2 py-0.5 flex flex-col justify-start overflow-hidden select-none"
       style={{
-        backgroundColor: color + "22",
-        border: `1px solid ${color}55`,
+        backgroundColor: color + "33",
+        border: `1px solid ${color}`,
         color,
       }}
-      title={`${label}${startLabel ? ` · ${startLabel}` : ""}`}
+      title={`${label}${startLabel ? ` · ${startLabel}` : ""}${endLabel ? `–${endLabel}` : ""}`}
     >
-      {/* Colored dot */}
-      <span
-        className="h-1.5 w-1.5 shrink-0 rounded-full"
-        style={{ backgroundColor: color }}
-      />
-      {/* Equipment name — truncated */}
-      <span className="max-w-[4.5rem] truncate">{label}</span>
-      {/* Start time */}
-      {startLabel && (
-        <span style={{ opacity: 0.65 }}>{startLabel}</span>
+      {/* Name row — always visible */}
+      <div className="flex items-center gap-1 min-w-0">
+        <span
+          className="h-1.5 w-1.5 shrink-0 rounded-full"
+          style={{ backgroundColor: color }}
+        />
+        <span className="text-[10px] font-medium truncate" style={{ color }}>
+          {label}
+        </span>
+        {/* Start time — only when tall enough to show it */}
+        {badgeHeight >= 24 && startLabel && (
+          <span className="text-[10px] shrink-0 opacity-70" style={{ color }}>
+            {startLabel}
+          </span>
+        )}
+      </div>
+      {/* End time — only when badge is tall enough */}
+      {badgeHeight >= 40 && endLabel && (
+        <span className="text-[10px] opacity-50 ml-3 leading-tight" style={{ color }}>
+          until {endLabel}
+        </span>
       )}
     </div>
   );

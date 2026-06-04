@@ -580,17 +580,14 @@ function DroppableHour({ h }: { h: number }) {
   );
 }
 
-/** Returns bookings whose time window overlaps with [startMins, endMins) on the same day */
-function getOverlappingBookings(
-  startMins: number,
-  endMins: number,
-  bookings: ScheduleEvent[]
-): ScheduleEvent[] {
-  return bookings.filter(b => {
-    const bStart = timeToMinutes(b.startTime ?? "00:00");
-    const bEnd   = timeToMinutes(b.endTime   ?? "00:00");
-    return startMins < bEnd && endMins > bStart;
-  });
+/** px offset from grid top for a booking's start time */
+function badgeTopPx(startTime: string): number {
+  return Math.max(0, ((timeToMinutes(startTime) - GRID_START * 60) / 60) * PX_PER_HOUR);
+}
+/** px height for a booking's duration (min 20 px so short bookings stay visible) */
+function badgeHeightPx(startTime: string, endTime: string): number {
+  const durationMins = timeToMinutes(endTime) - timeToMinutes(startTime);
+  return Math.max(20, (durationMins / 60) * PX_PER_HOUR);
 }
 
 /** Absolutely-positioned block representing a timed todo item in the grid */
@@ -599,14 +596,11 @@ function ScheduleBlock({
   onUpdateItem,
   col = 0,
   totalCols = 1,
-  equipmentBookings = [],
 }: {
   item: TodoItem;
   onUpdateItem: (id: string, updates: Partial<TodoItem>) => void;
   col?: number;
   totalCols?: number;
-  /** Equipment bookings for the current user on this date — used to show overlap badges */
-  equipmentBookings?: ScheduleEvent[];
 }) {
   const startMins = timeToMinutes(item.time!);
   const endMins   = item.endTime ? timeToMinutes(item.endTime) : startMins + 60;
@@ -623,9 +617,6 @@ function ScheduleBlock({
         right: "auto" as const,
       }
     : { left: LABEL_W, right: PAD_R };
-
-  // Equipment badge overlap detection
-  const overlapping = getOverlappingBookings(startMins, endMins, equipmentBookings);
 
   // Ref-based drag state for resize handles (native mousemove, not dnd-kit)
   const dragRef = useRef<{
@@ -678,13 +669,11 @@ function ScheduleBlock({
   }
 
   return (
-    /* Outer wrapper — flex so badges sit to the right of the todo block */
     <div
       style={{ position: "absolute", top, height, zIndex: 3, ...colStyle }}
-      className="group/block flex items-start gap-1 select-none"
+      className="group/block select-none"
     >
-      {/* Todo item block — unchanged visual style; flex-1 so it fills remaining width */}
-      <div className="relative min-w-0 flex-1 h-full rounded ring-2 ring-indigo-400 bg-indigo-500/25 overflow-hidden">
+      <div className="relative h-full w-full rounded ring-2 ring-indigo-400 bg-indigo-500/25 overflow-hidden">
         {/* Top resize handle */}
         <div
           onMouseDown={e => startResize("top", e)}
@@ -710,15 +699,6 @@ function ScheduleBlock({
           <div className="w-5 h-0.5 rounded bg-indigo-300/70" />
         </div>
       </div>
-
-      {/* Equipment overlap badges — stack vertically to the right, daily view only */}
-      {overlapping.length > 0 && (
-        <div className="flex shrink-0 flex-col gap-0.5 pt-0.5">
-          {overlapping.map(booking => (
-            <EquipmentBadge key={booking.id} booking={booking} />
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -925,9 +905,23 @@ function DailySchedulePanel({
               onUpdateItem={onUpdateItem}
               col={col}
               totalCols={totalCols}
-              equipmentBookings={equipmentBookings}
             />
           ))}
+
+          {/* Equipment booking badges — independently positioned, proportional to duration */}
+          {equipmentBookings.map(booking => {
+            if (!booking.startTime || !booking.endTime) return null;
+            const top    = badgeTopPx(booking.startTime);
+            const height = badgeHeightPx(booking.startTime, booking.endTime);
+            return (
+              <div
+                key={booking.id}
+                style={{ position: "absolute", top, height, right: 2, width: "25%", zIndex: 2 }}
+              >
+                <EquipmentBadge booking={booking} badgeHeight={height} />
+              </div>
+            );
+          })}
         </div>
       </div>
 
