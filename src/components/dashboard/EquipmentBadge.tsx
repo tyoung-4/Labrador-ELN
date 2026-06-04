@@ -39,7 +39,7 @@ export default function EquipmentBadge({
 
   return (
     <div
-      className="w-full h-full rounded-full px-2 py-0.5 flex flex-col justify-start overflow-hidden select-none"
+      className="w-full h-full rounded px-2 py-0.5 flex flex-col justify-start overflow-hidden select-none"
       style={{
         backgroundColor: color + "33",
         border: `1px solid ${color}`,
