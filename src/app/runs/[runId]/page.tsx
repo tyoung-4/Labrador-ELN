@@ -18,6 +18,7 @@ type ParsedField = {
   key: string;
   label: string;
   required: boolean;
+  unit?: string;
   kind?: "measurement" | "timer";
   timerSeconds?: number;
   timerMaxSeconds?: number;
@@ -92,7 +93,7 @@ function parseStepsFromBody(runBody: string): ParsedStep[] {
   //   A) ProtocolBodyJSON wrapper: { steps: "JSON-stringified StepsData" }
   //   B) Raw StepsData:            { version, sections: [...] }
   try {
-    type RawField  = { id: string; label: string; required?: boolean; kind?: string; timerSeconds?: number; timerMaxSeconds?: number; timerMode?: string; timerTemp?: string };
+    type RawField  = { id: string; label: string; unit?: string; required?: boolean; kind?: string; timerSeconds?: number; timerMaxSeconds?: number; timerMode?: string; timerTemp?: string };
     type RawSub    = { id: string; html?: string; text?: string; requiredFields?: RawField[]; fields?: RawField[] };
     type RawStep   = { id: string; html?: string; text?: string; requiredFields?: RawField[]; fields?: RawField[]; substeps?: RawSub[]; subSteps?: RawSub[]; recipeRefs?: string[] };
     type RawSection = { id: string; title: string; steps?: RawStep[] };
@@ -122,6 +123,7 @@ function parseStepsFromBody(runBody: string): ParsedStep[] {
             requiredFields: rawFields.map((f, fi) => ({
               key: `field-${globalIdx - 1}-${fi}`,
               label: f.label,
+              unit: f.unit,
               required: f.kind === "timer" ? false : f.required !== false,
               kind: (f.kind === "timer" ? "timer" : "measurement") as "measurement" | "timer",
               timerSeconds: f.timerSeconds,
@@ -145,6 +147,7 @@ function parseStepsFromBody(runBody: string): ParsedStep[] {
               requiredFields: subFields.map((f, fi) => ({
                 key: `field-${globalIdx - 1}-${fi}`,
                 label: f.label,
+                unit: f.unit,
                 required: f.kind === "timer" ? false : f.required !== false,
                 kind: (f.kind === "timer" ? "timer" : "measurement") as "measurement" | "timer",
                 timerSeconds: f.timerSeconds,
@@ -180,6 +183,7 @@ function parseStepsFromBody(runBody: string): ParsedStep[] {
         requiredFields: fieldNodes.map((f, fi) => ({
           key: `field-${idx}-${fi}`,
           label: f.getAttribute("label") || `Field ${fi + 1}`,
+          unit: f.getAttribute("unit") ?? undefined,
           required: true,
         })),
       });
@@ -712,6 +716,7 @@ function StepRow({
                           :
                         </span>
                         <span className="text-zinc-700">{savedVal || "—"}</span>
+                        {field.unit && <span className="shrink-0 text-zinc-400">{field.unit}</span>}
                       </span>
                     );
                   }
@@ -731,6 +736,7 @@ function StepRow({
                         placeholder="…"
                         className="w-20 border-none bg-white text-zinc-800 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed"
                       />
+                      {field.unit && <span className="shrink-0 text-zinc-400">{field.unit}</span>}
                     </label>
                   );
                 })}

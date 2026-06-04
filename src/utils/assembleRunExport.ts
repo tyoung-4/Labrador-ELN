@@ -16,7 +16,7 @@ type ParsedStep = {
   html: string;         // raw HTML content
   sectionTitle?: string;
   isSubstep: boolean;
-  requiredFields: { key: string; label: string }[];
+  requiredFields: { key: string; label: string; unit?: string }[];
 };
 
 // ─── Helpers (copied from run detail page — do not modify originals) ───────────
@@ -38,7 +38,7 @@ function parseStepsFromBody(runBody: string): ParsedStep[] {
   //   A) ProtocolBodyJSON wrapper: { steps: "JSON-stringified StepsData" }
   //   B) Raw StepsData:            { version, sections: [...] }
   try {
-    type RawField   = { id: string; label: string; [k: string]: unknown };
+    type RawField   = { id: string; label: string; unit?: string; [k: string]: unknown };
     type RawSub     = { id: string; html?: string; text?: string; requiredFields?: RawField[]; fields?: RawField[] };
     type RawStep    = { id: string; html?: string; text?: string; requiredFields?: RawField[]; fields?: RawField[]; substeps?: RawSub[]; subSteps?: RawSub[] };
     type RawSection = { id: string; title: string; steps?: RawStep[] };
@@ -68,6 +68,7 @@ function parseStepsFromBody(runBody: string): ParsedStep[] {
             requiredFields: rawFields.map((f, fi) => ({
               key: `field-${globalIdx - 1}-${fi}`,
               label: f.label,
+              unit: f.unit,
             })),
           });
           for (const sub of step.substeps ?? step.subSteps ?? []) {
@@ -84,6 +85,7 @@ function parseStepsFromBody(runBody: string): ParsedStep[] {
               requiredFields: subFields.map((f, fi) => ({
                 key: `field-${globalIdx - 1}-${fi}`,
                 label: f.label,
+                unit: f.unit,
               })),
             });
           }
@@ -218,6 +220,7 @@ export function assembleRunExport(
     // ── 5. Resolve field values from StepResult.fieldValues ─────────────────
     const fields: RunExportField[] = step.requiredFields.map((f) => ({
       label: f.label,
+      unit: f.unit,
       value: sr?.fieldValues?.[f.key] ?? "",
     }));
 
