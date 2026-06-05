@@ -2243,7 +2243,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
         <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
 
           {/* LEFT — personal schedule controls */}
-          <div className="flex flex-1 flex-col gap-1">
+          <div className="flex flex-col gap-1" style={{ flex: "5 1 0%" }}>
             {/* Title — own line so long names don't compress the controls */}
             <span className="text-sm font-semibold text-indigo-300">
               {currentUser.name}&apos;s Dashboard
@@ -2363,7 +2363,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
           </div>
 
           {/* CENTER — Add to list toggle */}
-          <div className="flex flex-1 items-center justify-center">
+          <div className="flex items-center justify-center" style={{ flex: "2 1 0%" }}>
             <button
               onClick={togglePanel}
               className="flex items-center gap-1.5 rounded px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-zinc-500 transition hover:bg-zinc-800/60 hover:text-zinc-400"
@@ -2375,7 +2375,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
           </div>
 
           {/* RIGHT — equipment actions */}
-          <div className="flex flex-1 items-center justify-end gap-2">
+          <div className="flex items-center justify-end gap-2" style={{ flex: "3 1 0%" }}>
             <button
               onClick={() => eqOpenNewRef.current?.openNew()}
               className="rounded border border-zinc-700 px-2.5 py-1 text-[10px] text-zinc-300 transition hover:bg-zinc-800 hover:text-zinc-100"
@@ -2391,7 +2391,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
         <div className="flex h-[502px] overflow-hidden">
 
           {/* ── Schedule panel ── */}
-          <div className={`w-2/5 shrink-0 border-r border-zinc-800 ${scheduleView === "daily" ? "flex flex-col overflow-hidden p-3" : "overflow-hidden p-0"}`}>
+          <div className={`w-1/2 shrink-0 border-r border-zinc-800 ${scheduleView === "daily" ? "flex flex-col overflow-hidden p-3" : "overflow-hidden p-0"}`}>
             {scheduleView === "daily" ? (
               <DailySchedulePanel
                 items={items}
