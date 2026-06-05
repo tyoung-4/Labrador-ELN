@@ -2391,7 +2391,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
         <div className="flex h-[502px] overflow-hidden">
 
           {/* ── Schedule panel ── */}
-          <div className={`w-1/2 shrink-0 border-r border-zinc-800 ${scheduleView === "daily" ? "flex flex-col overflow-hidden p-3" : "overflow-hidden p-0"}`}>
+          <div className={`w-1/2 min-w-0 shrink-0 border-r border-zinc-800 ${scheduleView === "daily" ? "flex flex-col overflow-hidden p-3" : "overflow-hidden p-0"}`}>
             {scheduleView === "daily" ? (
               <DailySchedulePanel
                 items={items}
@@ -2414,7 +2414,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
           </div>
 
           {/* ── Tasks column: always visible ── */}
-          <div className="flex w-72 shrink-0 flex-col overflow-hidden border-r border-zinc-800">
+          <div className="flex w-72 min-w-0 shrink-0 flex-col overflow-hidden border-r border-zinc-800">
 
             {/* Add to List form — collapsible (toggle is in unified header) */}
             {panelOpen && (
@@ -2599,7 +2599,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
           </div>
 
           {/* ── Equipment section (far right) ── */}
-          <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
             {/* Inject controlled nav props + hide built-in toolbar */}
             <div className="min-h-0 flex-1">
               {equipmentCalendar && React.cloneElement(
