@@ -251,6 +251,7 @@ export default function ProjectsPage() {
   const [sortBy, setSortBy] = useState<SortOption>("lastActivity");
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
   const [showNewTagForm,     setShowNewTagForm]     = useState(false);
+  const [listTab,            setListTab]            = useState<"MY" | "ALL">("MY");
 
   // Current user (from localStorage via AppTopNav helper)
   const [currentUser, setCurrentUser] = useState(() => getCurrentUser().name);
@@ -316,6 +317,18 @@ export default function ProjectsPage() {
     });
   }, [projects, sortBy]);
 
+  // "My Projects" = projects I created or am a member of (matched by name, case-insensitive)
+  const visibleProjects = useMemo(() => {
+    if (listTab === "ALL") return sortedProjects;
+    const me = currentUser.trim().toLowerCase();
+    if (!me) return [];
+    return sortedProjects.filter(
+      (p) =>
+        p.createdBy.toLowerCase() === me ||
+        p.members.some((m) => (m.user.name ?? "").toLowerCase() === me)
+    );
+  }, [sortedProjects, listTab, currentUser]);
+
   return (
     <div className="min-h-screen bg-zinc-950 p-6 text-zinc-100">
       <AppTopNav />
@@ -344,11 +357,27 @@ export default function ProjectsPage() {
         </div>
       </div>
 
+      {/* Tab bar */}
+      <div className="mb-4 flex items-center gap-1 border-b border-zinc-800">
+        <button
+          onClick={() => setListTab("MY")}
+          className={`px-4 py-2 text-sm font-medium transition ${listTab === "MY" ? "border-b-2 border-indigo-500 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"}`}
+        >
+          My Projects
+        </button>
+        <button
+          onClick={() => setListTab("ALL")}
+          className={`px-4 py-2 text-sm font-medium transition ${listTab === "ALL" ? "border-b-2 border-indigo-500 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"}`}
+        >
+          All Projects
+        </button>
+      </div>
+
       {/* Content */}
       {loading ? (
         <SkeletonCards />
       ) : projects.length === 0 ? (
-        /* ── Empty state ─────────────────────────────────────────────────── */
+        /* ── Empty state (no projects exist anywhere) ─────────────────────── */
         <div className="py-20 text-center">
           <div className="mb-4 text-5xl">📁</div>
           <h2 className="mb-2 text-lg font-semibold text-white">
@@ -365,12 +394,30 @@ export default function ProjectsPage() {
             + Create First Project
           </button>
         </div>
+      ) : visibleProjects.length === 0 ? (
+        /* ── Empty state (tab-specific — e.g. "My Projects" with none) ────── */
+        <div className="py-20 text-center">
+          <div className="mb-4 text-5xl">📁</div>
+          <h2 className="mb-2 text-lg font-semibold text-white">
+            No projects in this view
+          </h2>
+          <p className="mx-auto mb-6 max-w-sm text-sm text-gray-400">
+            You aren&apos;t a member of any projects yet. Switch to &quot;All
+            Projects&quot; to browse the lab&apos;s projects, or create your own.
+          </p>
+          <button
+            onClick={() => setShowNewProjectForm(true)}
+            className="rounded-lg bg-purple-600 px-5 py-2 text-sm font-medium text-white hover:bg-purple-700"
+          >
+            + New Project
+          </button>
+        </div>
       ) : (
         <>
           {/* ── Sort controls ──────────────────────────────────────────────── */}
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-gray-500">
-              {projects.length} project{projects.length !== 1 ? "s" : ""}
+              {visibleProjects.length} project{visibleProjects.length !== 1 ? "s" : ""}
             </p>
             <select
               value={sortBy}
@@ -386,7 +433,7 @@ export default function ProjectsPage() {
 
           {/* ── Card grid ──────────────────────────────────────────────────── */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {sortedProjects.map((tag) => (
+            {visibleProjects.map((tag) => (
               <ProjectCard key={tag.id} tag={tag} />
             ))}
           </div>
