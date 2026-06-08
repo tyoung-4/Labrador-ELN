@@ -547,6 +547,10 @@ function ProtocolsPageContent() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showMockRunModal, setShowMockRunModal] = useState(false);
   const [preRunNotesInput, setPreRunNotesInput] = useState("");
+  const [runRequireStepOrder, setRunRequireStepOrder] = useState(false);
+  const [preRunTags, setPreRunTags] = useState<Array<{ id: string; name: string; type: "PROJECT" | "GENERAL"; color: string }>>([]);
+  const [preRunTagSearch, setPreRunTagSearch] = useState("");
+  const [preRunTagSuggestions, setPreRunTagSuggestions] = useState<Array<{ id: string; name: string; type: "PROJECT" | "GENERAL"; color: string }>>([]);
 
   // New Protocol creation modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -878,6 +882,11 @@ function ProtocolsPageContent() {
 
   function handleRunProtocol() {
     if (!selected) return;
+    // Inherit protocol's stored requireStepOrder value (operator can override in dialog)
+    setRunRequireStepOrder(selected.requireStepOrder ?? false);
+    setPreRunTags([]);
+    setPreRunTagSearch("");
+    setPreRunTagSuggestions([]);
     setShowConfirmModal(true);
   }
 
@@ -889,22 +898,67 @@ function ProtocolsPageContent() {
   async function confirmStartRun(isMockRun = false) {
     if (!selected) return;
     const notes = preRunNotesInput.trim();
+    const tagsToApply = [...preRunTags];
     setShowConfirmModal(false);
     setShowMockRunModal(false);
     setPreRunNotesInput("");
+    setPreRunTags([]);
     setLoading(true);
     try {
+      // 1. Create the run (with requireStepOrder set at run-start time)
       const res = await fetch("/api/protocol-runs", {
         method: "POST",
         headers: jsonHeaders,
-        body: JSON.stringify({ sourceEntryId: selected.id, isMockRun, preRunNotes: notes }),
+        body: JSON.stringify({
+          sourceEntryId: selected.id,
+          isMockRun,
+          preRunNotes: notes,
+          requireStepOrder: runRequireStepOrder,
+        }),
       });
       if (!res.ok) { console.error("Failed to create run:", res.status); return; }
       const run = (await res.json()) as { id: string };
+
+      // 2. Apply any pre-selected tags to the new run record
+      if (tagsToApply.length > 0) {
+        await Promise.all(
+          tagsToApply.map((tag) =>
+            fetch("/api/tags/assign", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                tagId: tag.id,
+                entityType: "RUN",
+                entityId: run.id,
+                assignedBy: currentUser.name,
+              }),
+            })
+          )
+        );
+      }
+
+      // 3. Navigate to the run
       router.push(`/runs/${run.id}`);
     } finally {
       setLoading(false);
     }
+  }
+
+  // ── Pre-run tag search ────────────────────────────────────────────────────
+  const preRunTagDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function handlePreRunTagSearch(q: string) {
+    setPreRunTagSearch(q);
+    if (preRunTagDebounceRef.current) clearTimeout(preRunTagDebounceRef.current);
+    if (!q.trim()) { setPreRunTagSuggestions([]); return; }
+    preRunTagDebounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/tags?q=${encodeURIComponent(q.trim())}`);
+        if (!res.ok) return;
+        const data = (await res.json()) as Array<{ id: string; name: string; type: "PROJECT" | "GENERAL"; color: string }>;
+        const selectedIds = new Set(preRunTags.map((t) => t.id));
+        setPreRunTagSuggestions(data.filter((t) => !selectedIds.has(t.id)));
+      } catch { /* ignore */ }
+    }, 250);
   }
 
   // ── Publish draft ──────────────────────────────────────────────────────────
@@ -1471,19 +1525,99 @@ function ProtocolsPageContent() {
       {/* ── Run Confirmation Dialog ── */}
       {showConfirmModal && selected && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-sm rounded-lg border border-zinc-700 bg-zinc-900 p-6 shadow-2xl">
-            <p className="mb-3 text-sm text-zinc-200">
-              Are you sure you want to start{" "}
+          <div className="w-full max-w-md rounded-lg border border-zinc-700 bg-zinc-900 p-6 shadow-2xl">
+            <p className="mb-4 text-sm text-zinc-200">
+              Start{" "}
               <span className="font-semibold text-zinc-100">{selected.title}</span>?
             </p>
-            <label className="mb-1 block text-xs text-zinc-400">Run Notes (optional)</label>
+
+            {/* Run Notes */}
+            <label className="mb-1 block text-xs uppercase tracking-wide text-zinc-400">
+              Run Notes <span className="normal-case text-zinc-600">(optional)</span>
+            </label>
             <textarea
               value={preRunNotesInput}
               onChange={(e) => setPreRunNotesInput(e.target.value)}
-              placeholder="Add any notes about this run before starting (e.g. sample info, conditions, deviations from standard protocol)..."
-              rows={4}
+              placeholder="Sample info, conditions, deviations from standard protocol…"
+              rows={3}
               className="mb-4 w-full resize-none rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
             />
+
+            {/* Step order toggle — inherits protocol value, operator can override */}
+            <div className="mb-4">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setRunRequireStepOrder((v) => !v)}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${runRequireStepOrder ? "bg-green-500" : "bg-zinc-600"}`}
+                >
+                  <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${runRequireStepOrder ? "translate-x-4" : "translate-x-1"}`} />
+                </button>
+                <span className={`text-sm ${runRequireStepOrder ? "text-green-400" : "text-zinc-500"}`}>
+                  {runRequireStepOrder ? "Steps MUST be completed in order" : "Steps can be completed in any order"}
+                </span>
+              </div>
+              <p className="mt-1 ml-12 text-xs text-zinc-600">
+                Inherited from protocol — you can override for this run
+              </p>
+            </div>
+
+            {/* Pre-run tags */}
+            <div className="mb-5">
+              <label className="mb-2 block text-xs uppercase tracking-wide text-zinc-400">
+                Tags <span className="normal-case text-zinc-600">(optional)</span>
+              </label>
+              {/* Selected tag chips */}
+              {preRunTags.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-1.5">
+                  {preRunTags.map((tag) => (
+                    <span
+                      key={tag.id}
+                      className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium text-white"
+                      style={{ backgroundColor: tag.color + "33", border: `1px solid ${tag.color}`, color: tag.color }}
+                    >
+                      {tag.name}
+                      <button
+                        onClick={() => setPreRunTags((prev) => prev.filter((t) => t.id !== tag.id))}
+                        className="ml-0.5 opacity-60 hover:opacity-100"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {/* Tag search input */}
+              <div className="relative">
+                <input
+                  type="text"
+                  value={preRunTagSearch}
+                  onChange={(e) => handlePreRunTagSearch(e.target.value)}
+                  placeholder="Search tags…"
+                  className="w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-500 focus:outline-none"
+                />
+                {preRunTagSuggestions.length > 0 && (
+                  <div className="absolute top-full left-0 z-10 mt-1 w-full rounded border border-zinc-700 bg-zinc-800 shadow-xl">
+                    {preRunTagSuggestions.map((tag) => (
+                      <button
+                        key={tag.id}
+                        onClick={() => {
+                          setPreRunTags((prev) => [...prev, tag]);
+                          setPreRunTagSearch("");
+                          setPreRunTagSuggestions([]);
+                        }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-200 hover:bg-zinc-700"
+                      >
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: tag.color }} />
+                        {tag.name}
+                        <span className="ml-auto text-zinc-600">{tag.type === "PROJECT" ? "Project" : "General"}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-zinc-600">Tags will be applied to this run when started</p>
+            </div>
+
             <div className="flex gap-3">
               <button
                 onClick={() => void confirmStartRun()}
@@ -1493,7 +1627,7 @@ function ProtocolsPageContent() {
                 ▶ Start Run
               </button>
               <button
-                onClick={() => { setShowConfirmModal(false); setPreRunNotesInput(""); }}
+                onClick={() => { setShowConfirmModal(false); setPreRunNotesInput(""); setPreRunTags([]); setPreRunTagSearch(""); setPreRunTagSuggestions([]); }}
                 className="rounded border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-700"
               >
                 Cancel

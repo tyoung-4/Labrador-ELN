@@ -149,11 +149,12 @@ export async function PUT(request: Request, context: RouteContext) {
       version: { increment: 1 },
     };
 
-    // Only update entryType / typedData / linkedRunId / allowNonSequential / status if explicitly sent
+    // Only update entryType / typedData / linkedRunId / allowNonSequential / requireStepOrder / status if explicitly sent
     if ("entryType"          in payload) data.entryType          = normalizeEntryType(payload.entryType);
     if ("typedData"          in payload) data.typedData          = normalizeTypedData(payload.typedData);
     if ("linkedRunId"        in payload) data.linkedRunId        = payload.linkedRunId ?? null;
     if ("allowNonSequential" in payload) data.allowNonSequential = Boolean(payload.allowNonSequential);
+    if ("requireStepOrder"   in payload) data.requireStepOrder   = Boolean(payload.requireStepOrder);
     if ("status"             in payload) data.status             = String(payload.status);
     if ("publishedAt"        in payload) data.publishedAt        = payload.publishedAt ? new Date(payload.publishedAt as string) : null;
     if ("changeSummary"      in payload) data.changeSummary      = String(payload.changeSummary ?? "");

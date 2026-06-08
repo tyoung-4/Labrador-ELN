@@ -577,7 +577,7 @@ function StepRow({
   result,
   isActive,
   isRunComplete,
-  allowNonSequential,
+  requireStepOrder,
   isEditing,
   pendingNotes,
   pendingFields,
@@ -602,7 +602,7 @@ function StepRow({
   result: StepResult | undefined;
   isActive: boolean;
   isRunComplete: boolean;
-  allowNonSequential: boolean;
+  requireStepOrder: boolean;
   isEditing: boolean;
   pendingNotes: Record<string, string>;
   pendingFields: Record<string, Record<string, string>>;
@@ -636,8 +636,8 @@ function StepRow({
   const savedNote   = result?.notes ?? "";
   const pendingNote = pendingNotes[step.id] ?? "";
 
-  // Click target for non-sequential mode
-  const isClickable = allowNonSequential && !isRunComplete;
+  // Click target — only when any-order mode (requireStepOrder = false)
+  const isClickable = !requireStepOrder && !isRunComplete;
 
   return (
     <div
@@ -677,7 +677,7 @@ function StepRow({
                   >
                     ✏️
                   </button>
-                  {allowNonSequential && (
+                  {!requireStepOrder && (
                     <button
                       onClick={() => setShowUnlockConfirm(true)}
                       title="Unlock step"
@@ -689,6 +689,11 @@ function StepRow({
                 </div>
               )}
             </div>
+
+            {/* Lock indicator — strict order mode, unresolved non-active step */}
+            {requireStepOrder && !isActive && !result && !isRunComplete && (
+              <p className="mt-1 text-xs text-zinc-600">🔒 Complete previous steps first</p>
+            )}
 
             {/* Recipe chips */}
             {(step.recipeRefs ?? []).length > 0 && (
@@ -861,7 +866,7 @@ function RunProtocolScrollView({
   onFieldChange,
   isRunComplete,
   recipesById,
-  allowNonSequential,
+  requireStepOrder,
   editingStepId,
   onStepClick,
   onEditOpen,
@@ -885,7 +890,7 @@ function RunProtocolScrollView({
   onFieldChange: (stepId: string, fieldKey: string, value: string) => void;
   isRunComplete: boolean;
   recipesById: Record<string, RecipeSummary>;
-  allowNonSequential: boolean;
+  requireStepOrder: boolean;
   editingStepId: string | null;
   onStepClick: (globalIdx: number, step: ParsedStep) => void;
   onEditOpen: (stepId: string) => void;
@@ -994,7 +999,7 @@ function RunProtocolScrollView({
                   result={resultMap[step.id]}
                   isActive={globalIdx === activeStepIdx}
                   isRunComplete={isRunComplete}
-                  allowNonSequential={allowNonSequential}
+                  requireStepOrder={requireStepOrder}
                   isEditing={editingStepId === step.id}
                   pendingNotes={pendingNotes}
                   pendingFields={pendingFields}
@@ -1069,7 +1074,8 @@ export default function ActiveRunPage() {
   const [showTagNudge, setShowTagNudge] = useState(false);
   const [tagNudgeDismissed, setTagNudgeDismissed] = useState(false);
   const [recipesById, setRecipesById] = useState<Record<string, RecipeSummary>>({});
-  const [allowNonSequential, setAllowNonSequential] = useState(false);
+  // requireStepOrder: stored on the run record itself (set at run-creation time)
+  const [requireStepOrder, setRequireStepOrder] = useState(false);
   // stepId of the step currently open in inline-edit mode (null = none)
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
   // Inventory usage confirmation
@@ -1129,13 +1135,8 @@ export default function ActiveRunPage() {
         setRun(runData);
         setStepResults(srData);
 
-        // Fetch allowNonSequential from the source protocol entry
-        if (runData.sourceEntryId) {
-          fetch(`/api/entries/${runData.sourceEntryId}`, { headers: authHeaders })
-            .then((r) => r.ok ? r.json() : null)
-            .then((entry) => { if (entry?.allowNonSequential) setAllowNonSequential(true); })
-            .catch(() => {/* non-critical */});
-        }
+        // requireStepOrder is stored directly on the run record (set at run-creation time)
+        setRequireStepOrder(Boolean(runData.requireStepOrder));
 
         // Initialise tag state
         const tags = runData.tagAssignments ?? [];
@@ -1274,7 +1275,7 @@ export default function ActiveRunPage() {
 
   // ── Non-sequential step selection ─────────────────────────────────────────
   function handleStepClick(globalIdx: number, step: ParsedStep) {
-    if (!allowNonSequential || isRunComplete) return;
+    if (requireStepOrder || isRunComplete) return;
     if (resultMap[step.id]) {
       // Completed step → open inline edit instead of setting active
       setEditingStepId(step.id);
@@ -1286,9 +1287,9 @@ export default function ActiveRunPage() {
     }
   }
 
-  // ── Unlock a completed step (non-sequential only) ──────────────────────────
+  // ── Unlock a completed step (any-order mode only) ────────────────────────
   async function handleUnlock(step: ParsedStep) {
-    if (!allowNonSequential || isRunComplete) return;
+    if (requireStepOrder || isRunComplete) return;
     try {
       const res = await fetch(`/api/protocol-runs/${runId}/step-results`, {
         method: "DELETE",
@@ -1540,9 +1541,9 @@ export default function ActiveRunPage() {
                   COMPLETED
                 </span>
               )}
-              {allowNonSequential && (
-                <span className="rounded border border-zinc-600 px-2 py-0.5 text-xs text-zinc-400">
-                  Out-of-order run
+              {requireStepOrder && (
+                <span className="rounded border border-amber-600/50 bg-amber-600/10 px-2 py-0.5 text-xs text-amber-400">
+                  Strict order run
                 </span>
               )}
             </div>
@@ -1559,14 +1560,6 @@ export default function ActiveRunPage() {
               <p className="mt-0.5 text-xs text-zinc-500">
                 Completed: {new Date(run.completedAt).toLocaleString()}
               </p>
-            )}
-            {isRunComplete && !run.isMockRun && (
-              <Link
-                href={`/runs/${runId}/summary`}
-                className="mt-2 inline-block rounded bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600"
-              >
-                View Summary →
-              </Link>
             )}
           </div>
         </div>
@@ -1643,16 +1636,10 @@ export default function ActiveRunPage() {
       })()}
 
       {showCompleteBanner && !run.isMockRun && (
-        <div className="shrink-0 flex items-center justify-between border-b border-emerald-500/50 bg-emerald-500/10 px-6 py-2">
+        <div className="shrink-0 border-b border-emerald-500/50 bg-emerald-500/10 px-6 py-2">
           <span className="text-sm font-semibold text-emerald-200">
             🎉 All steps resolved — run completed and locked!
           </span>
-          <Link
-            href={`/runs/${runId}/summary`}
-            className="ml-4 rounded bg-emerald-700 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-600"
-          >
-            View Summary
-          </Link>
         </div>
       )}
 
@@ -1670,7 +1657,7 @@ export default function ActiveRunPage() {
             onFieldChange={handleFieldChange}
             isRunComplete={isRunComplete}
             recipesById={recipesById}
-            allowNonSequential={allowNonSequential}
+            requireStepOrder={requireStepOrder}
             editingStepId={editingStepId}
             onStepClick={handleStepClick}
             onEditOpen={(stepId) => setEditingStepId(stepId)}
@@ -1986,8 +1973,8 @@ function RunSidebar({
         <ProgressDog progress={progress} />
       </div>
 
-      {/* Widgets */}
-      <SidebarWidgets />
+      {/* Widgets — Timer and Calculator, only while run is in progress */}
+      {!isRunComplete && <SidebarWidgets />}
 
       {/* Tags */}
       <div className="border-t border-zinc-800 pt-4">

@@ -47,6 +47,7 @@ export type Entry = {
   } | null;
   version?: number;
   allowNonSequential?: boolean;
+  requireStepOrder?: boolean;
   /** "DRAFT" | "PUBLISHED" */
   status?: string;
   publishedAt?: string | null;

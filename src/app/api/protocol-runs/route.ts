@@ -121,6 +121,7 @@ export async function POST(request: Request) {
     const sourceEntryId = String(payload.sourceEntryId ?? "").trim();
     const isMockRun = Boolean(payload.isMockRun);
     const preRunNotes = String(payload.preRunNotes ?? "").slice(0, 2000);
+    const requireStepOrder = Boolean(payload.requireStepOrder ?? false);
     // Operator is always the logged-in user (actor derived from x-user-name header)
     const operatorName = actor.name;
     if (!sourceEntryId) {
@@ -157,6 +158,7 @@ export async function POST(request: Request) {
         status: "IN_PROGRESS",
         locked: true,
         isMockRun,
+        requireStepOrder,
         runBody: runBodyContent,
         linkedInventory: linkedInventorySnapshot,
         notes: "",

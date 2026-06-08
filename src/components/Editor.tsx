@@ -794,7 +794,7 @@ export default function Editor({
   const [title, setTitle]           = useState(initial.title ?? "");
   const [description, setDescription] = useState(initial.description ?? "");
   const [technique, setTechnique]   = useState(initial.technique ?? "General");
-  const [allowNonSequential, setAllowNonSequential] = useState(initial.allowNonSequential ?? false);
+  const [requireStepOrder, setRequireStepOrder] = useState(initial.requireStepOrder ?? false);
 
   // Entry type + typed data
   const [entryType, setEntryType]   = useState(initial.entryType ?? "GENERAL");
@@ -952,7 +952,7 @@ export default function Editor({
       entryType,
       typedData: buildTypedData(),
       body: serializeBody({ steps, description: tabDescription, guidelines: tabGuidelines, references: tabReferences, materials: tabMaterials }),
-      allowNonSequential,
+      requireStepOrder,
     });
   }
 
@@ -1035,19 +1035,19 @@ export default function Editor({
               </select>
             </div>
 
-            {/* Allow non-sequential toggle */}
+            {/* Step order toggle */}
             <div className="mt-1.5 flex items-center gap-2">
-              <label className="flex cursor-pointer items-center gap-2 select-none">
-                <div
-                  onClick={() => setAllowNonSequential((v) => !v)}
-                  className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${allowNonSequential ? "bg-indigo-600" : "bg-zinc-700"}`}
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setRequireStepOrder((v) => !v)}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${requireStepOrder ? "bg-green-500" : "bg-zinc-600"}`}
                 >
-                  <span
-                    className={`inline-block h-3 w-3 rounded-full bg-white shadow transition-transform ${allowNonSequential ? "translate-x-3.5" : "translate-x-0.5"}`}
-                  />
-                </div>
-                <span className="text-xs text-zinc-400">Steps can be completed out of order</span>
-              </label>
+                  <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${requireStepOrder ? "translate-x-4" : "translate-x-1"}`} />
+                </button>
+                <span className={`text-sm ${requireStepOrder ? "text-green-400" : "text-zinc-500"}`}>
+                  {requireStepOrder ? "Steps MUST be completed in order" : "Steps can be completed in any order"}
+                </span>
+              </div>
             </div>
           </div>
 

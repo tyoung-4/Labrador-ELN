@@ -45,6 +45,7 @@ export type ProtocolRun = {
   preRunNotes?: string;
   abortNotes?: string;
   isMockRun?: boolean;
+  requireStepOrder?: boolean;
   createdAt: string;
   updatedAt: string;
   sourceEntryId: string;
