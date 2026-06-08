@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import AppTopNav, { getCurrentUser } from "@/components/AppTopNav";
 import NewProjectForm from "@/components/projects/NewProjectForm";
+import NewTagForm from "@/components/projects/NewTagForm";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -249,6 +250,7 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState<SortOption>("lastActivity");
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
+  const [showNewTagForm,     setShowNewTagForm]     = useState(false);
 
   // Current user (from localStorage via AppTopNav helper)
   const [currentUser, setCurrentUser] = useState(() => getCurrentUser().name);
@@ -326,12 +328,20 @@ export default function ProjectsPage() {
             Organize your runs and protocols by project
           </p>
         </div>
-        <button
-          onClick={() => setShowNewProjectForm(true)}
-          className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700"
-        >
-          + New Project
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowNewTagForm(true)}
+            className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-white/10"
+          >
+            + Tag
+          </button>
+          <button
+            onClick={() => setShowNewProjectForm(true)}
+            className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700"
+          >
+            + New Project
+          </button>
+        </div>
       </div>
 
       {/* Content */}
@@ -417,6 +427,28 @@ export default function ProjectsPage() {
           }}
           onCancel={() => setShowNewProjectForm(false)}
         />
+      )}
+
+      {/* New Tag modal */}
+      {showNewTagForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="mx-4 w-full max-w-md rounded-xl border border-white/10 bg-gray-900">
+            <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+              <h2 className="font-bold text-white">New Tag</h2>
+              <button
+                onClick={() => setShowNewTagForm(false)}
+                className="text-xl leading-none text-gray-400 hover:text-white"
+              >✕</button>
+            </div>
+            <div className="px-6 py-4">
+              <NewTagForm
+                currentUser={currentUser}
+                onSuccess={() => setShowNewTagForm(false)}
+                onCancel={() => setShowNewTagForm(false)}
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
