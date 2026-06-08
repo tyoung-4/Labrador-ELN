@@ -1056,8 +1056,8 @@ function ProtocolsPageContent() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex min-h-screen flex-col gap-3 bg-zinc-950 p-6 text-zinc-100">
-      {/* Tab bar + New Protocol */}
-      <div className="flex items-center gap-1 border-b border-zinc-800">
+      {/* Tab bar + New Protocol — sticky so it remains visible while scrolling */}
+      <div className="sticky top-0 z-20 -mx-6 flex items-center gap-1 border-b border-zinc-800 bg-zinc-950 px-6">
         <button
           onClick={() => setListTab("MY")}
           className={`px-4 py-2 text-sm font-medium transition ${listTab === "MY" ? "border-b-2 border-indigo-500 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"}`}
