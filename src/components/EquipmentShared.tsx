@@ -182,21 +182,20 @@ export function nextDayStr(dateStr: string): string {
 
 // ─── DailyView ────────────────────────────────────────────────────────────────
 
-const CONTAINER_HEIGHT   = 480;                                          // px — fixed dashboard column height; do not change
-const GRID_START_MINS    = 8  * 60;                                      // 480 min = 8:00 am — top of visible window
-const GRID_WINDOW_MINS   = 10 * 60;                                      // 600 min = 8:00 am – 6:00 pm target window
-const GRID_PX_PER_MINUTE = CONTAINER_HEIGHT / GRID_WINDOW_MINS;         // derived: 480 / 600 = 0.8 px/min
+const GRID_PX_PER_MINUTE = 0.8;                                         // 48 px/hr — matches personal schedule density
+const GRID_START_MINS    = 0;                                            // midnight — full 24-hour grid
+const GRID_TOTAL_MINS    = 24 * 60;                                      // 1440 min
+const GRID_TOTAL_HEIGHT  = GRID_TOTAL_MINS * GRID_PX_PER_MINUTE;        // 1152 px
 
-// 2-hour interval labels for the visible window: 8 am, 10 am, 12 pm, 2 pm, 4 pm, 6 pm
-// topPx is relative to GRID_START_MINS so positions map directly onto the compressed grid
+// 2-hour interval labels for the full day: 12 am, 2 am, 4 am … 10 pm
 const TIME_LABELS: ReadonlyArray<{ label: string; topPx: number }> =
-  Array.from({ length: GRID_WINDOW_MINS / 120 + 1 }, (_, i) => {
-    const mins = GRID_START_MINS + i * 120;
+  Array.from({ length: GRID_TOTAL_MINS / 120 }, (_, i) => {
+    const mins = i * 120;
     const h24  = Math.floor(mins / 60);
     const h12  = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
     return {
       label: `${h12}:00 ${h24 < 12 ? "am" : "pm"}`,
-      topPx: (mins - GRID_START_MINS) * GRID_PX_PER_MINUTE,
+      topPx: mins * GRID_PX_PER_MINUTE,
     };
   });
 
@@ -208,7 +207,7 @@ function tmins(t: string): number {
 }
 
 function bookingTop(startTime: string): number {
-  return (tmins(startTime) - GRID_START_MINS) * GRID_PX_PER_MINUTE;
+  return tmins(startTime) * GRID_PX_PER_MINUTE; // GRID_START_MINS = 0
 }
 
 function bookingHeight(startTime: string, endTime: string): number {
@@ -291,18 +290,17 @@ export function DailyView({
   function handleColClick(e: MouseEvent<HTMLDivElement>, resourceId: ResourceId) {
     const rect        = e.currentTarget.getBoundingClientRect();
     const rawMins     = Math.floor((e.clientY - rect.top) / GRID_PX_PER_MINUTE);
-    const clickedMins = rawMins + GRID_START_MINS; // grid origin is 8 am, not midnight
-    const rounded     = Math.floor(clickedMins / 30) * 30;
+    const rounded     = Math.floor(rawMins / 30) * 30; // GRID_START_MINS = 0, so rawMins = absolute mins from midnight
     const h = Math.floor(rounded / 60) % 24;
     const m = rounded % 60;
     onCellClick(resourceId, `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
   }
 
   return (
-    <div className="min-w-[320px]">
-      {/* Resource header — above the grid viewport so CONTAINER_HEIGHT is fully available to the grid */}
+    <div className="flex min-w-[320px] flex-col">
+      {/* Resource header — sticky so it stays visible while scrolling */}
       <div
-        className="grid border-b border-zinc-800 bg-zinc-950"
+        className="sticky top-0 z-10 grid border-b border-zinc-800 bg-zinc-950"
         style={{ gridTemplateColumns: `3.5rem repeat(${colCount}, minmax(0, 1fr))` }}
       >
         <div className="border-r border-zinc-800" />
@@ -316,19 +314,14 @@ export function DailyView({
         ))}
       </div>
 
-      {/* ── Fixed grid viewport: CONTAINER_HEIGHT px = exactly 8 am–6 pm; no scrolling ── */}
-      <div
-        className="overflow-hidden"
-        style={{ height: `${CONTAINER_HEIGHT}px`, flexShrink: 0 }}
-      >
-        {/* ── Compressed grid: 8 am–6 pm (CONTAINER_HEIGHT = 480 px) ── */}
-        <div className="relative" style={{ height: `${CONTAINER_HEIGHT}px` }}>
+      {/* ── Full 24-hour scrollable grid ── */}
+      <div className="relative" style={{ height: `${GRID_TOTAL_HEIGHT}px` }}>
 
-          {/* Current-time indicator (today only, visible only within 8 am–6 pm window) */}
-          {isToday && nowMins >= GRID_START_MINS && nowMins < GRID_START_MINS + GRID_WINDOW_MINS && (
+          {/* Current-time indicator — full day */}
+          {isToday && (
             <div
               className="pointer-events-none absolute z-20 border-t-2 border-red-500"
-              style={{ top: `${(nowMins - GRID_START_MINS) * GRID_PX_PER_MINUTE}px`, left: "3.5rem", right: 0 }}
+              style={{ top: `${nowMins * GRID_PX_PER_MINUTE}px`, left: "3.5rem", right: 0 }}
             />
           )}
 
@@ -411,7 +404,6 @@ export function DailyView({
             })}
           </div>
         </div>
-      </div>
     </div>
   );
 }

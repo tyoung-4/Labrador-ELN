@@ -103,6 +103,21 @@ const EquipmentCalendar = forwardRef<EquipmentCalendarHandle, {
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [saving,       setSaving]       = useState(false);
 
+  // ── Calendar body scroll ref — scroll to current time on mount + Today ──
+  const calendarBodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = calendarBodyRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      const now = new Date();
+      const nowMins = now.getHours() * 60 + now.getMinutes();
+      const PX_PER_MIN = 0.8; // matches GRID_PX_PER_MINUTE in EquipmentShared
+      const PX_PER_HOUR = PX_PER_MIN * 60;
+      el.scrollTop = Math.max(0, nowMins * PX_PER_MIN - PX_PER_HOUR);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controlledScrollTrigger]);
+
   // ── Calendar popup state ──────────────────────────────────────────────────
   const [calendarOpen,  setCalendarOpen]  = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
@@ -509,7 +524,7 @@ const EquipmentCalendar = forwardRef<EquipmentCalendarHandle, {
       )}
 
       {/* ── Calendar body ── */}
-      <div className="flex-1 overflow-auto">
+      <div ref={calendarBodyRef} className="flex-1 overflow-auto">
         <DailyView
           date={dailyDate}
           enabledResources={enabledList}
