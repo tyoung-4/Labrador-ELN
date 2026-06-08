@@ -607,13 +607,14 @@ function ScheduleBlock({
   const top       = ((startMins - GRID_START * 60) / 60) * PX_PER_HOUR;
   const height    = Math.max(((endMins - startMins) / 60) * PX_PER_HOUR, 20);
 
-  // Concurrent column layout: split the usable width (left:64 to right:4) into totalCols lanes
-  const LABEL_W  = 64;  // px — time label column (wider for "12:00 am" format)
-  const PAD_R    = 4;   // px — right padding
+  // Concurrent column layout: split the usable width (left:64 to right:27%) into totalCols lanes
+  // right: "27%" reserves space for equipment badge strip (~25% width, right: 2px)
+  const LABEL_W  = 64;   // px — time label column (wider for "12:00 am" format)
+  const PAD_R    = "27%"; // right edge — leaves badge area free
   const colStyle = totalCols > 1
     ? {
-        left:  `calc(${LABEL_W}px + ${col} * (100% - ${LABEL_W}px - ${PAD_R}px) / ${totalCols})`,
-        width: `calc((100% - ${LABEL_W}px - ${PAD_R}px) / ${totalCols})`,
+        left:  `calc(${LABEL_W}px + ${col} * (100% - ${LABEL_W}px - ${PAD_R}) / ${totalCols})`,
+        width: `calc((100% - ${LABEL_W}px - ${PAD_R}) / ${totalCols})`,
         right: "auto" as const,
       }
     : { left: LABEL_W, right: PAD_R };
@@ -1917,6 +1918,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
 
   // ── Equipment bookings for badge overlay (current user, current schedule date) ──
   const [equipmentBookings, setEquipmentBookings] = useState<ScheduleEvent[]>([]);
+  const [bookingVersion, setBookingVersion] = useState(0); // incremented after any booking save/delete
 
   // Stay in sync with AppTopNav user selection
   useEffect(() => {
@@ -1953,7 +1955,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
       })
       .catch(() => { if (!cancelled) setEquipmentBookings([]); });
     return () => { cancelled = true; };
-  }, [scheduleDate, userId, scheduleView]);
+  }, [scheduleDate, userId, scheduleView, bookingVersion]);
 
   // Persist todo list per user (migrate old items that lack timeSensitive).
   // Also runs nightly cleanup: removes done items and flags remaining as carryover
@@ -2609,6 +2611,7 @@ export default function DashboardPanel({ equipmentCalendar }: { equipmentCalenda
                   controlledDate: scheduleDate,
                   onDateChange: setScheduleDate,
                   controlledScrollTrigger: eqScrollTrigger,
+                  onBookingSaved: () => setBookingVersion(v => v + 1),
                   ref: eqOpenNewRef,
                 }
               )}

@@ -39,7 +39,9 @@ const EquipmentCalendar = forwardRef<EquipmentCalendarHandle, {
   onDateChange?: (d: string) => void;
   /** Incremented by DashboardPanel's Today button to trigger scroll-to-now */
   controlledScrollTrigger?: number;
-}>(function EquipmentCalendar({ singleGroup = false, hideToolbar = false, controlledDate, onDateChange, controlledScrollTrigger }, ref) {
+  /** Called after a booking is successfully saved or deleted — lets parent refetch badge data */
+  onBookingSaved?: () => void;
+}>(function EquipmentCalendar({ singleGroup = false, hideToolbar = false, controlledDate, onDateChange, controlledScrollTrigger, onBookingSaved }, ref) {
   // ── User ──────────────────────────────────────────────────────────────────
   const [userId,   setUserId]   = useState(ELN_USERS[0].id);
   const [userName, setUserName] = useState(ELN_USERS[0].name);
@@ -234,6 +236,7 @@ const EquipmentCalendar = forwardRef<EquipmentCalendarHandle, {
       setBookingError(err);
     } else {
       setShowModal(false);
+      onBookingSaved?.();
     }
   }
 
@@ -243,6 +246,7 @@ const EquipmentCalendar = forwardRef<EquipmentCalendarHandle, {
     await deleteBookingFn(id);
     setSaving(false);
     setShowModal(false);
+    onBookingSaved?.();
   }
 
   async function handleEndEarly(ev: ScheduleEvent) {
