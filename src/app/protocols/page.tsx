@@ -1260,6 +1260,18 @@ function ProtocolsPageContent() {
             <li className="py-8 text-center text-sm text-zinc-600">No protocols match your filters.</li>
           )}
         </ul>
+
+        {/* Bottom + New Protocol — visible on My and All Protocols tabs */}
+        {(listTab === "MY" || listTab === "PUBLISHED") && (
+          <div className="mt-4 flex justify-center border-t border-zinc-800 pt-4">
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="rounded-lg bg-emerald-700 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-600"
+            >
+              + New Protocol
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Editor Modal Overlay ── */}
