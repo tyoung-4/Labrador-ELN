@@ -192,7 +192,13 @@ export default function ProjectDetailPage() {
   }
 
   const { tag, runs, protocols, lastActivity } = data;
-  const canEdit = currentUser === tag.createdBy || currentUser === "Admin";
+  const normalizedUser = currentUser.trim().toLowerCase();
+  const canEdit =
+    normalizedUser === (tag.createdBy ?? "").trim().toLowerCase() ||
+    normalizedUser === "admin";
+  const uniqueMembers = Array.from(
+    new Map(tag.members.map((m) => [m.user.id, m])).values()
+  );
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -251,8 +257,8 @@ export default function ProjectDetailPage() {
             <div className="flex flex-col gap-1">
               <span className="text-xs uppercase tracking-wide text-gray-500">Members</span>
               <div className="flex flex-wrap items-center gap-1">
-                {tag.members.length > 0 ? (
-                  tag.members.map((m) => (
+                {uniqueMembers.length > 0 ? (
+                  uniqueMembers.map((m) => (
                     <span
                       key={m.id}
                       className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white"
