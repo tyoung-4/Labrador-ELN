@@ -1,7 +1,9 @@
 import { NextResponse, NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
+import { canViewProject } from "@/lib/projectAccess";
+import { capitalizeTag } from "@/utils/capitalizeTag";
 
-// GET /api/projects?currentUser=username
+// GET /api/projects?currentUser=username&owner=&includePrivate=true
 // Returns:
 //   { projects: ProjectSummary[], untagged: { runCount: number; protocolCount: number } }
 //
@@ -11,11 +13,14 @@ import prisma from "@/lib/prisma";
 // untagged counts are scoped to currentUser (by name, case-insensitive).
 // If currentUser param is absent returns untagged: { runCount: 0, protocolCount: 0 }.
 export async function GET(request: NextRequest) {
-  const currentUser = new URL(request.url).searchParams.get("currentUser") ?? "";
+  const params = new URL(request.url).searchParams;
+  const currentUser = params.get("currentUser") ?? "";
+  const ownerFilter = params.get("owner") ?? "";
+  const includePrivate = params.get("includePrivate") === "true";
 
   try {
     // ── 1. Fetch all PROJECT tags with metadata + members ────────────────────
-    const tags = await prisma.tag.findMany({
+    const tagsRaw = await prisma.tag.findMany({
       where: { type: "PROJECT" },
       select: {
         id: true,
@@ -25,11 +30,27 @@ export async function GET(request: NextRequest) {
         createdAt: true,
         description: true,
         startDate: true,
+        owner: true,
+        isGeneral: true,
+        isPrivate: true,
+        privateMembers: true,
+        pinnedBy: true,
         members: {
           select: { user: { select: { id: true, name: true } } },
           orderBy: { addedAt: "asc" },
         },
       },
+    });
+
+    // Privacy: never leak private projects the requester can't view. When
+    // includePrivate is false, drop private projects entirely.
+    const tags = tagsRaw.filter((t) => {
+      if (t.isPrivate && !includePrivate) return canViewProject(t, currentUser);
+      if (t.isPrivate) return canViewProject(t, currentUser);
+      if (ownerFilter) {
+        return (t.owner ?? t.createdBy ?? "").trim().toLowerCase() === ownerFilter.trim().toLowerCase();
+      }
+      return true;
     });
 
     const tagIds = tags.map((t) => t.id);
@@ -114,6 +135,11 @@ export async function GET(request: NextRequest) {
           createdAt: tag.createdAt.toISOString(),
           description: tag.description ?? null,
           startDate: tag.startDate?.toISOString() ?? null,
+          owner: tag.owner ?? null,
+          isGeneral: tag.isGeneral,
+          isPrivate: tag.isPrivate,
+          privateMembers: tag.privateMembers,
+          pinnedBy: tag.pinnedBy,
           members: tag.members.map((m) => ({
             user: { id: m.user.id, name: m.user.name },
           })),
@@ -169,5 +195,67 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("GET /api/projects failed:", error);
     return NextResponse.json({ error: "Failed to load projects" }, { status: 500 });
+  }
+}
+
+// POST /api/projects
+// Body: { name, description?, owner?, isPrivate?, privateMembers?, color?, createdBy? }
+// Creates a PROJECT-type Tag. Unique name enforced case-insensitively.
+export async function POST(request: NextRequest) {
+  try {
+    const body = (await request.json().catch(() => ({}))) as {
+      name?: string;
+      description?: string;
+      owner?: string;
+      isPrivate?: boolean;
+      privateMembers?: string[];
+      color?: string;
+      createdBy?: string;
+    };
+
+    const name = capitalizeTag((body.name ?? "").trim());
+    if (!name) {
+      return NextResponse.json({ error: "Project name is required" }, { status: 400 });
+    }
+
+    const existing = await prisma.tag.findFirst({
+      where: { name: { equals: name, mode: "insensitive" } },
+      select: { id: true, name: true, type: true },
+    });
+    if (existing) {
+      return NextResponse.json(
+        { error: `A tag named "${existing.name}" already exists`, conflictType: existing.type },
+        { status: 409 }
+      );
+    }
+
+    const createdBy = (body.createdBy ?? body.owner ?? "Admin").trim() || "Admin";
+    const isPrivate = Boolean(body.isPrivate);
+    const privateMembers = isPrivate
+      ? (body.privateMembers ?? []).map((m) => m.trim()).filter(Boolean)
+      : [];
+
+    const tag = await prisma.tag.create({
+      data: {
+        name,
+        type: "PROJECT",
+        color: body.color || "#6366f1",
+        createdBy,
+        owner: body.owner?.trim() || createdBy,
+        description: body.description?.trim() || null,
+        isPrivate,
+        privateMembers,
+      },
+      select: {
+        id: true, name: true, type: true, color: true, createdBy: true,
+        owner: true, isPrivate: true, isGeneral: true, privateMembers: true,
+        pinnedBy: true, description: true, createdAt: true,
+      },
+    });
+
+    return NextResponse.json({ success: true, project: tag }, { status: 201 });
+  } catch (error) {
+    console.error("POST /api/projects failed:", error);
+    return NextResponse.json({ error: "Failed to create project" }, { status: 500 });
   }
 }

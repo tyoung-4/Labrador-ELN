@@ -101,6 +101,40 @@ async function main() {
 
   console.log(`\nDone: ${seeded} seeded, ${skipped} skipped.`);
 
+  // ── General project ─────────────────────────────────────────────────────────
+  // The single shared "General" project. Reconciled onto the Tag model
+  // (type: PROJECT) rather than a separate Project table. It has no owner,
+  // cannot be deleted or made private, and appears under All Projects only.
+  {
+    // Tag.name is globally unique, so reconcile any existing "General" tag
+    // (e.g. a legacy GENERAL-type one) into the General project rather than
+    // creating a duplicate. Promotion is only safe when it has no assignments.
+    const existing = await prisma.tag.findFirst({
+      where: { name: { equals: "General", mode: "insensitive" } },
+      include: { _count: { select: { assignments: true } } },
+    });
+    const projectData = {
+      type: "PROJECT",
+      color: "#6B7280",
+      createdBy: "system",
+      owner: null,
+      isGeneral: true,
+      isPrivate: false,
+      description: "General protocols, common reagents, and shared resources",
+    };
+    if (!existing) {
+      await prisma.tag.create({ data: { name: "General", ...projectData } });
+      console.log(`  seeded General project`);
+    } else if (existing.isGeneral && existing.type === "PROJECT") {
+      console.log(`  skip  General project (already configured)`);
+    } else if (existing.type === "GENERAL" && existing._count.assignments > 0) {
+      console.log(`  WARN  existing "General" tag has assignments — left as-is, General project NOT created`);
+    } else {
+      await prisma.tag.update({ where: { id: existing.id }, data: projectData });
+      console.log(`  promoted existing "General" tag to the General project`);
+    }
+  }
+
   // ── Ladder library ─────────────────────────────────────────────────────────
   const LADDERS = [
     { name: "PageRuler Prestained",              manufacturer: "Thermo Fisher", bands: [10,15,25,35,55,70,100,130,180] },
