@@ -1223,6 +1223,21 @@ function ProtocolsPageContent() {
           </div>
         )}
 
+        {/* List-level error banner — surfaces delete failures (e.g. 409 when
+            runs exist) when the editor modal is closed and wouldn't show them. */}
+        {saveError && !editorOpen && (
+          <div className="mb-3 flex items-center justify-between rounded border border-red-500/40 bg-red-950/50 px-3 py-2 text-sm text-red-200">
+            <span>{saveError}</span>
+            <button
+              onClick={() => setSaveError(null)}
+              aria-label="Dismiss"
+              className="ml-3 shrink-0 text-red-300 transition hover:text-red-100"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Grouped protocol list */}
         <ul className="space-y-2">
           {groupedFamilies.map(({ representative: e, allVersions }) => {

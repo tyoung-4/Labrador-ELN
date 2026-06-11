@@ -67,6 +67,7 @@ export async function GET(request: Request) {
             title: true,
             description: true,
             technique: true,
+            version: true,
             author: { select: { id: true, name: true, role: true } },
           },
         },

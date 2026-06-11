@@ -1710,8 +1710,8 @@ function SortableItem({
         style={{ cursor: hasDetails ? "pointer" : "default" }}
       >
         {/* Title row — always visible */}
-        <div className="flex items-baseline gap-1.5">
-          <p className={`text-sm leading-snug ${item.done ? "text-zinc-600 line-through" : "text-zinc-100"}`}>
+        <div className="flex min-w-0 items-baseline gap-1.5">
+          <p className={`min-w-0 flex-1 truncate text-sm leading-snug ${item.done ? "text-zinc-600 line-through" : "text-zinc-100"}`}>
             {item.text}
           </p>
           {isCarryover && (
