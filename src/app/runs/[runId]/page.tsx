@@ -241,24 +241,52 @@ function CounterFieldWidget({
   onChange: (v: string) => void;
   disabled: boolean;
 }) {
-  const current    = parseInt(value || "0", 10) || 0;
-  const target     = field.targetCount ?? 1;
-  const isComplete = current >= target;
+  const current       = parseInt(value || "0", 10) || 0;
+  const target        = field.targetCount ?? 1;
+  const isAtTarget    = current === target;
+  const isAboveTarget = current > target;
+  // Local to this counter instance — resets only if the widget unmounts.
+  // Intentional: the over-target warning shows once per counter per run session.
+  const [hasWarnedAbove, setHasWarnedAbove] = useState(false);
+  const [showOverTargetWarning, setShowOverTargetWarning] = useState(false);
+
+  function handleIncrement() {
+    const next = current + 1;
+    // First push past target — pause and ask for confirmation once.
+    if (next > target && !hasWarnedAbove) {
+      setShowOverTargetWarning(true);
+      return;
+    }
+    onChange(String(next));
+  }
+
+  function handleConfirmOverTarget() {
+    setHasWarnedAbove(true);
+    setShowOverTargetWarning(false);
+    onChange(String(current + 1));
+  }
 
   return (
     <span className="inline-flex items-center gap-1.5 rounded border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs">
       <span className="text-zinc-500">{field.label}:</span>
-      <span className={`font-bold tabular-nums ${isComplete ? "text-emerald-600" : "text-zinc-800"}`}>
+      <span className={`font-bold tabular-nums ${
+        isAboveTarget ? "text-amber-600" :
+        isAtTarget ? "text-emerald-600" :
+        "text-zinc-800"
+      }`}>
         {current}/{target}
       </span>
-      {isComplete && <span className="text-emerald-500">✓</span>}
+      {isAtTarget && <span className="text-emerald-500">✓</span>}
       {!disabled && (
         <>
           <button
-            onClick={() => onChange(String(Math.min(target, current + 1)))}
-            disabled={isComplete}
+            onClick={handleIncrement}
             title="Increment"
-            className="flex h-6 w-6 items-center justify-center rounded-full bg-purple-600 text-white text-base font-bold leading-none transition hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-40"
+            className={`flex h-6 w-6 items-center justify-center rounded-full text-white text-base font-bold leading-none transition ${
+              isAtTarget || isAboveTarget
+                ? "bg-amber-600 hover:bg-amber-500"
+                : "bg-purple-600 hover:bg-purple-500"
+            }`}
           >
             +
           </button>
@@ -271,6 +299,40 @@ function CounterFieldWidget({
             −
           </button>
         </>
+      )}
+
+      {/* One-time over-target warning */}
+      {showOverTargetWarning && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="mx-4 w-full max-w-sm rounded-xl border border-amber-500/50 bg-gray-900 p-6">
+            <div className="mb-4 flex items-start gap-3">
+              <span className="text-2xl text-amber-400">⚠️</span>
+              <div>
+                <p className="mb-1 font-medium text-white">Target Surpassed</p>
+                <p className="text-sm text-gray-300">
+                  You have reached the target of{" "}
+                  <span className="font-bold text-white">{target}</span> for{" "}
+                  <span className="font-bold text-white">{field.label}</span>. Are you
+                  sure you want to add more?
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowOverTargetWarning(false)}
+                className="px-4 py-2 text-sm text-gray-400 hover:text-white"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmOverTarget}
+                className="rounded bg-amber-600 px-4 py-2 text-sm text-white hover:bg-amber-700"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </span>
   );
@@ -802,8 +864,27 @@ function StepRow({
                       </span>
                       <input
                         type="text"
+                        inputMode="decimal"
                         value={val}
-                        onChange={(e) => onFieldChange(step.id, field.key, e.target.value)}
+                        onChange={(e) => {
+                          // Measurement readings are numeric — allow digits, a single
+                          // decimal point, and a leading minus (for negatives, e.g. −20.5°C).
+                          const numeric = e.target.value.replace(/[^0-9.\-]/g, "");
+                          const parts = numeric.split(".");
+                          const clean =
+                            parts.length > 2
+                              ? parts[0] + "." + parts.slice(1).join("")
+                              : numeric;
+                          onFieldChange(step.id, field.key, clean);
+                        }}
+                        onKeyDown={(e) => {
+                          if (
+                            !/[0-9.\-]/.test(e.key) &&
+                            !["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Tab", "Home", "End"].includes(e.key)
+                          ) {
+                            e.preventDefault();
+                          }
+                        }}
                         disabled={isRunComplete}
                         placeholder="…"
                         className="w-20 border-none bg-white text-zinc-800 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed"

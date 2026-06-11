@@ -204,8 +204,15 @@ function RunsPageContent() {
                       <h2 className="font-semibold text-zinc-100">{run.title}</h2>
                       <StatusBadge status={run.status} />
                     </div>
-                    <p className="text-xs text-zinc-400">
-                      Protocol: {run.sourceEntry?.title ?? run.sourceEntryId}
+                    <p className="flex flex-wrap items-center gap-1.5 text-xs text-zinc-400">
+                      <span>Protocol: {run.sourceEntry?.title ?? run.sourceEntryId}</span>
+                      {run.sourceEntry?.version != null ? (
+                        <span className="rounded bg-gray-700 px-1.5 py-0.5 font-mono text-[10px] text-gray-300">
+                          v{run.sourceEntry.version}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] italic text-zinc-600">Protocol deleted</span>
+                      )}
                     </p>
                     <p className="text-xs text-zinc-500">
                       {run.operatorName || run.runner?.name
