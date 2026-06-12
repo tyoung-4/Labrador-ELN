@@ -20,6 +20,10 @@ interface TagDetail {
   createdAt: string;
   description: string | null;
   startDate: string | null;
+  owner?: string | null;
+  isGeneral?: boolean;
+  isPrivate?: boolean;
+  pinnedBy?: string[];
   members: Member[];
 }
 
@@ -126,23 +130,23 @@ export default function ProjectDetailPage() {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  // Fetch project detail
+  // Fetch project detail (currentUser passed so the privacy check can resolve)
   useEffect(() => {
     if (!tagId) return;
     let cancelled = false;
     setLoading(true);
     setNotFound(false);
-    fetch(`/api/projects/${tagId}`)
+    fetch(`/api/projects/${tagId}?currentUser=${encodeURIComponent(currentUser)}`)
       .then(async (res) => {
         if (!cancelled) {
-          if (res.status === 404) { setNotFound(true); return; }
+          if (res.status === 404 || res.status === 403) { setNotFound(true); return; }
           if (res.ok) setData(await res.json());
         }
       })
       .catch(console.error)
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [tagId]);
+  }, [tagId, currentUser]);
 
   // Debounced search
   const doSearch = useMemo(() => (q: string) => {
@@ -195,10 +199,44 @@ export default function ProjectDetailPage() {
   const normalizedUser = currentUser.trim().toLowerCase();
   const canEdit =
     normalizedUser === (tag.createdBy ?? "").trim().toLowerCase() ||
+    normalizedUser === (tag.owner ?? "").trim().toLowerCase() ||
     normalizedUser === "admin";
   const uniqueMembers = Array.from(
     new Map(tag.members.map((m) => [m.user.id, m])).values()
   );
+  const itemCount = runs.length + protocols.length;
+  const pinned = (tag.pinnedBy ?? []).some((o) => o.toLowerCase() === normalizedUser);
+
+  async function handleTogglePin() {
+    if (!data) return;
+    const nowPinned = !pinned;
+    setData({
+      ...data,
+      tag: {
+        ...data.tag,
+        pinnedBy: nowPinned
+          ? [...(data.tag.pinnedBy ?? []), currentUser]
+          : (data.tag.pinnedBy ?? []).filter((o) => o.toLowerCase() !== normalizedUser),
+      },
+    });
+    await fetch(`/api/projects/${tagId}/pin`, {
+      method: nowPinned ? "POST" : "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operator: currentUser }),
+    }).catch(() => {});
+  }
+
+  async function handleDeleteProject() {
+    if (tag.isGeneral || itemCount > 0) return;
+    if (!window.confirm(`Delete project "${tag.name}"? This cannot be undone.`)) return;
+    const res = await fetch(`/api/projects/${tagId}`, { method: "DELETE" });
+    if (res.ok) {
+      window.location.href = "/projects";
+    } else {
+      const d = await res.json().catch(() => ({}));
+      window.alert(d.error ?? "Failed to delete project");
+    }
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -211,7 +249,7 @@ export default function ProjectDetailPage() {
 
         {/* ── Header ────────────────────────────────────────────────────────── */}
         <div className="border-b border-white/10 px-6 py-5">
-          {/* Row 1: back link + edit */}
+          {/* Row 1: back link + actions */}
           <div className="mb-3 flex items-center justify-between">
             <a
               href="/projects"
@@ -219,19 +257,45 @@ export default function ProjectDetailPage() {
             >
               ← Projects
             </a>
-            {canEdit && (
+            <div className="flex items-center gap-2">
               <button
-                disabled
-                title="Edit Project — coming in next prompt"
-                className="rounded border border-white/10 px-3 py-1 text-sm text-gray-400 hover:text-white transition cursor-not-allowed opacity-60"
+                onClick={handleTogglePin}
+                title={pinned ? "Unpin" : "Pin"}
+                className={`rounded border px-3 py-1 text-sm transition ${
+                  pinned
+                    ? "border-amber-500/50 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
+                    : "border-white/10 text-gray-400 hover:text-white"
+                }`}
               >
-                Edit Project
+                📌 {pinned ? "Pinned" : "Pin"}
               </button>
-            )}
+              {canEdit && !tag.isGeneral && (
+                <button
+                  onClick={handleDeleteProject}
+                  disabled={itemCount > 0}
+                  title={itemCount > 0 ? "Unassign all items before deleting" : "Delete project"}
+                  className="rounded border border-red-500/40 px-3 py-1 text-sm text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Delete
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Row 2: project name */}
-          <h1 className="mb-1 text-2xl font-bold text-white">{tag.name}</h1>
+          {/* Row 2: project name + privacy badge */}
+          <div className="mb-1 flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-white">{tag.name}</h1>
+            {tag.isPrivate && (
+              <span className="rounded-full border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-300">
+                🔒 Private
+              </span>
+            )}
+            {tag.isGeneral && (
+              <span className="rounded-full border border-zinc-500/50 bg-zinc-500/15 px-2 py-0.5 text-xs font-medium text-zinc-300">
+                General
+              </span>
+            )}
+          </div>
 
           {/* Row 3: description */}
           {tag.description && (

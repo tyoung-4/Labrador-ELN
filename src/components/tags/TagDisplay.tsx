@@ -44,29 +44,25 @@ export default function TagDisplay({ tags, maxVisible = 3 }: TagDisplayProps) {
 
         const isShortTag = !!tag.parentProject;
 
-        if (isShortTag) {
-          return (
-            <Link
-              key={tag.id}
-              href={`/projects/${tag.parentProject!.id}`}
-              className={`${pillClass} hover:brightness-125 transition-filter cursor-pointer`}
-              style={pillStyle}
-            >
-              {tag.name}
-              <span className="opacity-70">↗</span>
-            </Link>
-          );
-        }
+        // Short tag → parent project; PROJECT tag → its project page;
+        // GENERAL tag → the tag-search page (/tags/[name]).
+        const href = isShortTag
+          ? `/projects/${tag.parentProject!.id}`
+          : tag.type === "PROJECT"
+            ? `/projects/${tag.id}`
+            : `/tags/${encodeURIComponent(tag.name)}`;
 
         return (
-          <span
+          <Link
             key={tag.id}
-            className={pillClass}
+            href={href}
+            className={`${pillClass} cursor-pointer transition-[filter] hover:brightness-125`}
             style={pillStyle}
           >
-            {tag.type === "PROJECT" && <span>📁</span>}
+            {tag.type === "PROJECT" && !isShortTag && <span>📁</span>}
             {tag.name}
-          </span>
+            {isShortTag && <span className="opacity-70">↗</span>}
+          </Link>
         );
       })}
       {overflow > 0 && (

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import GlobalClock from "./GlobalClock";
 
 const NAV_ITEMS = [
@@ -39,6 +39,7 @@ export default function AppTopNav() {
   const pathname = usePathname();
   const router   = useRouter();
   const [userId, setUserId] = useState(ELN_USERS[0].id);
+  const [notifCount, setNotifCount] = useState(0);
 
   // useLayoutEffect fires before the browser paints. On a soft-nav remount
   // the module cache is already populated, so the correction is instantaneous.
@@ -52,6 +53,22 @@ export default function AppTopNav() {
     _cachedUserId = resolved;
     setUserId(resolved);
   }, []);
+
+  // Project-assignment notification count badge (shown on the Home item, which
+  // hosts the dashboard). Re-fetches on user switch and on window focus.
+  const operatorName = ELN_USERS.find((u) => u.id === userId)?.name ?? ELN_USERS[0].name;
+  useEffect(() => {
+    let cancelled = false;
+    function refresh() {
+      fetch(`/api/notifications/project-assignment?operator=${encodeURIComponent(operatorName)}`)
+        .then((r) => r.json())
+        .then((d: { count?: number }) => { if (!cancelled) setNotifCount(d.count ?? 0); })
+        .catch(() => { if (!cancelled) setNotifCount(0); });
+    }
+    refresh();
+    window.addEventListener("focus", refresh);
+    return () => { cancelled = true; window.removeEventListener("focus", refresh); };
+  }, [operatorName, pathname]);
 
   function handleUserChange(id: string) {
     _cachedUserId = id;
@@ -72,17 +89,25 @@ export default function AppTopNav() {
           ? pathname === item.href
           : pathname === item.href || pathname.startsWith(item.href + "/") ||
             item.alsoActive.some(p => pathname === p || pathname.startsWith(p + "/"));
-        const cls = `rounded px-3 py-1.5 text-sm transition ${
+        const cls = `relative rounded px-3 py-1.5 text-sm transition ${
           active ? item.activeClass : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
         }`;
+        // Home item carries the project-assignment notification badge.
+        const badge = item.href === "/" && notifCount > 0 ? (
+          <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">
+            {notifCount}
+          </span>
+        ) : null;
         // Projects uses a hard <a> so detail-view state is cleared on click
         return item.hard ? (
           <a key={item.href} href={item.href} className={cls}>
             {item.label}
+            {badge}
           </a>
         ) : (
           <Link key={item.href} href={item.href} className={cls}>
             {item.label}
+            {badge}
           </Link>
         );
       })}
