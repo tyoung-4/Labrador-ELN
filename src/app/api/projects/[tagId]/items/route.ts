@@ -64,7 +64,20 @@ export async function GET(request: NextRequest, context: RouteContext) {
       counts[et] = rows.length;
     }
 
-    return NextResponse.json({ items: grouped, counts, total: assignments.length });
+    // Aggregated GENERAL tags: distinct GENERAL tags applied to any item in
+    // this project (not project assignments themselves).
+    const allEntityIds = [...new Set(assignments.map((a) => a.entityId))];
+    const generalTagAssignments = allEntityIds.length
+      ? await prisma.tagAssignment.findMany({
+          where: { entityId: { in: allEntityIds }, tag: { type: "GENERAL" } },
+          select: { tag: { select: { id: true, name: true, type: true, color: true } } },
+        })
+      : [];
+    const generalTags = [
+      ...new Map(generalTagAssignments.map((a) => [a.tag.id, a.tag])).values(),
+    ].sort((a, b) => a.name.localeCompare(b.name));
+
+    return NextResponse.json({ items: grouped, counts, total: assignments.length, generalTags });
   } catch (error) {
     console.error(`GET /api/projects/${tagId}/items failed:`, error);
     return NextResponse.json({ error: "Failed to load project items" }, { status: 500 });
