@@ -20,6 +20,10 @@ interface TagDetail {
   createdAt: string;
   description: string | null;
   startDate: string | null;
+  owner?: string | null;
+  isGeneral?: boolean;
+  isPrivate?: boolean;
+  pinnedBy?: string[];
   members: Member[];
 }
 
@@ -102,6 +106,35 @@ function Skeleton() {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
+type TabKey = "protocols" | "runs" | "stocks" | "plasmids" | "celllines" | "knowledge";
+
+interface ItemRow {
+  entityId: string;
+  name: string;
+  owner: string | null;
+  date: string | null;
+  assignedBy: string;
+  assignedAt: string;
+}
+interface ItemsData {
+  items: Record<string, ItemRow[]>;
+  counts: Record<string, number>;
+  total: number;
+  generalTags: Array<{ id: string; name: string; type: "PROJECT" | "GENERAL"; color: string }>;
+}
+
+// Maps each tab to its canonical entityType + the inventory list endpoint used
+// by the "+ Assign" search modal. KNOWLEDGE_HUB has no list source (view-only).
+const TAB_CONFIG: Record<
+  Exclude<TabKey, "protocols" | "runs">,
+  { label: string; entityType: string; listUrl: string; href: string }
+> = {
+  stocks:    { label: "Stocks",       entityType: "PROTEIN_STOCK", listUrl: "/api/inventory/proteinstocks", href: "/inventory/stocks" },
+  plasmids:  { label: "Plasmids",     entityType: "PLASMID",       listUrl: "/api/inventory/plasmids",      href: "/inventory/plasmids" },
+  celllines: { label: "Cell Lines",   entityType: "CELL_LINE",     listUrl: "/api/inventory/celllines",     href: "/inventory/cell-lines" },
+  knowledge: { label: "Knowledge Hub", entityType: "KNOWLEDGE_HUB", listUrl: "",                            href: "/knowledge-hub" },
+};
+
 export default function ProjectDetailPage() {
   const params = useParams();
   const tagId = params?.tagId as string;
@@ -111,9 +144,11 @@ export default function ProjectDetailPage() {
   const [notFound, setNotFound] = useState(false);
   const [currentUser, setCurrentUser] = useState("Admin");
 
-  const [activeTab, setActiveTab] = useState<"protocols" | "runs">("protocols");
+  const [activeTab, setActiveTab] = useState<TabKey>("protocols");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResults | null>(null);
+  const [itemsData, setItemsData] = useState<ItemsData | null>(null);
+  const [assignType, setAssignType] = useState<string | null>(null);
 
   const tabsRef = useRef<HTMLDivElement>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -126,23 +161,53 @@ export default function ProjectDetailPage() {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  // Fetch project detail
+  // Fetch project detail (currentUser passed so the privacy check can resolve)
   useEffect(() => {
     if (!tagId) return;
     let cancelled = false;
     setLoading(true);
     setNotFound(false);
-    fetch(`/api/projects/${tagId}`)
+    fetch(`/api/projects/${tagId}?currentUser=${encodeURIComponent(currentUser)}`)
       .then(async (res) => {
         if (!cancelled) {
-          if (res.status === 404) { setNotFound(true); return; }
+          if (res.status === 404 || res.status === 403) { setNotFound(true); return; }
           if (res.ok) setData(await res.json());
         }
       })
       .catch(console.error)
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [tagId]);
+  }, [tagId, currentUser]);
+
+  // Fetch project items (for the Stocks/Plasmids/Cell Lines/Knowledge Hub tabs,
+  // counts, stats, and aggregated GENERAL tags)
+  const refetchItems = React.useCallback(() => {
+    if (!tagId) return;
+    fetch(`/api/projects/${tagId}/items?currentUser=${encodeURIComponent(currentUser)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: ItemsData | null) => { if (d) setItemsData(d); })
+      .catch(() => {});
+  }, [tagId, currentUser]);
+
+  useEffect(() => { refetchItems(); }, [refetchItems]);
+
+  async function handleUnassign(entityType: string, entityId: string) {
+    await fetch(`/api/projects/${tagId}/items`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entityType, entityId }),
+    }).catch(() => {});
+    refetchItems();
+  }
+
+  async function handleAssign(entityType: string, entityId: string) {
+    await fetch(`/api/projects/${tagId}/items`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entityType, entityId, assignedBy: currentUser }),
+    }).catch(() => {});
+    refetchItems();
+  }
 
   // Debounced search
   const doSearch = useMemo(() => (q: string) => {
@@ -195,10 +260,44 @@ export default function ProjectDetailPage() {
   const normalizedUser = currentUser.trim().toLowerCase();
   const canEdit =
     normalizedUser === (tag.createdBy ?? "").trim().toLowerCase() ||
+    normalizedUser === (tag.owner ?? "").trim().toLowerCase() ||
     normalizedUser === "admin";
   const uniqueMembers = Array.from(
     new Map(tag.members.map((m) => [m.user.id, m])).values()
   );
+  const itemCount = runs.length + protocols.length;
+  const pinned = (tag.pinnedBy ?? []).some((o) => o.toLowerCase() === normalizedUser);
+
+  async function handleTogglePin() {
+    if (!data) return;
+    const nowPinned = !pinned;
+    setData({
+      ...data,
+      tag: {
+        ...data.tag,
+        pinnedBy: nowPinned
+          ? [...(data.tag.pinnedBy ?? []), currentUser]
+          : (data.tag.pinnedBy ?? []).filter((o) => o.toLowerCase() !== normalizedUser),
+      },
+    });
+    await fetch(`/api/projects/${tagId}/pin`, {
+      method: nowPinned ? "POST" : "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operator: currentUser }),
+    }).catch(() => {});
+  }
+
+  async function handleDeleteProject() {
+    if (tag.isGeneral || itemCount > 0) return;
+    if (!window.confirm(`Delete project "${tag.name}"? This cannot be undone.`)) return;
+    const res = await fetch(`/api/projects/${tagId}`, { method: "DELETE" });
+    if (res.ok) {
+      window.location.href = "/projects";
+    } else {
+      const d = await res.json().catch(() => ({}));
+      window.alert(d.error ?? "Failed to delete project");
+    }
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -211,7 +310,7 @@ export default function ProjectDetailPage() {
 
         {/* ── Header ────────────────────────────────────────────────────────── */}
         <div className="border-b border-white/10 px-6 py-5">
-          {/* Row 1: back link + edit */}
+          {/* Row 1: back link + actions */}
           <div className="mb-3 flex items-center justify-between">
             <a
               href="/projects"
@@ -219,19 +318,45 @@ export default function ProjectDetailPage() {
             >
               ← Projects
             </a>
-            {canEdit && (
+            <div className="flex items-center gap-2">
               <button
-                disabled
-                title="Edit Project — coming in next prompt"
-                className="rounded border border-white/10 px-3 py-1 text-sm text-gray-400 hover:text-white transition cursor-not-allowed opacity-60"
+                onClick={handleTogglePin}
+                title={pinned ? "Unpin" : "Pin"}
+                className={`rounded border px-3 py-1 text-sm transition ${
+                  pinned
+                    ? "border-amber-500/50 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25"
+                    : "border-white/10 text-gray-400 hover:text-white"
+                }`}
               >
-                Edit Project
+                📌 {pinned ? "Pinned" : "Pin"}
               </button>
-            )}
+              {canEdit && !tag.isGeneral && (
+                <button
+                  onClick={handleDeleteProject}
+                  disabled={itemCount > 0}
+                  title={itemCount > 0 ? "Unassign all items before deleting" : "Delete project"}
+                  className="rounded border border-red-500/40 px-3 py-1 text-sm text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Delete
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Row 2: project name */}
-          <h1 className="mb-1 text-2xl font-bold text-white">{tag.name}</h1>
+          {/* Row 2: project name + privacy badge */}
+          <div className="mb-1 flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-white">{tag.name}</h1>
+            {tag.isPrivate && (
+              <span className="rounded-full border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-300">
+                🔒 Private
+              </span>
+            )}
+            {tag.isGeneral && (
+              <span className="rounded-full border border-zinc-500/50 bg-zinc-500/15 px-2 py-0.5 text-xs font-medium text-zinc-300">
+                General
+              </span>
+            )}
+          </div>
 
           {/* Row 3: description */}
           {tag.description && (
@@ -382,27 +507,40 @@ export default function ProjectDetailPage() {
         </div>
 
         {/* ── Tabs ──────────────────────────────────────────────────────────── */}
-        <div ref={tabsRef} className="flex border-b border-white/10 px-6">
-          <button
-            onClick={() => setActiveTab("protocols")}
-            className={`border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === "protocols"
-                ? "border-purple-500 text-white"
-                : "border-transparent text-gray-400 hover:text-white"
-            }`}
-          >
-            Protocols ({protocols.length})
-          </button>
-          <button
-            onClick={() => setActiveTab("runs")}
-            className={`border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-              activeTab === "runs"
-                ? "border-purple-500 text-white"
-                : "border-transparent text-gray-400 hover:text-white"
-            }`}
-          >
-            Runs ({runs.length})
-          </button>
+        <div ref={tabsRef} className="flex flex-wrap items-center gap-x-1 border-b border-white/10 px-6">
+          {([
+            ["protocols", `Protocols (${protocols.length})`],
+            ["runs", `Runs (${runs.length})`],
+            ["stocks", `Stocks (${itemsData?.counts.PROTEIN_STOCK ?? 0})`],
+            ["plasmids", `Plasmids (${itemsData?.counts.PLASMID ?? 0})`],
+            ["celllines", `Cell Lines (${itemsData?.counts.CELL_LINE ?? 0})`],
+            ["knowledge", `Knowledge Hub (${itemsData?.counts.KNOWLEDGE_HUB ?? 0})`],
+          ] as Array<[TabKey, string]>).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`border-b-2 px-3 py-3 text-sm font-medium transition-colors ${
+                activeTab === key
+                  ? "border-purple-500 text-white"
+                  : "border-transparent text-gray-400 hover:text-white"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+          {/* Contextual "+ Assign" for the current tab (KH has no list source) */}
+          {canEdit && activeTab !== "knowledge" && (
+            <button
+              onClick={() => setAssignType(
+                activeTab === "protocols" ? "ENTRY"
+                : activeTab === "runs" ? "RUN"
+                : TAB_CONFIG[activeTab as keyof typeof TAB_CONFIG].entityType
+              )}
+              className="ml-auto rounded border border-white/10 px-3 py-1 text-xs text-gray-300 transition hover:bg-white/10 hover:text-white"
+            >
+              + Assign {activeTab === "protocols" ? "Protocol" : activeTab === "runs" ? "Run" : TAB_CONFIG[activeTab as keyof typeof TAB_CONFIG].label}
+            </button>
+          )}
         </div>
 
         {/* ── Protocols tab ─────────────────────────────────────────────────── */}
@@ -439,13 +577,21 @@ export default function ProjectDetailPage() {
                       </td>
                       <td className="px-2 py-2 text-gray-400">{p.author}</td>
                       <td className="px-2 py-2 text-gray-400">{formatRelativeDate(p.updatedAt)}</td>
-                      <td className="px-2 py-2">
+                      <td className="px-2 py-2 text-right">
                         <a
                           href="/protocols"
                           className="text-xs text-gray-400 transition hover:text-white"
                         >
                           Open →
                         </a>
+                        {canEdit && (
+                          <button
+                            onClick={() => handleUnassign("ENTRY", p.id)}
+                            className="ml-3 text-xs text-red-400/70 transition hover:text-red-300"
+                          >
+                            Unassign
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -503,13 +649,21 @@ export default function ProjectDetailPage() {
                         <span className="text-xs text-red-400">✗{r.failCount}</span>{" "}
                         <span className="text-xs text-gray-400">→{r.skipCount}</span>
                       </td>
-                      <td className="px-2 py-2">
+                      <td className="px-2 py-2 text-right">
                         <a
                           href={`/runs/${r.id}`}
                           className="text-xs text-gray-400 transition hover:text-white"
                         >
                           Open →
                         </a>
+                        {canEdit && (
+                          <button
+                            onClick={() => handleUnassign("RUN", r.id)}
+                            className="ml-3 text-xs text-red-400/70 transition hover:text-red-300"
+                          >
+                            Unassign
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -518,6 +672,215 @@ export default function ProjectDetailPage() {
             )}
           </div>
         )}
+
+        {/* ── Inventory / Knowledge Hub tabs (from /items) ──────────────────── */}
+        {(["stocks", "plasmids", "celllines", "knowledge"] as const).map((tabKey) => {
+          if (activeTab !== tabKey) return null;
+          const cfg = TAB_CONFIG[tabKey];
+          const rows = itemsData?.items[cfg.entityType] ?? [];
+          return (
+            <div key={tabKey} className="px-6 py-4">
+              {rows.length === 0 ? (
+                <p className="py-8 text-center text-sm text-gray-500">
+                  No {cfg.label.toLowerCase()} assigned to this project yet.
+                </p>
+              ) : (
+                <ul className="divide-y divide-white/5">
+                  {rows.map((row) => (
+                    <li key={row.entityId} className="flex items-center justify-between gap-2 py-2">
+                      <a href={cfg.href} className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-white hover:text-purple-300">
+                          {row.name}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {row.owner ? `${row.owner} · ` : ""}{formatRelativeDate(row.date)}
+                        </span>
+                      </a>
+                      {canEdit && (
+                        <button
+                          onClick={() => handleUnassign(cfg.entityType, row.entityId)}
+                          className="shrink-0 text-xs text-red-400/70 transition hover:text-red-300"
+                        >
+                          Unassign
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })}
+
+        {/* ── Aggregated GENERAL tags + stats ───────────────────────────────── */}
+        <div className="grid gap-4 border-t border-white/10 px-6 py-4 sm:grid-cols-2">
+          <div>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Tags on this project&apos;s items
+            </h3>
+            {itemsData && itemsData.generalTags.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {itemsData.generalTags.map((t) => (
+                  <a
+                    key={t.id}
+                    href={`/tags/${encodeURIComponent(t.name)}`}
+                    className="rounded-full px-2 py-0.5 text-xs font-medium text-white transition hover:brightness-125"
+                    style={{ backgroundColor: t.color + "33", border: `1px solid ${t.color}` }}
+                  >
+                    {t.name}
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-600">No tags yet.</p>
+            )}
+          </div>
+          <div>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Stats</h3>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-400">
+              <span>Total items</span>
+              <span className="text-gray-200">{itemsData?.total ?? 0}</span>
+              <span>Most recent run</span>
+              <span className="text-gray-200">
+                {runs.length ? formatRelativeDate(runs[0].createdAt) : "—"}
+              </span>
+              <span>Most recent protocol update</span>
+              <span className="text-gray-200">
+                {protocols.length
+                  ? formatRelativeDate(
+                      protocols.reduce((a, b) => (a.updatedAt > b.updatedAt ? a : b)).updatedAt
+                    )
+                  : "—"}
+              </span>
+              <span>Members</span>
+              <span className="text-gray-200">{uniqueMembers.length}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Assign item modal ─────────────────────────────────────────────── */}
+      {assignType && (
+        <AssignItemModal
+          entityType={assignType}
+          assignedIds={new Set((itemsData?.items[assignType] ?? []).map((r) => r.entityId))}
+          onAssign={async (entityId) => { await handleAssign(assignType, entityId); }}
+          onClose={() => setAssignType(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Assign item search modal ───────────────────────────────────────────────
+
+function AssignItemModal({
+  entityType,
+  assignedIds,
+  onAssign,
+  onClose,
+}: {
+  entityType: string;
+  assignedIds: Set<string>;
+  onAssign: (entityId: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [candidates, setCandidates] = useState<Array<{ id: string; name: string; sub?: string }>>([]);
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const LABEL: Record<string, string> = {
+    ENTRY: "Protocol", RUN: "Run", PROTEIN_STOCK: "Protein Stock",
+    PLASMID: "Plasmid", CELL_LINE: "Cell Line",
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      try {
+        let list: Array<{ id: string; name: string; sub?: string }> = [];
+        if (entityType === "ENTRY") {
+          const d = await fetch("/api/entries").then((r) => r.json());
+          list = (Array.isArray(d) ? d : [])
+            .filter((e: { entryType?: string }) => e.entryType === "PROTOCOL")
+            .map((e: { id: string; title: string; technique?: string }) => ({ id: e.id, name: e.title, sub: e.technique }));
+        } else if (entityType === "RUN") {
+          const u = getCurrentUser();
+          const d = await fetch("/api/protocol-runs", {
+            headers: { "x-user-id": u.id, "x-user-name": u.name, "x-user-role": u.role },
+          }).then((r) => r.json());
+          list = (Array.isArray(d) ? d : []).map((r: { id: string; title: string; runId?: string }) => ({ id: r.id, name: r.title, sub: r.runId ?? "" }));
+        } else {
+          const urlMap: Record<string, string> = {
+            PROTEIN_STOCK: "/api/inventory/proteinstocks",
+            PLASMID: "/api/inventory/plasmids",
+            CELL_LINE: "/api/inventory/celllines",
+          };
+          const url = urlMap[entityType];
+          if (url) {
+            const d = await fetch(url).then((r) => r.json());
+            const arr = Array.isArray(d) ? d : (d.items ?? []);
+            list = arr.map((it: { id: string; name: string; owner?: string }) => ({ id: it.id, name: it.name, sub: it.owner ?? "" }));
+          }
+        }
+        if (!cancelled) setCandidates(list);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [entityType]);
+
+  const filtered = candidates.filter((c) => c.name.toLowerCase().includes(query.trim().toLowerCase()));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
+      <div
+        className="mx-4 flex max-h-[80vh] w-full max-w-md flex-col rounded-xl border border-white/10 bg-gray-900 p-5 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="mb-3 text-base font-semibold text-white">Assign {LABEL[entityType] ?? "item"}</h3>
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={`Search ${LABEL[entityType] ?? "items"}s…`}
+          className="mb-3 w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
+        />
+        <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
+          {loading ? (
+            <p className="text-sm text-zinc-500">Loading…</p>
+          ) : filtered.length === 0 ? (
+            <p className="text-sm text-zinc-500">No matching items.</p>
+          ) : (
+            filtered.map((c) => {
+              const already = assignedIds.has(c.id);
+              return (
+                <button
+                  key={c.id}
+                  disabled={already || busyId === c.id}
+                  onClick={async () => { setBusyId(c.id); await onAssign(c.id); setBusyId(null); onClose(); }}
+                  className="flex w-full items-center justify-between gap-2 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-left text-sm text-zinc-100 transition hover:border-zinc-500 hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <span className="min-w-0 flex-1 truncate">
+                    {c.name}
+                    {c.sub ? <span className="ml-1 text-xs text-zinc-500">· {c.sub}</span> : null}
+                  </span>
+                  {already && <span className="shrink-0 text-xs text-emerald-400">✓ assigned</span>}
+                </button>
+              );
+            })
+          )}
+        </div>
+        <button
+          onClick={onClose}
+          className="mt-3 w-full rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-300 transition hover:bg-zinc-700"
+        >
+          Close
+        </button>
       </div>
     </div>
   );

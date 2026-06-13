@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { maybeNotifyMissingProject } from "@/lib/projectAccess";
 
 export async function GET(req: NextRequest) {
   try {
@@ -54,6 +55,12 @@ export async function POST(req: NextRequest) {
   try {
     const data = await req.json();
     const item = await prisma.plasmid.create({ data });
+    await maybeNotifyMissingProject({
+      entityType: "PLASMID",
+      entityId: item.id,
+      entityName: item.name,
+      operator: req.headers.get("x-user-name") || item.owner || "Unknown",
+    });
     return NextResponse.json(item, { status: 201 });
   } catch (error) {
     console.error("POST /api/inventory/plasmids failed:", error);

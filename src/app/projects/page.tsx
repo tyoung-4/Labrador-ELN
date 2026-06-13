@@ -25,6 +25,11 @@ type ProjectSummary = {
   runCount: number;
   protocolCount: number;
   lastActivity: string | null;
+  owner: string | null;
+  isGeneral: boolean;
+  isPrivate: boolean;
+  privateMembers: string[];
+  pinnedBy: string[];
 };
 
 type UntaggedCounts = {
@@ -93,7 +98,15 @@ function SkeletonCards() {
 // Project card
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ProjectCard({ tag }: { tag: ProjectSummary }) {
+function ProjectCard({
+  tag,
+  isPinned,
+  onTogglePin,
+}: {
+  tag: ProjectSummary;
+  isPinned: boolean;
+  onTogglePin: (tag: ProjectSummary) => void;
+}) {
   return (
     <a
       href={`/projects/${tag.id}`}
@@ -104,20 +117,38 @@ function ProjectCard({ tag }: { tag: ProjectSummary }) {
 
       {/* Card body */}
       <div className="p-4">
-        {/* Row 1: project name + PROJECT pill */}
+        {/* Row 1: project name + badges */}
         <div className="mb-1 flex items-start justify-between gap-2">
           <span className="text-base font-semibold leading-tight text-white">
             {tag.name}
           </span>
-          <span
-            className="flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-medium text-white"
-            style={{
-              backgroundColor: tag.color + "40",
-              border: `1px solid ${tag.color}`,
-            }}
-          >
-            PROJECT
-          </span>
+          <div className="flex flex-shrink-0 items-center gap-1.5">
+            {tag.isPrivate && (
+              <span className="rounded-full border border-amber-500/50 bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-300">
+                🔒 Private
+              </span>
+            )}
+            <span
+              className="rounded-full px-2 py-0.5 text-xs font-medium text-white"
+              style={{
+                backgroundColor: tag.color + "40",
+                border: `1px solid ${tag.color}`,
+              }}
+            >
+              {tag.isGeneral ? "GENERAL" : "PROJECT"}
+            </span>
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onTogglePin(tag); }}
+              title={isPinned ? "Unpin" : "Pin"}
+              aria-label={isPinned ? "Unpin project" : "Pin project"}
+              className={`rounded px-1.5 py-0.5 text-xs transition ${
+                isPinned ? "text-amber-300 hover:text-amber-200" : "text-zinc-600 hover:text-zinc-300"
+              }`}
+            >
+              📌
+            </button>
+          </div>
         </div>
 
         {/* Row 2: description — max 2 lines */}
@@ -130,7 +161,9 @@ function ProjectCard({ tag }: { tag: ProjectSummary }) {
         {/* Row 3: owner + members */}
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="text-xs text-gray-500">Owner:</span>
-          <span className="text-xs text-gray-300">{tag.createdBy}</span>
+          <span className="text-xs text-gray-300">
+            {tag.isGeneral ? "General" : tag.owner ?? tag.createdBy}
+          </span>
           {tag.members.length > 1 && (
             <>
               <span className="text-xs text-gray-600">·</span>
@@ -317,17 +350,56 @@ export default function ProjectsPage() {
     });
   }, [projects, sortBy]);
 
-  // "My Projects" = projects I created or am a member of (matched by name, case-insensitive)
+  // "My Projects" = projects I own (owner/createdBy), am a private member of, or
+  // a regular member of. The General project (no owner) shows under All only.
   const visibleProjects = useMemo(() => {
     if (listTab === "ALL") return sortedProjects;
     const me = currentUser.trim().toLowerCase();
     if (!me) return [];
-    return sortedProjects.filter(
-      (p) =>
+    return sortedProjects.filter((p) => {
+      if (p.isGeneral) return false;
+      return (
+        (p.owner ?? "").toLowerCase() === me ||
         p.createdBy.toLowerCase() === me ||
+        p.privateMembers.some((m) => m.toLowerCase() === me) ||
         p.members.some((m) => (m.user.name ?? "").toLowerCase() === me)
-    );
+      );
+    });
   }, [sortedProjects, listTab, currentUser]);
+
+  // Per-operator pin state, split into pinned / unpinned for the two sections.
+  const meKey = currentUser.trim().toLowerCase();
+  const isPinned = (p: ProjectSummary) => p.pinnedBy.some((o) => o.toLowerCase() === meKey);
+  const pinnedProjects = useMemo(() => visibleProjects.filter(isPinned), [visibleProjects, meKey]);
+  const unpinnedProjects = useMemo(() => visibleProjects.filter((p) => !isPinned(p)), [visibleProjects, meKey]);
+
+  async function handleTogglePin(tag: ProjectSummary) {
+    const pinned = isPinned(tag);
+    // Optimistic update of local pinnedBy
+    setProjects((prev) =>
+      prev.map((p) =>
+        p.id === tag.id
+          ? {
+              ...p,
+              pinnedBy: pinned
+                ? p.pinnedBy.filter((o) => o.toLowerCase() !== meKey)
+                : [...p.pinnedBy, currentUser],
+            }
+          : p
+      )
+    );
+    try {
+      await fetch(`/api/projects/${tag.id}/pin`, {
+        method: pinned ? "DELETE" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operator: currentUser }),
+      });
+    } catch {
+      // Reload on failure to resync
+      const res = await fetch(`/api/projects?currentUser=${encodeURIComponent(currentUser)}`);
+      if (res.ok) setProjects((await res.json()).projects);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 p-6 text-zinc-100">
@@ -431,10 +503,29 @@ export default function ProjectsPage() {
             </select>
           </div>
 
-          {/* ── Card grid ──────────────────────────────────────────────────── */}
+          {/* ── Pinned section ─────────────────────────────────────────────── */}
+          {pinnedProjects.length > 0 && (
+            <div className="mb-6">
+              <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-400">
+                📌 Pinned
+              </h2>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {pinnedProjects.map((tag) => (
+                  <ProjectCard key={tag.id} tag={tag} isPinned onTogglePin={handleTogglePin} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Card grid (unpinned) ───────────────────────────────────────── */}
+          {pinnedProjects.length > 0 && unpinnedProjects.length > 0 && (
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              All {listTab === "MY" ? "My " : ""}Projects
+            </h2>
+          )}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {visibleProjects.map((tag) => (
-              <ProjectCard key={tag.id} tag={tag} />
+            {unpinnedProjects.map((tag) => (
+              <ProjectCard key={tag.id} tag={tag} isPinned={false} onTogglePin={handleTogglePin} />
             ))}
           </div>
 
@@ -468,6 +559,11 @@ export default function ProjectsPage() {
                 runCount: 0,
                 protocolCount: 0,
                 lastActivity: null,
+                owner: (newTag as { owner?: string | null }).owner ?? currentUser,
+                isGeneral: false,
+                isPrivate: (newTag as { isPrivate?: boolean }).isPrivate ?? false,
+                privateMembers: (newTag as { privateMembers?: string[] }).privateMembers ?? [],
+                pinnedBy: [],
               },
               ...prev,
             ]);

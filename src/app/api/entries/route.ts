@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { TECHNIQUE_OPTIONS, PROTOCOL_TECHNIQUES } from "@/models/entry";
 import { ENTRY_TYPE_CONFIGS } from "@/lib/entryTypes";
+import { maybeNotifyMissingProject } from "@/lib/projectAccess";
 import type { EntryType } from "@prisma/client";
 
 type Actor = {
@@ -141,6 +142,16 @@ export async function POST(request: Request) {
         },
       },
     });
+    // Nudge if a protocol was created without a project assignment (non-blocking).
+    if (created.entryType === "PROTOCOL") {
+      await maybeNotifyMissingProject({
+        entityType: "ENTRY",
+        entityId: created.id,
+        entityName: created.title,
+        operator: actor.name,
+      });
+    }
+
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
     console.error("POST /api/entries failed:", error);

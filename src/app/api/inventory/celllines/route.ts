@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { maybeNotifyMissingProject } from "@/lib/projectAccess";
 
 export async function GET(req: NextRequest) {
   try {
@@ -69,6 +70,12 @@ export async function POST(req: NextRequest) {
   try {
     const data = await req.json();
     const item = await prisma.cellLine.create({ data });
+    await maybeNotifyMissingProject({
+      entityType: "CELL_LINE",
+      entityId: item.id,
+      entityName: item.name,
+      operator: req.headers.get("x-user-name") || item.owner || "Unknown",
+    });
     return NextResponse.json(item, { status: 201 });
   } catch (error) {
     console.error("POST /api/inventory/celllines failed:", error);

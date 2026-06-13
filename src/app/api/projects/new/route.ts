@@ -20,6 +20,9 @@ export async function POST(req: NextRequest) {
     memberUserIds: string[];
     createdBy: string;
     shortTag?: string;
+    owner?: string;
+    isPrivate?: boolean;
+    privateMembers?: string[];
   };
 
   // Validate required fields
@@ -83,6 +86,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Privacy fields
+  const isPrivate = Boolean(body.isPrivate);
+  const privateMembers = isPrivate
+    ? (body.privateMembers ?? []).map((m) => m.trim()).filter(Boolean)
+    : [];
+
   // Create the PROJECT tag with metadata
   const tag = await prisma.tag.create({
     data: {
@@ -90,8 +99,11 @@ export async function POST(req: NextRequest) {
       type: "PROJECT",
       color: body.color,
       createdBy: body.createdBy,
+      owner: body.owner?.trim() || body.createdBy,
       description: body.description?.trim() || null,
       startDate: body.startDate ? new Date(body.startDate) : null,
+      isPrivate,
+      privateMembers,
     },
     select: {
       id: true,
@@ -102,6 +114,9 @@ export async function POST(req: NextRequest) {
       createdAt: true,
       description: true,
       startDate: true,
+      owner: true,
+      isPrivate: true,
+      privateMembers: true,
     },
   });
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { maybeNotifyMissingProject } from "@/lib/projectAccess";
 
 type Actor = {
   id: string;
@@ -188,6 +189,16 @@ export async function POST(request: Request) {
         runner: { select: { id: true, name: true, role: true } },
       },
     });
+
+    // Nudge if the run was started without a project assignment (non-blocking).
+    if (!isMockRun) {
+      await maybeNotifyMissingProject({
+        entityType: "RUN",
+        entityId: created.id,
+        entityName: created.title,
+        operator: actor.name,
+      });
+    }
 
     return NextResponse.json(created, { status: 201 });
   } catch (error) {

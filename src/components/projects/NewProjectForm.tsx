@@ -68,6 +68,8 @@ export default function NewProjectForm({
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [availableMembers, setAvailableMembers] = useState<MemberUser[]>([]);
   const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [privateMembersText, setPrivateMembersText] = useState("");
   const [nameConflict, setNameConflict] = useState<string | null>(null);
   const [nameChecking, setNameChecking] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -204,7 +206,12 @@ export default function NewProjectForm({
           startDate: startDate || undefined,
           memberUserIds: selectedMemberIds,
           createdBy: currentUser,
+          owner: currentUser,
           shortTag: shortTag.trim() || undefined,
+          isPrivate,
+          privateMembers: isPrivate
+            ? privateMembersText.split(",").map((m) => m.trim()).filter(Boolean)
+            : [],
         }),
       });
       const data = (await res.json()) as { success?: boolean; tag?: Tag; error?: string };
@@ -408,6 +415,33 @@ export default function NewProjectForm({
                 );
               })}
             </div>
+          )}
+        </div>
+
+        {/* ── Privacy ───────────────────────────────────────────── */}
+        <div className="mb-6">
+          <label className="flex items-center gap-2 text-sm font-medium text-zinc-300">
+            <input
+              type="checkbox"
+              checked={isPrivate}
+              onChange={(e) => setIsPrivate(e.target.checked)}
+              disabled={isSubmitting}
+              className="h-4 w-4 rounded border-zinc-600 bg-zinc-800 accent-amber-500"
+            />
+            🔒 Private project
+          </label>
+          <p className="mt-1 text-xs text-zinc-500">
+            Only you and the members you list below will be able to see it.
+          </p>
+          {isPrivate && (
+            <input
+              type="text"
+              value={privateMembersText}
+              onChange={(e) => setPrivateMembersText(e.target.value)}
+              placeholder="Add members (comma-separated, e.g. Finn, Jake)"
+              className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:border-indigo-500 focus:outline-none"
+              disabled={isSubmitting}
+            />
           )}
         </div>
 

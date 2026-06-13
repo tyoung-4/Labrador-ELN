@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { maybeNotifyMissingProject } from "@/lib/projectAccess";
 
 // Generate a unique batch ID: <PREFIX>-<YYYYMMDD>-<A/B/C/...>
 async function generateBatchId(stockId: string, proteinName: string, purificationDate: Date): Promise<string> {
@@ -84,6 +85,14 @@ export async function POST(req: NextRequest, ctx: Context) {
         notes: body.notes?.trim() || null,
         createdBy,
       },
+    });
+
+    // Nudge if the parent protein stock has no project assignment (non-blocking).
+    await maybeNotifyMissingProject({
+      entityType: "PROTEIN_STOCK",
+      entityId: params.id,
+      entityName: stock.name,
+      operator: createdBy,
     });
 
     return NextResponse.json(batch, { status: 201 });

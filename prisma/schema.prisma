@@ -92,6 +92,13 @@ model Tag {
   startDate   DateTime?       // user-set display date, overrides createdAt for display
   members     ProjectMember[] // only populated for PROJECT-type tags
 
+  // Project-capability fields (PROJECT-type tags only) — all additive, defaulted
+  owner          String?   // display owner; null for the General project
+  isGeneral      Boolean   @default(false) // true for the single auto-seeded General project
+  isPrivate      Boolean   @default(false)
+  privateMembers String[]  @default([])    // operators allowed to see a private project
+  pinnedBy       String[]  @default([])    // operators who have pinned this project (per-operator)
+
   // Short tag self-referential relation
   shortTagId    String? @unique
   shortTag      Tag?    @relation("ProjectShortTag", fields: [shortTagId], references: [id])

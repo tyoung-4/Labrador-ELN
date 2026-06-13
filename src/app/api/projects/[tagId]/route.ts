@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
+import { canViewProject } from "@/lib/projectAccess";
 
 type RouteContext = { params: Promise<{ tagId: string }> | { tagId: string } };
 
@@ -8,11 +9,12 @@ async function getTagId(context: RouteContext): Promise<string> {
   return resolved.tagId;
 }
 
-// GET /api/projects/[tagId]
+// GET /api/projects/[tagId]?currentUser=username
 // Returns full project detail: tag info (with description, startDate, members),
 // runs (with pass/fail/skip counts), protocols, and lastActivity timestamp.
-export async function GET(_request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
   const tagId = await getTagId(context);
+  const currentUser = new URL(request.url).searchParams.get("currentUser") ?? "";
   try {
     const tag = await prisma.tag.findUnique({
       where: { id: tagId },
@@ -26,6 +28,11 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         description: true,
         startDate: true,
         shortTagId: true,
+        owner: true,
+        isGeneral: true,
+        isPrivate: true,
+        privateMembers: true,
+        pinnedBy: true,
         members: {
           select: {
             id: true,
@@ -39,6 +46,11 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
     if (!tag || tag.type !== "PROJECT") {
       return new NextResponse(null, { status: 404 });
+    }
+
+    // Privacy — never leak a private project to an unauthorized operator.
+    if (!canViewProject(tag, currentUser)) {
+      return NextResponse.json({ error: "This project is private" }, { status: 403 });
     }
 
     // Collect items tagged with either the project tag or its short tag
@@ -121,6 +133,11 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         description: tag.description ?? null,
         startDate: tag.startDate?.toISOString() ?? null,
         shortTagId: tag.shortTagId ?? null,
+        owner: tag.owner ?? null,
+        isGeneral: tag.isGeneral,
+        isPrivate: tag.isPrivate,
+        privateMembers: tag.privateMembers,
+        pinnedBy: tag.pinnedBy,
         members: tag.members.map((m) => ({
           id: m.id,
           addedAt: m.addedAt.toISOString(),
@@ -151,5 +168,93 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   } catch (error) {
     console.error(`GET /api/projects/${tagId} failed:`, error);
     return NextResponse.json({ error: "Failed to load project detail" }, { status: 500 });
+  }
+}
+
+// PATCH /api/projects/[tagId]
+// Body: any of { name, description, owner, color, isPrivate, privateMembers }
+// The General project cannot be renamed, made private, or given an owner.
+export async function PATCH(request: NextRequest, context: RouteContext) {
+  const tagId = await getTagId(context);
+  try {
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const existing = await prisma.tag.findUnique({
+      where: { id: tagId },
+      select: { id: true, type: true, isGeneral: true },
+    });
+    if (!existing || existing.type !== "PROJECT") {
+      return new NextResponse(null, { status: 404 });
+    }
+
+    const data: Record<string, unknown> = {};
+    if (typeof body.description === "string") data.description = body.description.trim() || null;
+    if (typeof body.color === "string" && body.color) data.color = body.color;
+
+    if (existing.isGeneral) {
+      // Reject changes that would violate General-project invariants.
+      if (body.isPrivate === true || (typeof body.owner === "string" && body.owner.trim()) ||
+          (typeof body.name === "string" && body.name.trim() && body.name.trim().toLowerCase() !== "general")) {
+        return NextResponse.json(
+          { error: "The General project cannot be renamed, made private, or given an owner" },
+          { status: 400 }
+        );
+      }
+    } else {
+      if (typeof body.name === "string" && body.name.trim()) data.name = body.name.trim();
+      if (typeof body.owner === "string") data.owner = body.owner.trim() || null;
+      if (typeof body.isPrivate === "boolean") data.isPrivate = body.isPrivate;
+      if (Array.isArray(body.privateMembers)) {
+        data.privateMembers = (body.privateMembers as unknown[])
+          .map((m) => String(m).trim())
+          .filter(Boolean);
+      }
+    }
+
+    const updated = await prisma.tag.update({
+      where: { id: tagId },
+      data,
+      select: {
+        id: true, name: true, color: true, description: true, owner: true,
+        isGeneral: true, isPrivate: true, privateMembers: true, pinnedBy: true,
+      },
+    });
+    return NextResponse.json({ success: true, project: updated });
+  } catch (error) {
+    console.error(`PATCH /api/projects/${tagId} failed:`, error);
+    return NextResponse.json({ error: "Failed to update project" }, { status: 500 });
+  }
+}
+
+// DELETE /api/projects/[tagId]
+// Only allowed when no items are assigned. The General project is never deletable.
+export async function DELETE(_request: NextRequest, context: RouteContext) {
+  const tagId = await getTagId(context);
+  try {
+    const tag = await prisma.tag.findUnique({
+      where: { id: tagId },
+      select: { id: true, type: true, isGeneral: true, shortTagId: true },
+    });
+    if (!tag || tag.type !== "PROJECT") {
+      return new NextResponse(null, { status: 404 });
+    }
+    if (tag.isGeneral) {
+      return NextResponse.json({ error: "The General project cannot be deleted" }, { status: 400 });
+    }
+
+    const tagIds = [tagId, ...(tag.shortTagId ? [tag.shortTagId] : [])];
+    const itemCount = await prisma.tagAssignment.count({ where: { tagId: { in: tagIds } } });
+    if (itemCount > 0) {
+      return NextResponse.json(
+        { error: `Cannot delete a project with ${itemCount} assigned item(s). Unassign them first.` },
+        { status: 400 }
+      );
+    }
+
+    // ProjectMember + TagAssignment rows cascade on Tag delete.
+    await prisma.tag.delete({ where: { id: tagId } });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error(`DELETE /api/projects/${tagId} failed:`, error);
+    return NextResponse.json({ error: "Failed to delete project" }, { status: 500 });
   }
 }
