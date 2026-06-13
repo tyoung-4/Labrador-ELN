@@ -2,9 +2,34 @@
 // Uses CommonJS so no tsx/ts-node required.
 
 const { PrismaClient } = require("@prisma/client");
+const bcrypt = require("bcryptjs");
 const prisma = new PrismaClient();
 
+// Canonical ELN users + a default dev password. Change these after first login.
+const ELN_USERS = [
+  { id: "finn-user",      name: "Finn",               role: "MEMBER" },
+  { id: "jake-user",      name: "Jake",               role: "MEMBER" },
+  { id: "admin-user",     name: "Admin",              role: "ADMIN"  },
+  { id: "pb-user",        name: "Princess Bubblegum", role: "MEMBER" },
+  { id: "marceline-user", name: "Marceline",          role: "MEMBER" },
+];
+const DEFAULT_PASSWORD = process.env.ELN_SEED_PASSWORD || "labrador";
+
+async function seedAuth() {
+  const hash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
+  for (const u of ELN_USERS) {
+    await prisma.user.upsert({
+      where: { id: u.id },
+      update: { passwordHash: hash, isActive: true, role: u.role },
+      create: { id: u.id, name: u.name, role: u.role, email: `${u.id}@local.eln`, passwordHash: hash, isActive: true },
+    });
+  }
+  console.log(`  seeded passwords for ${ELN_USERS.length} users (default: "${DEFAULT_PASSWORD}")`);
+}
+
 async function main() {
+  await seedAuth();
+
   // Use the existing admin user (id: "admin-user")
   const admin = await prisma.user.upsert({
     where: { email: "admin-user@local.eln" },

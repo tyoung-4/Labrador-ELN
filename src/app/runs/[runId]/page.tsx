@@ -1151,6 +1151,17 @@ export default function ActiveRunPage() {
   const [completingRun, setCompletingRun] = useState(false);
   const [showCompleteBanner, setShowCompleteBanner] = useState(false);
   const [showMockRunEndModal, setShowMockRunEndModal] = useState(false);
+  // ── Sign & lock / audit history (B5) ──────────────────────────────────────
+  const [showSignDialog, setShowSignDialog] = useState(false);
+  const [signStatement, setSignStatement] = useState("I confirm these results are accurate and complete.");
+  const [signing, setSigning] = useState(false);
+  type RunHistory = {
+    audit: Array<{ id: string; action: string; actorName: string; summary: string; createdAt: string }>;
+    signatures: Array<{ id: string; signerName: string; meaning: string; statement: string; signedAt: string }>;
+    integrity: { valid: boolean; brokenAt: string | null };
+  };
+  const [history, setHistory] = useState<RunHistory | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
   const [runTagAssignments, setRunTagAssignments] = useState<NonNullable<ProtocolRun["tagAssignments"]>>([]);
   const [showTagNudge, setShowTagNudge] = useState(false);
   const [tagNudgeDismissed, setTagNudgeDismissed] = useState(false);
@@ -1262,6 +1273,18 @@ export default function ActiveRunPage() {
       setShowMockRunEndModal(true);
     }
   }, [run?.isMockRun, allResolved, isRunComplete]);
+
+  const fetchHistory = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/protocol-runs/${runId}/history`, { headers: authHeaders });
+      if (res.ok) setHistory(await res.json());
+    } catch { /* ignore */ }
+  }, [runId, authHeaders]);
+
+  // ── Load audit/signature history for completed (non-mock) runs ─────────────
+  useEffect(() => {
+    if (run && isRunComplete && !run.isMockRun) void fetchHistory();
+  }, [run, isRunComplete, fetchHistory]);
 
   // ── Persist active step index to interactionState ──────────────────────────
   const persistActiveStep = useCallback(
@@ -1534,8 +1557,14 @@ export default function ActiveRunPage() {
       setInventoryConfirmed(new Set());
       setShowInventoryConfirm(true);
     } else {
-      void completeRun();
+      proceedToFinish();
     }
+  }
+
+  // Mock runs complete without a signature; real runs require sign-and-lock.
+  function proceedToFinish() {
+    if (run?.isMockRun) void completeRun();
+    else setShowSignDialog(true);
   }
 
   async function completeRun() {
@@ -1556,6 +1585,56 @@ export default function ActiveRunPage() {
       }
     } finally {
       setCompletingRun(false);
+    }
+  }
+
+  // Sign & lock — completes a real run with an electronic signature.
+  async function signRun() {
+    if (!run || signing) return;
+    setSigning(true);
+    try {
+      const res = await fetch(`/api/protocol-runs/${runId}/sign`, {
+        method: "POST",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ meaning: "COMPLETION", statement: signStatement.trim() }),
+      });
+      if (res.ok) {
+        setShowSignDialog(false);
+        // Re-fetch the full run to pick up the new status/locked state.
+        const fresh = await fetch(`/api/protocol-runs/${runId}`, { headers: authHeaders });
+        if (fresh.ok) setRun((await fresh.json()) as ProtocolRun);
+        setShowCompleteBanner(true);
+        await fetchHistory();
+        const hasProjectTag = runTagAssignments.some((a) => a.tag.type === "PROJECT");
+        if (!hasProjectTag && !tagNudgeDismissed) setShowTagNudge(true);
+      }
+    } finally {
+      setSigning(false);
+    }
+  }
+
+  async function handleUnlockRun() {
+    if (!run || unlocking) return;
+    const reason = window.prompt("Reason for unlocking this signed run (recorded in the audit trail):");
+    if (!reason || !reason.trim()) return;
+    setUnlocking(true);
+    try {
+      const res = await fetch(`/api/protocol-runs/${runId}/unlock`, {
+        method: "POST",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: reason.trim() }),
+      });
+      if (res.ok) {
+        const fresh = await fetch(`/api/protocol-runs/${runId}`, { headers: authHeaders });
+        if (fresh.ok) setRun((await fresh.json()) as ProtocolRun);
+        setShowCompleteBanner(false);
+        await fetchHistory();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        window.alert(d.error ?? "Failed to unlock");
+      }
+    } finally {
+      setUnlocking(false);
     }
   }
 
@@ -1705,7 +1784,7 @@ export default function ActiveRunPage() {
                 </button>
                 <button
                   disabled={!allConfirmed}
-                  onClick={() => { setShowInventoryConfirm(false); void completeRun(); }}
+                  onClick={() => { setShowInventoryConfirm(false); proceedToFinish(); }}
                   className="rounded bg-indigo-600 px-4 py-2 text-xs text-white hover:bg-indigo-500 disabled:opacity-40"
                 >
                   Finish Run
@@ -1716,11 +1795,42 @@ export default function ActiveRunPage() {
         );
       })()}
 
-      {showCompleteBanner && !run.isMockRun && (
-        <div className="shrink-0 border-b border-emerald-500/50 bg-emerald-500/10 px-6 py-2">
-          <span className="text-sm font-semibold text-emerald-200">
-            🎉 All steps resolved — run completed and locked!
-          </span>
+      {isRunComplete && !run.isMockRun && (
+        <div className="shrink-0 border-b border-emerald-500/50 bg-emerald-500/10 px-6 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-sm font-semibold text-emerald-200">
+              🔒 Run signed &amp; locked
+              {history?.signatures?.[0] && (
+                <span className="ml-2 font-normal text-emerald-300/80">
+                  — {history.signatures[0].meaning} signed by {history.signatures[0].signerName} on{" "}
+                  {new Date(history.signatures[0].signedAt).toLocaleString()}
+                </span>
+              )}
+            </span>
+            {currentUser.role === "ADMIN" && (
+              <button
+                onClick={handleUnlockRun}
+                disabled={unlocking}
+                className="rounded border border-amber-500/50 bg-amber-500/15 px-3 py-1 text-xs text-amber-300 transition hover:bg-amber-500/25 disabled:opacity-50"
+              >
+                {unlocking ? "Unlocking…" : "Unlock (admin)"}
+              </button>
+            )}
+          </div>
+
+          {history && (
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+              <span className={history.integrity.valid ? "text-emerald-400" : "text-red-400"}>
+                {history.integrity.valid ? "✓ Audit chain intact" : "⚠ Audit chain tampered"}
+              </span>
+              {history.audit.map((a) => (
+                <span key={a.id} className="text-zinc-400">
+                  <span className="font-mono text-zinc-500">{a.action}</span> · {a.actorName}
+                  {a.summary ? ` · ${a.summary}` : ""}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1786,6 +1896,45 @@ export default function ActiveRunPage() {
           />
         </div>
       </div>
+
+      {/* ── Sign & lock dialog ────────────────────────────────────────────── */}
+      {showSignDialog && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-md rounded-xl border border-emerald-500/40 bg-zinc-900 p-6 shadow-2xl">
+            <h3 className="mb-1 text-base font-semibold text-white">Sign &amp; lock run</h3>
+            <p className="mb-4 text-sm text-zinc-400">
+              Signing records an electronic signature in the tamper-evident audit trail and
+              locks this run from further edits. An admin can unlock it later if needed.
+            </p>
+            <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-zinc-500">Attestation</label>
+            <textarea
+              value={signStatement}
+              onChange={(e) => setSignStatement(e.target.value)}
+              rows={3}
+              className="mb-2 w-full resize-none rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none"
+            />
+            <p className="mb-4 text-xs text-zinc-500">
+              Signing as <span className="font-medium text-zinc-300">{currentUser.name}</span> ({currentUser.role})
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowSignDialog(false)}
+                disabled={signing}
+                className="rounded border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={signRun}
+                disabled={signing || !signStatement.trim()}
+                className="rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {signing ? "Signing…" : "Sign & lock"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Counter incomplete warning ────────────────────────────────────── */}
       {counterWarning && (

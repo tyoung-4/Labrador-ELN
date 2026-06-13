@@ -1,50 +1,11 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { maybeNotifyMissingProject } from "@/lib/projectAccess";
-
-type Actor = {
-  id: string;
-  name: string;
-  email: string;
-  role: "ADMIN" | "MEMBER";
-};
-
-function getActorFromRequest(request?: Request): Actor {
-  const headerId = request?.headers.get("x-user-id")?.trim();
-  const headerName = request?.headers.get("x-user-name")?.trim();
-  const headerRole = request?.headers.get("x-user-role")?.trim().toUpperCase();
-
-  const name = headerName || "Finn";
-  const safeId = headerId || `user-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "member"}`;
-  const role: "ADMIN" | "MEMBER" = headerRole === "ADMIN" ? "ADMIN" : "MEMBER";
-
-  return {
-    id: safeId,
-    name,
-    email: `${safeId}@local.eln`,
-    role,
-  };
-}
-
-async function ensureActor(actor: Actor) {
-  return prisma.user.upsert({
-    where: { id: actor.id },
-    create: {
-      id: actor.id,
-      name: actor.name,
-      email: actor.email,
-      role: actor.role,
-    },
-    update: {
-      name: actor.name,
-      role: actor.role,
-    },
-  });
-}
+import { getActorFromRequest, ensureActor } from "@/lib/auth";
 
 export async function GET(request: Request) {
   try {
-    const actor = getActorFromRequest(request);
+    const actor = await getActorFromRequest(request);
     await ensureActor(actor);
 
     const url = new URL(request.url);
@@ -116,7 +77,7 @@ async function generateRunId(): Promise<string> {
 
 export async function POST(request: Request) {
   try {
-    const actor = getActorFromRequest(request);
+    const actor = await getActorFromRequest(request);
     await ensureActor(actor);
 
     const payload = await request.json().catch(() => ({}));

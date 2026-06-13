@@ -80,6 +80,13 @@ export default function AppTopNav() {
     router.push("/");
   }
 
+  async function handleLogout() {
+    try { await fetch("/api/auth/logout", { method: "POST" }); } catch {}
+    _cachedUserId = null;
+    try { localStorage.removeItem(USER_STORAGE_KEY); } catch {}
+    window.location.href = "/login";
+  }
+
   const currentUser = ELN_USERS.find((u) => u.id === userId) ?? ELN_USERS[0];
 
   return (
@@ -129,6 +136,12 @@ export default function AppTopNav() {
             </option>
           ))}
         </select>
+        <button
+          onClick={handleLogout}
+          className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300 transition hover:bg-zinc-700"
+        >
+          Log out
+        </button>
       </div>
     </nav>
   );

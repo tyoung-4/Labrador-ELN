@@ -13,12 +13,61 @@ model User {
   name               String?
   role               String          @default("MEMBER")
   createdAt          DateTime        @default(now())
+  // Auth — additive; null passwordHash means "no local password set yet"
+  passwordHash       String?
+  isActive           Boolean         @default(true)
+  lastLoginAt        DateTime?
+  sessions           Session[]
   entries            Entry[]
   protocolRuns       ProtocolRun[]
   projectMemberships ProjectMember[]
   recipes            Recipe[]
   uploadedFiles      RunStepFile[]
   fileAnnotations    FileAnnotation[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Tamper-evident audit trail. `hash = sha256(prevHash + payload)` chains rows
+// per entity, so altering/removing a past row is detectable.
+model AuditLog {
+  id         String   @id @default(cuid())
+  entityType String   // "RUN" | "ENTRY" | "PROTEIN_BATCH" | ...
+  entityId   String
+  action     String   // CREATE | UPDATE | DELETE | STATUS_CHANGE | SIGN | LOCK | UNLOCK
+  actorId    String
+  actorName  String
+  summary    String   @default("")
+  diff       Json?
+  prevHash   String?
+  hash       String
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+}
+
+// Electronic signatures (attestations) attached to a record.
+model Signature {
+  id          String   @id @default(cuid())
+  entityType  String
+  entityId    String
+  signerId    String
+  signerName  String
+  meaning     String   // COMPLETION | REVIEW | WITNESS
+  statement   String
+  contentHash String   // hash of the record snapshot at signing time
+  signedAt    DateTime @default(now())
+
+  @@index([entityType, entityId])
 }
 
 enum EntryType {

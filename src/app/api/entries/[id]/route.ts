@@ -3,13 +3,8 @@ import prisma from "@/lib/prisma";
 import { TECHNIQUE_OPTIONS, PROTOCOL_TECHNIQUES } from "@/models/entry";
 import { ENTRY_TYPE_CONFIGS } from "@/lib/entryTypes";
 import type { EntryType } from "@prisma/client";
+import { getActorFromRequest, ensureActor, type Actor } from "@/lib/auth";
 
-type Actor = {
-  id: string;
-  name: string;
-  email: string;
-  role: "ADMIN" | "MEMBER";
-};
 type RouteContext = { params: Promise<{ id: string }> | { id: string } };
 
 function normalizeDescription(value: unknown): string {
@@ -35,39 +30,6 @@ function normalizeEntryType(value: unknown): EntryType {
 function normalizeTypedData(value: unknown): object {
   if (value && typeof value === "object") return value;
   return {};
-}
-
-function getActorFromRequest(request?: Request): Actor {
-  const headerId = request?.headers.get("x-user-id")?.trim();
-  const headerName = request?.headers.get("x-user-name")?.trim();
-  const headerRole = request?.headers.get("x-user-role")?.trim().toUpperCase();
-
-  const name = headerName || "Finn";
-  const safeId = headerId || `user-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "member"}`;
-  const role: "ADMIN" | "MEMBER" = headerRole === "ADMIN" ? "ADMIN" : "MEMBER";
-
-  return {
-    id: safeId,
-    name,
-    email: `${safeId}@local.eln`,
-    role,
-  };
-}
-
-async function ensureActor(actor: Actor) {
-  return prisma.user.upsert({
-    where: { id: actor.id },
-    create: {
-      id: actor.id,
-      name: actor.name,
-      email: actor.email,
-      role: actor.role,
-    },
-    update: {
-      name: actor.name,
-      role: actor.role,
-    },
-  });
 }
 
 function canModifyEntry(actor: Actor, authorId: string | null): boolean {
@@ -111,7 +73,7 @@ async function enrichWithTags<T extends { id: string }>(entry: T) {
 export async function GET(request: Request, context: RouteContext) {
   const id = await getEntryId(context);
   try {
-    const actor = getActorFromRequest(request);
+    const actor = await getActorFromRequest(request);
     await ensureActor(actor);
 
     const found = await prisma.entry.findUnique({
@@ -132,7 +94,7 @@ export async function PUT(request: Request, context: RouteContext) {
   const id = await getEntryId(context);
   const payload = await request.json().catch(() => ({}));
   try {
-    const actor = getActorFromRequest(request);
+    const actor = await getActorFromRequest(request);
     await ensureActor(actor);
 
     const existing = await prisma.entry.findUnique({ where: { id }, select: { authorId: true } });
@@ -177,7 +139,7 @@ export async function PUT(request: Request, context: RouteContext) {
 export async function DELETE(request: Request, context: RouteContext) {
   const id = await getEntryId(context);
   try {
-    const actor = getActorFromRequest(request);
+    const actor = await getActorFromRequest(request);
     await ensureActor(actor);
 
     const existing = await prisma.entry.findUnique({ where: { id }, select: { authorId: true } });
@@ -215,7 +177,7 @@ export async function DELETE(request: Request, context: RouteContext) {
 export async function POST(request: Request, context: RouteContext) {
   const id = await getEntryId(context);
   try {
-    const actor = getActorFromRequest(request);
+    const actor = await getActorFromRequest(request);
     await ensureActor(actor);
 
     const source = await prisma.entry.findUnique({ where: { id } });
