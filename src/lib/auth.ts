@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import bcrypt from "bcryptjs";
 import prisma from "@/lib/prisma";
 
 // ─── Server-trusted identity ─────────────────────────────────────────────────
@@ -115,4 +116,59 @@ export function canEditEntity(actor: Actor | null | undefined, ownerName: string
   if (!actor) return false;
   if (isAdmin(actor)) return true;
   return (actor.name ?? "").trim().toLowerCase() === (ownerName ?? "").trim().toLowerCase();
+}
+
+// ─── Password + session lifecycle (login/logout) ─────────────────────────────
+
+const SESSION_TTL_DAYS = 30;
+
+export async function hashPassword(plain: string): Promise<string> {
+  return bcrypt.hash(plain, 10);
+}
+
+/** Find an active user by email or display name and verify their password. */
+export async function verifyCredentials(identifier: string, password: string) {
+  const id = identifier.trim();
+  if (!id || !password) return null;
+  // The DB has duplicate rows per person (canonical "{name}-user" + legacy
+  // UUID/@labrador.eln rows). Only the canonical rows carry a passwordHash, so
+  // requiring one here disambiguates to the right account.
+  const user = await prisma.user.findFirst({
+    where: {
+      isActive: true,
+      passwordHash: { not: null },
+      OR: [
+        { email: { equals: id, mode: "insensitive" } },
+        { name: { equals: id, mode: "insensitive" } },
+      ],
+    },
+  });
+  if (!user || !user.passwordHash) return null;
+  const ok = await bcrypt.compare(password, user.passwordHash);
+  return ok ? user : null;
+}
+
+/** Create a Session row and set the httpOnly session cookie. */
+export async function createSession(userId: string): Promise<void> {
+  const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 86400_000);
+  const session = await prisma.session.create({ data: { userId, expiresAt } });
+  await prisma.user.update({ where: { id: userId }, data: { lastLoginAt: new Date() } });
+  const store = await cookies();
+  store.set(SESSION_COOKIE, session.id, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    expires: expiresAt,
+  });
+}
+
+/** Delete the current session row (if any) and clear the cookie. */
+export async function destroyCurrentSession(): Promise<void> {
+  const store = await cookies();
+  const sid = store.get(SESSION_COOKIE)?.value;
+  if (sid) {
+    await prisma.session.deleteMany({ where: { id: sid } });
+    store.delete(SESSION_COOKIE);
+  }
 }
