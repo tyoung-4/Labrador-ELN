@@ -1,32 +1,8 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-
-type Actor = {
-  id: string;
-  name: string;
-  email: string;
-  role: "ADMIN" | "MEMBER";
-};
+import { getActorFromRequest, ensureActor } from "@/lib/auth";
 
 type RouteContext = { params: Promise<{ id: string }> | { id: string } };
-
-function getActorFromRequest(request?: Request): Actor {
-  const headerId = request?.headers.get("x-user-id")?.trim();
-  const headerName = request?.headers.get("x-user-name")?.trim();
-  const headerRole = request?.headers.get("x-user-role")?.trim().toUpperCase();
-  const name = headerName || "Finn";
-  const safeId = headerId || `user-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "member"}`;
-  const role: "ADMIN" | "MEMBER" = headerRole === "ADMIN" ? "ADMIN" : "MEMBER";
-  return { id: safeId, name, email: `${safeId}@local.eln`, role };
-}
-
-async function ensureActor(actor: Actor) {
-  return prisma.user.upsert({
-    where: { id: actor.id },
-    create: { id: actor.id, name: actor.name, email: actor.email, role: actor.role },
-    update: { name: actor.name, role: actor.role },
-  });
-}
 
 async function getRunId(context: RouteContext): Promise<string> {
   const resolved = await context.params;
@@ -37,7 +13,7 @@ async function getRunId(context: RouteContext): Promise<string> {
 export async function GET(request: Request, context: RouteContext) {
   const runId = await getRunId(context);
   try {
-    const actor = getActorFromRequest(request);
+    const actor = await getActorFromRequest(request);
     await ensureActor(actor);
 
     const run = await prisma.protocolRun.findUnique({ where: { id: runId }, select: { runnerId: true } });
@@ -61,7 +37,7 @@ export async function GET(request: Request, context: RouteContext) {
 export async function POST(request: Request, context: RouteContext) {
   const runId = await getRunId(context);
   try {
-    const actor = getActorFromRequest(request);
+    const actor = await getActorFromRequest(request);
     await ensureActor(actor);
 
     const run = await prisma.protocolRun.findUnique({
@@ -108,7 +84,7 @@ export async function POST(request: Request, context: RouteContext) {
 export async function DELETE(request: Request, context: RouteContext) {
   const runId = await getRunId(context);
   try {
-    const actor = getActorFromRequest(request);
+    const actor = await getActorFromRequest(request);
     await ensureActor(actor);
 
     const run = await prisma.protocolRun.findUnique({
