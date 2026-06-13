@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getActorFromRequest, ensureActor, type Actor } from "@/lib/auth";
+import { recordAudit } from "@/lib/audit";
 
 type RouteContext = { params: Promise<{ id: string }> | { id: string } };
 
@@ -149,6 +150,12 @@ export async function PUT(request: Request, context: RouteContext) {
         },
       },
     });
+
+    // Audit lifecycle status changes (run ended via the normal flow).
+    if (isEnding) {
+      await recordAudit({ entityType: "RUN", entityId: id, action: "STATUS_CHANGE", actor, summary: `Run ${nextStatus!.toLowerCase()}` });
+      await recordAudit({ entityType: "RUN", entityId: id, action: "LOCK", actor, summary: "Run locked" });
+    }
 
     return NextResponse.json(await enrichRunWithTags(updated));
   } catch (error) {

@@ -45,8 +45,8 @@ export async function POST(request: Request, context: RouteContext) {
       select: { runnerId: true, status: true },
     });
     if (!run) return new NextResponse(null, { status: 404 });
-    if (run.status === "COMPLETED") {
-      return NextResponse.json({ error: "Run is already completed and locked." }, { status: 409 });
+    if (run.status === "COMPLETED" || run.status === "ABORTED") {
+      return NextResponse.json({ error: "Run is signed/locked — no further changes allowed." }, { status: 409 });
     }
     if (actor.role !== "ADMIN" && run.runnerId !== actor.id) {
       return NextResponse.json({ error: "Not allowed" }, { status: 403 });
@@ -92,8 +92,8 @@ export async function DELETE(request: Request, context: RouteContext) {
       select: { runnerId: true, status: true },
     });
     if (!run) return new NextResponse(null, { status: 404 });
-    if (run.status === "COMPLETED") {
-      return NextResponse.json({ error: "Run is already completed and locked." }, { status: 409 });
+    if (run.status === "COMPLETED" || run.status === "ABORTED") {
+      return NextResponse.json({ error: "Run is signed/locked — no further changes allowed." }, { status: 409 });
     }
     if (actor.role !== "ADMIN" && run.runnerId !== actor.id) {
       return NextResponse.json({ error: "Not allowed" }, { status: 403 });
