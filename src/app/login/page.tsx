@@ -43,8 +43,21 @@ function LoginForm() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-950 p-6 text-zinc-100">
       <div className="w-full max-w-sm rounded-xl border border-white/10 bg-zinc-900 p-6 shadow-2xl">
-        <h1 className="mb-1 text-xl font-semibold text-white">Labrador ELN</h1>
-        <p className="mb-5 text-sm text-zinc-400">Sign in to continue</p>
+        {/* Logo — white line-art on a transparent background (sits cleanly on
+            the dark card). */}
+        <div className="mb-3 flex justify-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/labrador-logo.png"
+            alt="Labrador ELN"
+            width={112}
+            height={112}
+            className="h-28 w-28"
+          />
+        </div>
+        <h1 className="mb-0.5 text-center text-xl font-semibold text-white">Labrador ELN</h1>
+        <p className="mb-1 text-center text-xs uppercase tracking-wide text-zinc-500">JCW Lab · City of Hope</p>
+        <p className="mb-5 text-center text-sm text-zinc-400">Sign in to continue</p>
 
         <label className="mb-1 block text-sm font-medium text-zinc-300">Username or email</label>
         <input
