@@ -13,12 +13,12 @@ export default function BrandMark() {
   return (
     <div
       aria-hidden="true"
-      className="flex w-full select-none justify-end border-t border-white/5 bg-zinc-950 px-8 py-10"
+      className="flex w-full select-none justify-end border-t border-white/5 bg-zinc-950 px-8 pt-8 pb-2"
     >
-      <div className="flex flex-col items-center gap-1 opacity-60">
+      <div className="flex flex-col items-center opacity-60">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/labrador-logo.png" alt="" className="h-12 w-12" />
-        <span className="text-[5px] font-medium tracking-wide text-zinc-400">Labrador ELN</span>
+        <span className="-mt-2 text-[5px] font-medium tracking-wide text-zinc-400">Labrador ELN</span>
       </div>
     </div>
   );
