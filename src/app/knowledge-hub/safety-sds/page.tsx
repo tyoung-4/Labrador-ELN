@@ -6,7 +6,7 @@ export default function SafetySdsPage() {
     <div className="flex min-h-screen flex-col gap-3 bg-zinc-950 p-6 text-zinc-100">
       <AppTopNav />
       <div className="flex items-center gap-3">
-        <Link href="/" className="text-xs text-zinc-500 hover:text-zinc-300">← Back</Link>
+        <Link href="/knowledge-hub" className="text-xs text-zinc-500 hover:text-zinc-300">← Back</Link>
         <h1 className="text-lg font-semibold text-zinc-100">Safety & SDS</h1>
         <span className="rounded border border-yellow-500/40 bg-yellow-500/10 px-2 py-0.5 text-xs text-yellow-400">
           In Development

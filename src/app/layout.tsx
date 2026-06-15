@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ToastProvider } from "@/components/ToastProvider";
 import BrandMark from "@/components/BrandMark";
+import ReturnToTop from "@/components/ReturnToTop";
 
 export const metadata: Metadata = {
   title: "JCW Lab ELN",
@@ -29,6 +30,8 @@ export default function RootLayout({
         </ToastProvider>
         {/* Brand mark — bottom-right on every page */}
         <BrandMark />
+        {/* Return-to-top — most pages (excludes Home, Equipment, main Knowledge Hub) */}
+        <ReturnToTop />
         {/* Dev badge */}
         {(ENV_LABEL === "development" || ENV_LABEL === "") && (
           <div className="fixed bottom-3 left-3 z-[9999] bg-zinc-700/80 text-zinc-300 text-[10px] font-mono px-2 py-0.5 rounded pointer-events-none select-none">
