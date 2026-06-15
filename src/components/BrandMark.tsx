@@ -2,9 +2,9 @@
 
 import { usePathname } from "next/navigation";
 
-// Small fixed brand mark in the bottom-right of every page — a subtle "end of
-// page" / branding cue. Mirrors the bottom-left DEV badge. Non-interactive so it
-// never blocks UI, and sits below modals (z-40).
+// End-of-content brand mark. Rendered in normal flow at the end of the root
+// layout (after the page content), so scrolling to it signals "end of page".
+// Right-aligned, full-width dark strip so it blends with the dark pages.
 export default function BrandMark() {
   const pathname = usePathname();
   // The login screen already shows the full logo prominently.
@@ -13,11 +13,13 @@ export default function BrandMark() {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none fixed bottom-3 right-3 z-40 flex select-none items-center gap-1.5 rounded-full border border-white/10 bg-zinc-900/70 px-2.5 py-1 opacity-70 backdrop-blur-sm"
+      className="flex w-full select-none justify-end border-t border-white/5 bg-zinc-950 px-8 py-10"
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/labrador-logo.png" alt="" className="h-4 w-4" />
-      <span className="text-[10px] font-medium tracking-wide text-zinc-400">Labrador ELN</span>
+      <div className="flex flex-col items-center gap-1 opacity-60">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/labrador-logo.png" alt="" className="h-12 w-12" />
+        <span className="text-[5px] font-medium tracking-wide text-zinc-400">Labrador ELN</span>
+      </div>
     </div>
   );
 }
