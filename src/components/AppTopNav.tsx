@@ -135,17 +135,21 @@ export default function AppTopNav() {
         <span className="text-xs text-zinc-400">
           <span className="font-semibold text-zinc-100">{currentUser.name}</span>
         </span>
-        <select
-          value={userId}
-          onChange={(e) => handleUserChange(e.target.value)}
-          className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:outline-none"
-        >
-          {ELN_USERS.map((u) => (
-            <option key={u.id} value={u.id}>
-              Login as {u.name}
-            </option>
-          ))}
-        </select>
+        {/* Dev/sandbox-only quick user switcher. In production users authenticate
+            via /login, so only the current user + Log out are shown. */}
+        {process.env.NODE_ENV !== "production" && (
+          <select
+            value={userId}
+            onChange={(e) => handleUserChange(e.target.value)}
+            className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-200 focus:outline-none"
+          >
+            {ELN_USERS.map((u) => (
+              <option key={u.id} value={u.id}>
+                Login as {u.name}
+              </option>
+            ))}
+          </select>
+        )}
         <button
           onClick={handleLogout}
           className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300 transition hover:bg-zinc-700"
