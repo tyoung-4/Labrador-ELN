@@ -44,3 +44,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local scratch / fixtures / nested clones / agent worktrees (not app source)
+/.test-files/
+/labrador-eln/
+.claude/worktrees/
