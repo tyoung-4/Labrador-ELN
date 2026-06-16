@@ -70,10 +70,20 @@ export default function AppTopNav() {
     return () => { cancelled = true; window.removeEventListener("focus", refresh); };
   }, [operatorName, pathname]);
 
-  function handleUserChange(id: string) {
+  async function handleUserChange(id: string) {
     _cachedUserId = id;
     setUserId(id);
     localStorage.setItem(USER_STORAGE_KEY, id);
+    // Establish a real session for the chosen user so the server-trusted identity
+    // matches the switcher (otherwise a stale session silently overrides it and
+    // edits get attributed to the wrong person). Dev/sandbox only.
+    try {
+      await fetch("/api/auth/dev-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: id }),
+      });
+    } catch { /* best-effort */ }
     // Broadcast so other components on the page can react
     window.dispatchEvent(new StorageEvent("storage", { key: USER_STORAGE_KEY, newValue: id }));
     // Sandbox-only: navigate to Home on profile switch so per-user state is fresh
