@@ -6,7 +6,7 @@ const SESSION_COOKIE = "eln-session";
 // session validation happens server-side in getServerActor(). In development we
 // let everything through so the legacy header-fallback sandbox keeps working;
 // production redirects unauthenticated requests to /login.
-const PUBLIC_PREFIXES = ["/login", "/api/auth", "/_next", "/favicon", "/assets"];
+const PUBLIC_PREFIXES = ["/login", "/api/auth", "/api/demo", "/_next", "/favicon", "/assets"];
 
 export function proxy(request: NextRequest) {
   if (process.env.NODE_ENV !== "production") return NextResponse.next();

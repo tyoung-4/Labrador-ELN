@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { USER_STORAGE_KEY } from "@/components/AppTopNav";
+import { DEMO_MODE } from "@/lib/demo";
 
 function LoginForm() {
   const router = useRouter();
@@ -14,6 +15,31 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Demo one-click entry — enters as a seeded persona without a password.
+  async function enterDemo(userId: string) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/auth/guest-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      const data = (await res.json()) as { success?: boolean; user?: { id: string }; error?: string };
+      if (res.ok && data.user) {
+        try { localStorage.setItem(USER_STORAGE_KEY, data.user.id); } catch {}
+        window.location.href = from;
+      } else {
+        setError(data.error ?? "Could not start the demo");
+      }
+    } catch {
+      setError("Network error — please try again");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function handleSubmit() {
     if (!identifier.trim() || !password || busy) return;
@@ -58,6 +84,32 @@ function LoginForm() {
         <h1 className="mb-0.5 text-center text-xl font-semibold text-white">Labrador ELN</h1>
         <p className="mb-1 text-center text-xs uppercase tracking-wide text-zinc-500">JCW Lab · City of Hope</p>
         <p className="mb-5 text-center text-sm text-zinc-400">Sign in to continue</p>
+
+        {/* Demo / sandbox: one-click entry, no credentials needed */}
+        {DEMO_MODE && (
+          <div className="mb-5 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+            <p className="mb-2 text-center text-xs text-amber-300/90">
+              Sandbox demo — explore freely. Data is shared and reset periodically.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => enterDemo("finn-user")}
+                disabled={busy}
+                className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:opacity-40"
+              >
+                ▶ Enter as Lab Member
+              </button>
+              <button
+                onClick={() => enterDemo("admin-user")}
+                disabled={busy}
+                className="flex-1 rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:opacity-40"
+              >
+                Enter as Admin
+              </button>
+            </div>
+            <p className="mt-2 text-center text-[11px] text-zinc-500">or sign in with an account below</p>
+          </div>
+        )}
 
         <label className="mb-1 block text-sm font-medium text-zinc-300">Username or email</label>
         <input
