@@ -51,29 +51,45 @@ the migration history because recent changes were applied with `db push`):
 
 ```bash
 DATABASE_URL='<hosted-url>' npx prisma db push
-DATABASE_URL='<hosted-url>' npx prisma db seed
 ```
 
-(Run these from your machine pointed at the hosted DB, or as the host's
-"release"/one-off command.)
-
-### 6. Smoke test the demo
-Open the deployed URL → you should see the SANDBOX banner. On `/login`, click
-**"Enter as Lab Member"** → you land in the app authenticated. Try **Admin** too.
-
-### 7. (Optional) Nightly reset
-Generate `DEMO_RESET_TOKEN`, set it, then schedule a daily call (host cron,
-GitHub Actions, or cron-job.org):
+Then **populate the demo** by calling the reset endpoint once (it both wipes and
+seeds the rich sample content — projects, protocols, runs, inventory, a signed
+run, tags). Set `DEMO_RESET_TOKEN` first, then:
 
 ```bash
 curl -X POST https://<your-demo-domain>/api/demo/reset \
   -H "x-demo-reset-token: <DEMO_RESET_TOKEN>"
 ```
 
-⚠️ **Run this once manually first** and confirm it returns
-`{ "success": true, "tablesTruncated": N, "usersSeeded": 5 }`. This is the first
-time the destructive `TRUNCATE` actually executes — it was deliberately **not**
-run locally, to protect your dev database.
+A successful response looks like:
+```json
+{ "success": true, "users": 5, "projects": 3, "protocols": 3, "runs": 2,
+  "inventory": { "plasmids": 3, "cellLines": 2, "reagents": 5, "proteinStocks": 2, "batches": 1 },
+  "tablesTruncated": 42 }
+```
+
+(The seed lives in `src/lib/demoReset.ts` — edit it to change the sample
+content. `prisma db seed` is for non-demo/local setups; the demo uses the reset
+endpoint as its single source of seed content.)
+
+### 6. Smoke test the demo
+Open the deployed URL → SANDBOX banner shows. On `/login`, click **"Enter as Lab
+Member"** → you land in a populated app: a "CD38 Antibody Engineering" project,
+3 protocols, a signed/locked purification run in Run History, and stocked
+Inventory. Try **Admin** too.
+
+### 7. (Optional) Nightly reset
+Reuse the same endpoint on a schedule (host cron, GitHub Actions, or
+cron-job.org) to wipe visitor edits and restore the clean sample demo:
+
+```bash
+curl -X POST https://<your-demo-domain>/api/demo/reset \
+  -H "x-demo-reset-token: <DEMO_RESET_TOKEN>"
+```
+
+The seed/reset path was verified end-to-end against a throwaway database (not the
+dev DB).
 
 ### 8. Link it from GitHub
 Add to the README, e.g.:
@@ -87,9 +103,9 @@ Add to the README, e.g.:
 ---
 
 ## Notes / gotchas
-- **After a reset the demo is baseline-only** (the 5 users + the General project).
-  If you want the demo to start populated, add sample protocols/inventory to the
-  reseed in `src/lib/demoReset.ts`.
+- **Reset restores a populated demo** (5 users, 3 projects, 3 protocols, 2 runs
+  incl. a signed one, and stocked inventory) from `src/lib/demoReset.ts`. Edit
+  that file to change what the sample demo contains.
 - **Shared sandbox**: all visitors edit the same data — that's why the reset
   exists. Per-visitor isolation would be a much larger (multi-tenant) change.
 - **Vercel Hobby** is non-commercial (fine for a lab/research demo).
