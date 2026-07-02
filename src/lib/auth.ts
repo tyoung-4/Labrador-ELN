@@ -148,6 +148,19 @@ export async function verifyCredentials(identifier: string, password: string) {
   return ok ? user : null;
 }
 
+/** Verify a specific user's current password (for self-service change). */
+export async function verifyUserPassword(userId: string, plain: string): Promise<boolean> {
+  if (!plain) return false;
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { passwordHash: true } });
+  if (!u?.passwordHash) return false;
+  return bcrypt.compare(plain, u.passwordHash);
+}
+
+/** Set (or reset) a user's password. */
+export async function setUserPassword(userId: string, plain: string): Promise<void> {
+  await prisma.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(plain) } });
+}
+
 /** Create a Session row and set the httpOnly session cookie. */
 export async function createSession(userId: string): Promise<void> {
   const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 86400_000);
@@ -157,7 +170,11 @@ export async function createSession(userId: string): Promise<void> {
   store.set(SESSION_COOKIE, session.id, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    // A "Secure" cookie is only sent over HTTPS. Internal deployments served over
+    // plain HTTP must leave this off (the default) or login silently fails — the
+    // browser withholds the cookie. Set SESSION_COOKIE_SECURE=true only when the
+    // app is actually behind TLS/HTTPS.
+    secure: process.env.SESSION_COOKIE_SECURE === "true",
     path: "/",
     expires: expiresAt,
   });

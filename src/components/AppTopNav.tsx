@@ -150,6 +150,14 @@ export default function AppTopNav() {
             ))}
           </select>
         )}
+        {currentUser.role === "ADMIN" && (
+          <Link href="/admin/users" className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300 transition hover:bg-zinc-700">
+            Users
+          </Link>
+        )}
+        <Link href="/account" className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300 transition hover:bg-zinc-700">
+          Account
+        </Link>
         <button
           onClick={handleLogout}
           className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300 transition hover:bg-zinc-700"

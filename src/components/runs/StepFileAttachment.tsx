@@ -73,39 +73,24 @@ function FileCard({ file, runId, userId, authHeaders, onDelete, onNotesSaved }: 
 
   const isImage = file.mimeType.startsWith("image/");
 
-  // Fetch presigned URL for image thumbnails on mount
+  // The app streams the file itself (local disk or R2) — one URL for both the
+  // <img> thumbnail and downloading. The session cookie is sent automatically.
+  const fileUrl = `/api/runs/${runId}/files/${file.id}/download`;
+
   useEffect(() => {
-    if (!isImage) return;
-    let cancelled = false;
-    fetch(`/api/runs/${runId}/files/${file.id}/url`, { headers: authHeaders })
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((data: { url: string }) => {
-        if (!cancelled) {
-          setThumbUrl(data.url);
-          setThumbLoading(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setThumbLoading(false);
-      });
-    return () => { cancelled = true; };
+    if (isImage) {
+      setThumbUrl(fileUrl);
+      setThumbLoading(false);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function handleDownload() {
-    try {
-      const res = await fetch(`/api/runs/${runId}/files/${file.id}/url`, { headers: authHeaders });
-      if (!res.ok) return;
-      const { url } = (await res.json()) as { url: string };
-      window.open(url, "_blank", "noopener");
-    } catch {
-      // silently ignore
-    }
+  function handleDownload() {
+    window.open(fileUrl, "_blank", "noopener");
   }
 
   function handleOpenThumb() {
-    if (thumbUrl) window.open(thumbUrl, "_blank", "noopener");
-    else handleDownload();
+    handleDownload();
   }
 
   async function handleNoteBlur() {
@@ -291,38 +276,18 @@ export default function StepFileAttachment({ runId, stepId, userId, authHeaders 
     setUploading(true);
     setUploadProgress(0);
     try {
-      const urlRes = await fetch(`/api/runs/${runId}/files/upload-url`, {
-        method: "POST",
-        headers: { ...authHeaders, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          stepId,
-          fileName: file.name,
-          fileSize: file.size,
-          mimeType: file.type || "application/octet-stream",
-        }),
-      });
-      if (!urlRes.ok) {
-        const err = await urlRes.json().catch(() => ({})) as { error?: string };
-        throw new Error(err.error ?? "Failed to get upload URL");
-      }
-      const { uploadUrl, fileKey } = (await urlRes.json()) as { uploadUrl: string; fileKey: string };
+      // Single server-mediated upload (works with local disk or R2, offline-safe).
+      const form = new FormData();
+      form.append("file", file);
+      form.append("stepId", stepId);
+      form.append("uploadedBy", userId);
 
-      await uploadWithProgress(file, uploadUrl, setUploadProgress);
-
-      const confirmRes = await fetch(`/api/runs/${runId}/files`, {
-        method: "POST",
-        headers: { ...authHeaders, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          stepId,
-          fileName: file.name,
-          fileSize: file.size,
-          mimeType: file.type || "application/octet-stream",
-          fileKey,
-          uploadedBy: userId,
-        }),
-      });
-      if (!confirmRes.ok) throw new Error("Upload confirmed but failed to save record");
-      const newFile: StepFile = await confirmRes.json();
+      const newFile = await uploadWithProgress(
+        `/api/runs/${runId}/files`,
+        form,
+        authHeaders,
+        setUploadProgress,
+      );
       setFiles((prev) => [...prev, newFile]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
@@ -414,22 +379,31 @@ export default function StepFileAttachment({ runId, stepId, userId, authHeaders 
 }
 
 function uploadWithProgress(
-  file: File,
   url: string,
+  form: FormData,
+  authHeaders: Record<string, string>,
   onProgress: (pct: number) => void,
-): Promise<void> {
+): Promise<StepFile> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("PUT", url);
-    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    xhr.open("POST", url);
+    // Forward the app's auth headers (do NOT set Content-Type — the browser sets
+    // the multipart boundary automatically).
+    for (const [k, v] of Object.entries(authHeaders)) xhr.setRequestHeader(k, v);
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
     });
     xhr.addEventListener("load", () => {
-      if (xhr.status >= 200 && xhr.status < 300) resolve();
-      else reject(new Error(`Upload failed: HTTP ${xhr.status}`));
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try { resolve(JSON.parse(xhr.responseText) as StepFile); }
+        catch { reject(new Error("Upload succeeded but response was invalid")); }
+      } else {
+        let msg = `Upload failed: HTTP ${xhr.status}`;
+        try { msg = (JSON.parse(xhr.responseText) as { error?: string }).error ?? msg; } catch {}
+        reject(new Error(msg));
+      }
     });
     xhr.addEventListener("error", () => reject(new Error("Network error during upload")));
-    xhr.send(file);
+    xhr.send(form);
   });
 }
