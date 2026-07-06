@@ -1133,9 +1133,15 @@ function ProtocolsPageContent() {
             <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400">{myDraftCount}</span>
           )}
         </button>
+        <a
+          href="/protocols/transfection"
+          className="ml-auto rounded border border-rose-500/50 bg-rose-600/20 px-3 py-1.5 text-sm text-rose-200 transition hover:bg-rose-600/30"
+        >
+          + New Transfection
+        </a>
         <button
           onClick={() => setShowCreateModal(true)}
-          className="ml-auto rounded bg-emerald-600 px-3 py-1.5 text-sm text-white hover:bg-emerald-500"
+          className="ml-2 rounded bg-emerald-600 px-3 py-1.5 text-sm text-white hover:bg-emerald-500"
         >
           + New Protocol
         </button>

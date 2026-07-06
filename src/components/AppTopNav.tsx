@@ -9,7 +9,6 @@ const NAV_ITEMS = [
   { href: "/",              label: "Home",           exact: true,  activeClass: "bg-sky-500 text-white",     hard: false, alsoActive: [] as string[] },
   { href: "/projects",      label: "Projects",       exact: false, activeClass: "bg-emerald-600 text-white", hard: true,  alsoActive: [] as string[] },
   { href: "/protocols",     label: "Protocols/Runs", exact: false, activeClass: "bg-indigo-600 text-white",  hard: false, alsoActive: ["/runs", "/recipes"] },
-  { href: "/expression",    label: "Expression",     exact: false, activeClass: "bg-rose-600 text-white",    hard: false, alsoActive: [] as string[] },
   { href: "/inventory",     label: "Inventory",      exact: false, activeClass: "bg-teal-600 text-white",    hard: false, alsoActive: [] as string[] },
   { href: "/equipment",     label: "Equipment",      exact: false, activeClass: "bg-purple-600 text-white",  hard: false, alsoActive: [] as string[] },
   { href: "/knowledge-hub", label: "Knowledge Hub",  exact: false, activeClass: "bg-amber-600 text-white",   hard: false, alsoActive: [] as string[] },
