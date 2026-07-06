@@ -58,6 +58,37 @@ function round(n: number, dp = 1): number {
   return Math.round(n * f) / f;
 }
 
+export interface DilutionResult {
+  /** volume the culture becomes when diluted to the target density */
+  finalVolumeMl: number;
+  /** fresh media to add = finalVolume − startingVolume */
+  mediaToAddMl: number;
+  note?: string;
+}
+
+/**
+ * Media needed to dilute a culture to the transfection target density (default
+ * 6×10⁶ cells/mL). Cells are conserved: measured×starting = target×final, so
+ * final = measured×starting/target. The user still enters the ACTUAL volume they
+ * transfect (they may cap it at 50/100/… mL) — that value drives the DNA math.
+ */
+export function calculateDilutionToDensity(
+  measuredDensityE6: number,
+  startingVolumeMl: number,
+  targetDensityE6 = 6,
+): DilutionResult {
+  const d = Number(measuredDensityE6) || 0;
+  const v = Number(startingVolumeMl) || 0;
+  const t = Number(targetDensityE6) || 6;
+  if (d <= 0 || v <= 0 || t <= 0) return { finalVolumeMl: 0, mediaToAddMl: 0 };
+  const finalVolumeMl = round((d * v) / t, 1);
+  const mediaToAddMl = round(finalVolumeMl - v, 1);
+  const note = d <= t
+    ? `Measured density (${d}×10⁶) is at/below the ${t}×10⁶ target — no dilution needed.`
+    : undefined;
+  return { finalVolumeMl, mediaToAddMl: Math.max(0, mediaToAddMl), note };
+}
+
 export function calculateTransfection(input: TransfectionInput): TransfectionResult {
   const errors: string[] = [];
   const warnings: string[] = [];
