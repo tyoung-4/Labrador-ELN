@@ -58,6 +58,39 @@ function round(n: number, dp = 1): number {
   return Math.round(n * f) / f;
 }
 
+// ─── Day 1 / Day 5 / harvest schedule ────────────────────────────────────────
+export type ProtocolType = "STANDARD" | "HIGH_TITER" | "MAX_TITER";
+
+const ENHANCER_FRACTION = 0.006; // 0.6% v/v = 6 µL/mL  (150 µL per 25 mL)
+const FEED_FRACTION = 0.24;      // 24% v/v = 6 mL per 25 mL
+const HARVEST_WINDOWS: Record<ProtocolType, [number, number]> = {
+  STANDARD: [7, 10],
+  HIGH_TITER: [10, 12],
+  MAX_TITER: [12, 14],
+};
+
+export interface ExpressionSchedule {
+  enhancerUl: number;         // Day 1
+  feedMl: number;             // Day 1
+  tempShiftC: number | null;  // Day 1: 32 for High/Max Titer, null (stay 37) for Standard
+  feed2Ml: number | null;     // Day 5: Max Titer only
+  harvestDayStart: number;
+  harvestDayEnd: number;
+}
+
+export function calculateExpressionSchedule(cultureVolumeMl: number, protocolType: ProtocolType): ExpressionSchedule {
+  const v = Number(cultureVolumeMl) || 0;
+  const [hs, he] = HARVEST_WINDOWS[protocolType] ?? HARVEST_WINDOWS.STANDARD;
+  return {
+    enhancerUl: round(ENHANCER_FRACTION * v * 1000, 1),
+    feedMl: round(FEED_FRACTION * v, 2),
+    tempShiftC: protocolType === "STANDARD" ? null : 32,
+    feed2Ml: protocolType === "MAX_TITER" ? round(FEED_FRACTION * v, 2) : null,
+    harvestDayStart: hs,
+    harvestDayEnd: he,
+  };
+}
+
 export interface DilutionResult {
   /** volume the culture becomes when diluted to the target density */
   finalVolumeMl: number;

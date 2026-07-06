@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import AppTopNav from "@/components/AppTopNav";
-import { calculateTransfection, calculateDilutionToDensity, type PlasmidRow } from "@/lib/transfection";
+import { calculateTransfection, calculateDilutionToDensity, calculateExpressionSchedule, type PlasmidRow, type ProtocolType } from "@/lib/transfection";
 
 interface PlasmidOption { id: string; name: string }
 interface Row { key: string; plasmidId: string; name: string; stockConc: string; ratio: string }
@@ -11,9 +11,14 @@ const FLASK_PRESETS = [30, 50, 100, 250, 500, 1000];
 const PROTOCOL_TYPES = ["Standard", "High Titer", "Max Titer"] as const;
 type VolumeMode = "FIXED" | "DILUTE" | "EXACT";
 
+const PROTOCOL_KEY: Record<(typeof PROTOCOL_TYPES)[number], ProtocolType> = {
+  "Standard": "STANDARD", "High Titer": "HIGH_TITER", "Max Titer": "MAX_TITER",
+};
+
 let rowSeq = 0;
 const newRow = (): Row => ({ key: `r${rowSeq++}`, plasmidId: "", name: "", stockConc: "", ratio: "1" });
 const fmt = (n: number, dp = 1) => n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: dp });
+const mL = (ul: number) => (ul / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 }); // µL → mL display
 
 export default function TransfectionCalculatorPage() {
   const [plasmidOptions, setPlasmidOptions] = useState<PlasmidOption[]>([]);
@@ -59,6 +64,8 @@ export default function TransfectionCalculatorPage() {
     return calculateTransfection({ cultureVolumeMl, finalConcUgMl: Number(finalConc) || 0, plasmids });
   }, [rows, cultureVolumeMl, finalConc]);
 
+  const schedule = useMemo(() => calculateExpressionSchedule(cultureVolumeMl, PROTOCOL_KEY[protocolType]), [cultureVolumeMl, protocolType]);
+
   const showRatio = rows.length > 1;
   const suggestedName = useMemo(() => {
     const first = rows.find((r) => r.name)?.name;
@@ -67,17 +74,26 @@ export default function TransfectionCalculatorPage() {
 
   const checklist = useMemo(() => {
     if (result.errors.length > 0) return "";
-    const L: string[] = ["DAY 0 — DNA COMPLEXATION (use cold reagents, work quickly)", "", "DNA preparation:"];
+    const L: string[] = [`Culture volume: ${fmt(cultureVolumeMl)} mL · ${protocolType}`, "",
+      "DAY 0 — DNA COMPLEXATION (use cold reagents, work quickly)", "", "DNA preparation:"];
     for (const p of result.plasmids) L.push(`  ${p.name}: ${fmt(p.amountUg)} µg → ${fmt(p.volumeUl)} µL  (stock ${fmt(p.stockConcNgUl, 0)} ng/µL)`);
     L.push(`  TOTAL: ${fmt(result.totalDnaUg)} µg / ${fmt(result.totalDnaVolumeUl)} µL`, "");
-    L.push(`□ Add ${fmt(result.optiproForDnaUl)} µL cold OptiPRO to a sterile tube`);
+    L.push(`□ Add ${mL(result.optiproForDnaUl)} mL cold OptiPRO SFM to a sterile tube`);
     for (const p of result.plasmids) L.push(`□ Add ${p.name}: ${fmt(p.volumeUl)} µL`);
     L.push("□ Mix gently by swirling", "", "ExpiFectamine preparation (separate tube, cold):");
-    L.push(`□ Add ${fmt(result.optiproForExpifectamineUl)} µL cold OptiPRO`);
+    L.push(`□ Add ${mL(result.optiproForExpifectamineUl)} mL cold OptiPRO SFM`);
     L.push(`□ Add ${fmt(result.expifectamineUl)} µL ExpiFectamine CHO — mix gently, 2–3 inversions`);
-    L.push("□ Add ExpiFectamine mixture to DNA tube immediately", "□ Mix by inversion 3–4×, incubate 1–5 min at RT", "□ Add dropwise to flask while swirling");
+    L.push("□ Add ExpiFectamine mixture to DNA tube immediately", "□ Mix by inversion 3–4×, incubate 1–5 min at RT", "□ Add dropwise to flask while swirling", "");
+    L.push("DAY 1 (18–22 h post-transfection):");
+    L.push(`□ Add ExpiCHO Enhancer: ${fmt(schedule.enhancerUl)} µL`);
+    L.push(`□ Add ExpiCHO Feed: ${fmt(schedule.feedMl, 2)} mL`);
+    L.push(schedule.tempShiftC ? `□ Shift culture to ${schedule.tempShiftC} °C` : "□ Keep culture at 37 °C");
+    if (schedule.feed2Ml != null) {
+      L.push("", "DAY 5:", `□ Add ExpiCHO Feed (2nd): ${fmt(schedule.feed2Ml, 2)} mL`);
+    }
+    L.push("", `HARVEST: day ${schedule.harvestDayStart}–${schedule.harvestDayEnd} post-transfection.`);
     return L.join("\n");
-  }, [result]);
+  }, [result, schedule, cultureVolumeMl, protocolType]);
 
   const inp = "rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:border-indigo-500 focus:outline-none";
 
@@ -209,7 +225,7 @@ export default function TransfectionCalculatorPage() {
             {result.errors.length === 0 && (
               <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
                 <div className="mb-3 flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-emerald-200">Day 0 — complexation checklist</h2>
+                  <h2 className="text-sm font-semibold text-emerald-200">Transfection checklist (Day 0 → harvest)</h2>
                   <button onClick={() => navigator.clipboard?.writeText(checklist).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }).catch(() => {})} className="rounded border border-white/10 px-2 py-1 text-xs text-zinc-300 hover:bg-white/10">{copied ? "Copied ✓" : "Copy"}</button>
                 </div>
                 <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-zinc-200">{checklist}</pre>
