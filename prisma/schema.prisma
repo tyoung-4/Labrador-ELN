@@ -8,14 +8,14 @@ datasource db {
 }
 
 model User {
-  id                 String          @id @default(uuid())
-  email              String          @unique
+  id                 String               @id @default(uuid())
+  email              String               @unique
   name               String?
-  role               String          @default("MEMBER")
-  createdAt          DateTime        @default(now())
+  role               String               @default("MEMBER")
+  createdAt          DateTime             @default(now())
   // Auth — additive; null passwordHash means "no local password set yet"
   passwordHash       String?
-  isActive           Boolean         @default(true)
+  isActive           Boolean              @default(true)
   lastLoginAt        DateTime?
   sessions           Session[]
   entries            Entry[]
@@ -24,6 +24,7 @@ model User {
   recipes            Recipe[]
   uploadedFiles      RunStepFile[]
   fileAnnotations    FileAnnotation[]
+  expressionRuns     ExpressionTimeline[]
 }
 
 model Session {
@@ -40,9 +41,9 @@ model Session {
 // per entity, so altering/removing a past row is detectable.
 model AuditLog {
   id         String   @id @default(cuid())
-  entityType String   // "RUN" | "ENTRY" | "PROTEIN_BATCH" | ...
+  entityType String // "RUN" | "ENTRY" | "PROTEIN_BATCH" | ...
   entityId   String
-  action     String   // CREATE | UPDATE | DELETE | STATUS_CHANGE | SIGN | LOCK | UNLOCK
+  action     String // CREATE | UPDATE | DELETE | STATUS_CHANGE | SIGN | LOCK | UNLOCK
   actorId    String
   actorName  String
   summary    String   @default("")
@@ -62,9 +63,9 @@ model Signature {
   entityId    String
   signerId    String
   signerName  String
-  meaning     String   // COMPLETION | REVIEW | WITNESS
+  meaning     String // COMPLETION | REVIEW | WITNESS
   statement   String
-  contentHash String   // hash of the record snapshot at signing time
+  contentHash String // hash of the record snapshot at signing time
   signedAt    DateTime @default(now())
 
   @@index([entityType, entityId])
@@ -82,32 +83,32 @@ enum EntryType {
 }
 
 model Entry {
-  id                   String        @id @default(uuid())
-  title                String
-  description          String        @default("")
-  technique            String        @default("General")
-  entryType            EntryType     @default(GENERAL)
-  typedData            Json          @default("{}")
-  body                 String
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
-  version              Int           @default(1)
-  allowNonSequential   Boolean       @default(false)
-  requireStepOrder     Boolean       @default(false)
-  status               String        @default("PUBLISHED") // "DRAFT" | "PUBLISHED"
-  publishedAt          DateTime?
-  changeSummary        String        @default("")
-  draftOfId            String?
-  draftOf              Entry?        @relation("DraftOf", fields: [draftOfId], references: [id])
-  drafts               Entry[]       @relation("DraftOf")
-  author               User?         @relation(fields: [authorId], references: [id])
-  authorId             String?
-  attachments          Attachment[]
-  protocolRuns         ProtocolRun[] @relation("RunSource")
-  linkedRun            ProtocolRun?  @relation("RunLink", fields: [linkedRunId], references: [id])
-  linkedRunId          String?
-  protocol             Protocol?
-  inventoryLinks       ProtocolInventoryLink[]
+  id                 String                  @id @default(uuid())
+  title              String
+  description        String                  @default("")
+  technique          String                  @default("General")
+  entryType          EntryType               @default(GENERAL)
+  typedData          Json                    @default("{}")
+  body               String
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+  version            Int                     @default(1)
+  allowNonSequential Boolean                 @default(false)
+  requireStepOrder   Boolean                 @default(false)
+  status             String                  @default("PUBLISHED") // "DRAFT" | "PUBLISHED"
+  publishedAt        DateTime?
+  changeSummary      String                  @default("")
+  draftOfId          String?
+  draftOf            Entry?                  @relation("DraftOf", fields: [draftOfId], references: [id])
+  drafts             Entry[]                 @relation("DraftOf")
+  author             User?                   @relation(fields: [authorId], references: [id])
+  authorId           String?
+  attachments        Attachment[]
+  protocolRuns       ProtocolRun[]           @relation("RunSource")
+  linkedRun          ProtocolRun?            @relation("RunLink", fields: [linkedRunId], references: [id])
+  linkedRunId        String?
+  protocol           Protocol?
+  inventoryLinks     ProtocolInventoryLink[]
 }
 
 model Attachment {
@@ -137,16 +138,16 @@ model Tag {
   assignments TagAssignment[]
 
   // New optional fields — existing tags unaffected (NULL by default)
-  description String?         // project overview / short description
-  startDate   DateTime?       // user-set display date, overrides createdAt for display
+  description String? // project overview / short description
+  startDate   DateTime? // user-set display date, overrides createdAt for display
   members     ProjectMember[] // only populated for PROJECT-type tags
 
   // Project-capability fields (PROJECT-type tags only) — all additive, defaulted
-  owner          String?   // display owner; null for the General project
-  isGeneral      Boolean   @default(false) // true for the single auto-seeded General project
-  isPrivate      Boolean   @default(false)
-  privateMembers String[]  @default([])    // operators allowed to see a private project
-  pinnedBy       String[]  @default([])    // operators who have pinned this project (per-operator)
+  owner          String? // display owner; null for the General project
+  isGeneral      Boolean  @default(false) // true for the single auto-seeded General project
+  isPrivate      Boolean  @default(false)
+  privateMembers String[] @default([]) // operators allowed to see a private project
+  pinnedBy       String[] @default([]) // operators who have pinned this project (per-operator)
 
   // Short tag self-referential relation
   shortTagId    String? @unique
@@ -158,7 +159,7 @@ model TagAssignment {
   id         String   @id @default(cuid())
   tagId      String
   tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
-  entityType String   // "RUN" | "ENTRY" | "INVENTORY" | "KNOWLEDGE_HUB"
+  entityType String // "RUN" | "ENTRY" | "INVENTORY" | "KNOWLEDGE_HUB"
   entityId   String
   assignedBy String
   assignedAt DateTime @default(now())
@@ -169,40 +170,40 @@ model TagAssignment {
 }
 
 model ProtocolRun {
-  id               String    @id @default(uuid())
-  runId            String?   @unique
+  id               String        @id @default(uuid())
+  runId            String?       @unique
   title            String
-  status           String    @default("IN_PROGRESS")
-  locked           Boolean   @default(true)
+  status           String        @default("IN_PROGRESS")
+  locked           Boolean       @default(true)
   runBody          String
-  notes            String    @default("")
-  interactionState String    @default("{}")
-  linkedInventory  String    @default("[]")
-  operatorName     String    @default("")
+  notes            String        @default("")
+  interactionState String        @default("{}")
+  linkedInventory  String        @default("[]")
+  operatorName     String        @default("")
   completedAt      DateTime?
-  preRunNotes      String    @default("")
-  abortNotes       String    @default("")
-  isMockRun        Boolean   @default(false)
-  requireStepOrder Boolean   @default(false)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  sourceEntry    Entry     @relation("RunSource", fields: [sourceEntryId], references: [id])
-  sourceEntryId  String
-  protocol       Protocol? @relation(fields: [protocolId], references: [id])
-  protocolId     String?
-  runner         User?     @relation(fields: [runnerId], references: [id])
-  runnerId       String?
-  linkedEntries  Entry[]   @relation("RunLink")
-  stepResults    StepResult[]
-  stepFiles      RunStepFile[]
+  preRunNotes      String        @default("")
+  abortNotes       String        @default("")
+  isMockRun        Boolean       @default(false)
+  requireStepOrder Boolean       @default(false)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  sourceEntry      Entry         @relation("RunSource", fields: [sourceEntryId], references: [id])
+  sourceEntryId    String
+  protocol         Protocol?     @relation(fields: [protocolId], references: [id])
+  protocolId       String?
+  runner           User?         @relation(fields: [runnerId], references: [id])
+  runnerId         String?
+  linkedEntries    Entry[]       @relation("RunLink")
+  stepResults      StepResult[]
+  stepFiles        RunStepFile[]
 }
 
 model StepResult {
   id          String      @id @default(uuid())
   run         ProtocolRun @relation(fields: [runId], references: [id], onDelete: Cascade)
   runId       String
-  stepId      String      // synthetic "step-{idx}" matching interactionState keys
-  result      String      // "PASSED" | "FAILED" | "SKIPPED"
+  stepId      String // synthetic "step-{idx}" matching interactionState keys
+  result      String // "PASSED" | "FAILED" | "SKIPPED"
   notes       String      @default("")
   fieldValues String      @default("{}") // JSON of field key→value
   completedAt DateTime    @default(now())
@@ -215,21 +216,21 @@ model TodoHistory {
   id        String   @id @default(uuid())
   userId    String
   userName  String
-  date      String   // YYYY-MM-DD — the day the list belonged to
-  items     Json     // TodoItem[] snapshot at time of cleanup
+  date      String // YYYY-MM-DD — the day the list belonged to
+  items     Json // TodoItem[] snapshot at time of cleanup
   createdAt DateTime @default(now())
 }
 
 model EquipmentBooking {
-  id            String    @id @default(uuid())
-  equipmentId   String
-  operatorName  String
-  userId        String
-  title         String    @default("")
-  startTime     DateTime
-  endTime       DateTime
-  endedEarlyAt  DateTime?
-  createdAt     DateTime  @default(now())
+  id           String    @id @default(uuid())
+  equipmentId  String
+  operatorName String
+  userId       String
+  title        String    @default("")
+  startTime    DateTime
+  endTime      DateTime
+  endedEarlyAt DateTime?
+  createdAt    DateTime  @default(now())
 
   @@index([equipmentId, startTime, endTime])
 }
@@ -265,16 +266,16 @@ model ProtocolSection {
 }
 
 model ProtocolStep {
-  id         String          @id @default(uuid())
-  section    ProtocolSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  sectionId  String
-  stepType   StepType        @default(STEP)
-  parentStep ProtocolStep?   @relation("ProtocolStepToSubsteps", fields: [parentStepId], references: [id], onDelete: Cascade)
-  parentStepId String?
-  substeps   ProtocolStep[]  @relation("ProtocolStepToSubsteps")
+  id               String          @id @default(uuid())
+  section          ProtocolSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  sectionId        String
+  stepType         StepType        @default(STEP)
+  parentStep       ProtocolStep?   @relation("ProtocolStepToSubsteps", fields: [parentStepId], references: [id], onDelete: Cascade)
+  parentStepId     String?
+  substeps         ProtocolStep[]  @relation("ProtocolStepToSubsteps")
   estimatedMinutes Int?
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   @@index([sectionId])
   @@index([parentStepId])
@@ -297,30 +298,31 @@ model ProjectMember {
   @@index([tagId])
   @@index([userId])
 }
+
 model InventoryReagent {
-  id                String               @id @default(cuid())
-  name              String
-  category          String               @default("general")
-  quantity          Float?
-  initialQuantity   Float?
-  unit              String?
-  concentration     Float?
-  concUnit          String?
-  location          String?
-  lotNumber         String?
-  catalogNumber     String?
-  vendor            String?
-  expiryDate        DateTime?
-  owner             String?
-  notes             String?
-  tags              String[]
+  id                 String                @id @default(cuid())
+  name               String
+  category           String                @default("general")
+  quantity           Float?
+  initialQuantity    Float?
+  unit               String?
+  concentration      Float?
+  concUnit           String?
+  location           String?
+  lotNumber          String?
+  catalogNumber      String?
+  vendor             String?
+  expiryDate         DateTime?
+  owner              String?
+  notes              String?
+  tags               String[]
   lowStockThreshold  Float?
-  lowThresholdType   String?              // "volume" | "mass"
+  lowThresholdType   String? // "volume" | "mass"
   lowThresholdAmber  Float?
   lowThresholdRed    Float?
-  useParentThreshold Boolean              @default(true)
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+  useParentThreshold Boolean               @default(true)
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
   researchNotes      ReagentResearchNote[]
   usageEvents        ReagentUsageEvent[]
   attachments        ReagentAttachment[]
@@ -337,8 +339,8 @@ model InventoryReagent {
   markedAt         DateTime?
 
   // Edit tracking
-  lastEditedBy  String?
-  lastEditedAt  DateTime?
+  lastEditedBy String?
+  lastEditedAt DateTime?
 }
 
 model ReagentUsageEvent {
@@ -411,8 +413,8 @@ model CellLine {
   markedAt         DateTime?
 
   // Edit tracking
-  lastEditedBy  String?
-  lastEditedAt  DateTime?
+  lastEditedBy String?
+  lastEditedAt DateTime?
 }
 
 model CellLineResearchNote {
@@ -446,6 +448,7 @@ model Plasmid {
   researchNotes      PlasmidResearchNote[]
   preps              PlasmidPrep[]
   proteinStocks      ProteinStock[]
+  expressionUses     ExpressionPlasmid[]
 
   // Archive fields
   isArchived       Boolean   @default(false)
@@ -458,8 +461,8 @@ model Plasmid {
   markedAt         DateTime?
 
   // Edit tracking
-  lastEditedBy  String?
-  lastEditedAt  DateTime?
+  lastEditedBy String?
+  lastEditedAt DateTime?
 }
 
 model PlasmidResearchNote {
@@ -474,10 +477,10 @@ model PlasmidResearchNote {
 }
 
 model ProteinStock {
-  id                 String                   @id @default(cuid())
+  id                 String                     @id @default(cuid())
   name               String
   plasmidId          String?
-  plasmid            Plasmid?                 @relation(fields: [plasmidId], references: [id], onDelete: SetNull)
+  plasmid            Plasmid?                   @relation(fields: [plasmidId], references: [id], onDelete: SetNull)
   concentration      Float?
   concUnit           String?
   volume             Float?
@@ -487,12 +490,13 @@ model ProteinStock {
   owner              String?
   notes              String?
   tags               String[]
-  useParentThreshold Boolean                  @default(true)
-  createdAt          DateTime                 @default(now())
-  updatedAt          DateTime                 @updatedAt
+  useParentThreshold Boolean                    @default(true)
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
   researchNotes      ProteinStockResearchNote[]
   usageEvents        ProteinUsageEvent[]
   batches            ProteinBatch[]
+  expressionTimeline ExpressionTimeline?
 
   // Archive fields
   isArchived       Boolean   @default(false)
@@ -505,32 +509,32 @@ model ProteinStock {
   markedAt         DateTime?
 
   // Edit tracking
-  lastEditedBy  String?
-  lastEditedAt  DateTime?
+  lastEditedBy String?
+  lastEditedAt DateTime?
 }
 
 model ProteinBatch {
-  id                  String       @id @default(cuid())
-  batchId             String       @unique
+  id                  String              @id @default(cuid())
+  batchId             String              @unique
   stockId             String
-  stock               ProteinStock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+  stock               ProteinStock        @relation(fields: [stockId], references: [id], onDelete: Cascade)
   purificationDate    DateTime
-  initialVolume       Float        // µL — immutable after creation
-  currentVolume       Float        // µL — managed via usage events
-  concentration       Float?       // mg/mL
-  mw                  Float?       // kDa
-  extinctionCoeff     Float?       // M⁻¹cm⁻¹
-  a280                Float?       // A280/260 ratio
+  initialVolume       Float // µL — immutable after creation
+  currentVolume       Float // µL — managed via usage events
+  concentration       Float? // mg/mL
+  mw                  Float? // kDa
+  extinctionCoeff     Float? // M⁻¹cm⁻¹
+  a280                Float? // A280/260 ratio
   storageBuffer       String?
   storageLocationText String?
-  lowThresholdType    String?      // "volume" | "mass" | "percentage"
+  lowThresholdType    String? // "volume" | "mass" | "percentage"
   lowThresholdAmber   Float?
   lowThresholdRed     Float?
   notes               String?
-  volumeUnit          String?      @default("µL")
+  volumeUnit          String?             @default("µL")
   createdBy           String?
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
   usageEvents         ProteinUsageEvent[]
 
   @@index([stockId])
@@ -564,7 +568,7 @@ model ProteinStockResearchNote {
 
 model InventoryEditLog {
   id           String   @id @default(cuid())
-  entityType   String   // "REAGENT" | "CELL_LINE" | "PLASMID" | "PROTEIN_STOCK" | "PROTEIN_BATCH"
+  entityType   String // "REAGENT" | "CELL_LINE" | "PLASMID" | "PROTEIN_STOCK" | "PROTEIN_BATCH"
   entityId     String
   editedBy     String
   editedAt     DateTime @default(now())
@@ -579,18 +583,18 @@ model InventoryEditLog {
 }
 
 model DashboardNotification {
-  id          String   @id @default(cuid())
-  userId      String
-  type        String   @default("ARCHIVE_REQUEST")
-  entityType  String
-  entityId    String
-  entityName  String
-  message     String
-  fromUser    String
-  note        String?
-  isRead      Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  readAt      DateTime?
+  id         String    @id @default(cuid())
+  userId     String
+  type       String    @default("ARCHIVE_REQUEST")
+  entityType String
+  entityId   String
+  entityName String
+  message    String
+  fromUser   String
+  note       String?
+  isRead     Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  readAt     DateTime?
 
   @@index([userId, isRead])
   @@index([userId])
@@ -600,70 +604,70 @@ model DashboardNotification {
 // ─── Batch / lot models ────────────────────────────────────────────────────────
 
 model ReagentLot {
-  id              String           @id @default(cuid())
-  reagentId       String
-  reagent         InventoryReagent @relation(fields: [reagentId], references: [id], onDelete: Cascade)
-  lotNumber       String?
-  quantity        Float
-  unit            String
-  supplier        String?
-  catalogNumber   String?
-  expiryDate      DateTime?
-  receivedDate    DateTime?
-  receivedBy      String?
-  notes           String?
+  id                String                @id @default(cuid())
+  reagentId         String
+  reagent           InventoryReagent      @relation(fields: [reagentId], references: [id], onDelete: Cascade)
+  lotNumber         String?
+  quantity          Float
+  unit              String
+  supplier          String?
+  catalogNumber     String?
+  expiryDate        DateTime?
+  receivedDate      DateTime?
+  receivedBy        String?
+  notes             String?
   lowThresholdType  String?
   lowThresholdAmber Float?
   lowThresholdRed   Float?
-  attachments     InventoryAttachment[]
-  usageEvents     ReagentUsageEvent[]
-  isArchived      Boolean          @default(false)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  attachments       InventoryAttachment[]
+  usageEvents       ReagentUsageEvent[]
+  isArchived        Boolean               @default(false)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
 
   @@index([reagentId])
 }
 
 model CellLinePassage {
-  id               String    @id @default(cuid())
-  cellLineId       String
-  cellLine         CellLine  @relation(fields: [cellLineId], references: [id], onDelete: Cascade)
-  passage          Int?
-  vialCount        Int?
-  freezeBackDate   DateTime?
-  freezingSolution String?
-  frozenBy         String?
-  storageLocation  String?
-  notes            String?
+  id                String                @id @default(cuid())
+  cellLineId        String
+  cellLine          CellLine              @relation(fields: [cellLineId], references: [id], onDelete: Cascade)
+  passage           Int?
+  vialCount         Int?
+  freezeBackDate    DateTime?
+  freezingSolution  String?
+  frozenBy          String?
+  storageLocation   String?
+  notes             String?
   lowThresholdType  String?
   lowThresholdAmber Float?
   lowThresholdRed   Float?
-  attachments      InventoryAttachment[]
-  createdBy        String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  attachments       InventoryAttachment[]
+  createdBy         String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
 
   @@index([cellLineId])
 }
 
 model PlasmidPrep {
-  id               String    @id @default(cuid())
-  plasmidId        String
-  plasmid          Plasmid   @relation(fields: [plasmidId], references: [id], onDelete: Cascade)
-  prepDate         DateTime?
-  prepType         String?
-  concentration    Float?
-  volume           Float?
-  preparedBy       String?
-  sequenceVerified Boolean   @default(false)
-  notes            String?
+  id                String                @id @default(cuid())
+  plasmidId         String
+  plasmid           Plasmid               @relation(fields: [plasmidId], references: [id], onDelete: Cascade)
+  prepDate          DateTime?
+  prepType          String?
+  concentration     Float?
+  volume            Float?
+  preparedBy        String?
+  sequenceVerified  Boolean               @default(false)
+  notes             String?
   lowThresholdType  String?
   lowThresholdAmber Float?
   lowThresholdRed   Float?
-  attachments      InventoryAttachment[]
-  createdBy        String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  attachments       InventoryAttachment[]
+  createdBy         String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
 
   @@index([plasmidId])
 }
@@ -700,23 +704,23 @@ model Recipe {
 }
 
 model RecipeComponent {
-  id            String   @id @default(cuid())
+  id            String @id @default(cuid())
   recipeId      String
   reagentName   String
   concentration Float?
-  unit          String   @default("")
-  notes         String   @default("")
-  order         Int      @default(0)
-  inventoryId   String   @default("")
-  inventoryName String   @default("")
-  recipe        Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  unit          String @default("")
+  notes         String @default("")
+  order         Int    @default(0)
+  inventoryId   String @default("")
+  inventoryName String @default("")
+  recipe        Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
 }
 
 model ProtocolInventoryLink {
   id         String   @id @default(uuid())
   entryId    String
   entry      Entry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  itemType   String   // "reagent" | "stock" | "plasmid" | "cellline"
+  itemType   String // "reagent" | "stock" | "plasmid" | "cellline"
   itemId     String
   itemName   String
   itemDetail String   @default("")
@@ -727,19 +731,19 @@ model ProtocolInventoryLink {
 }
 
 model RunStepFile {
-  id          String      @id @default(cuid())
-  runId       String
-  stepId      String      // "step-0", "step-1" etc — matches StepResult stepId convention
-  fileName    String      // original filename shown to user
-  fileKey     String      // R2 object key (path in bucket)
-  fileSize    Int         // bytes
-  mimeType    String
-  uploadedBy  String      // userId
-  notes       String      @default("")
-  createdAt   DateTime    @default(now())
-  run         ProtocolRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-  uploader    User        @relation(fields: [uploadedBy], references: [id])
-  annotation  FileAnnotation?
+  id         String          @id @default(cuid())
+  runId      String
+  stepId     String // "step-0", "step-1" etc — matches StepResult stepId convention
+  fileName   String // original filename shown to user
+  fileKey    String // R2 object key (path in bucket)
+  fileSize   Int // bytes
+  mimeType   String
+  uploadedBy String // userId
+  notes      String          @default("")
+  createdAt  DateTime        @default(now())
+  run        ProtocolRun     @relation(fields: [runId], references: [id], onDelete: Cascade)
+  uploader   User            @relation(fields: [uploadedBy], references: [id])
+  annotation FileAnnotation?
 
   @@index([runId])
   @@index([runId, stepId])
@@ -749,7 +753,7 @@ model LadderDefinition {
   id           String    @id @default(cuid())
   name         String
   manufacturer String
-  bands        String    // JSON array of numbers e.g. "[10,15,25,35,55,70,100,130,180]"
+  bands        String // JSON array of numbers e.g. "[10,15,25,35,55,70,100,130,180]"
   createdAt    DateTime  @default(now())
   lanes        GelLane[]
 }
@@ -757,7 +761,7 @@ model LadderDefinition {
 model FileAnnotation {
   id            String             @id @default(cuid())
   runStepFileId String             @unique
-  fileType      String             // "SDS_PAGE" | "WESTERN_BLOT" | "CHROMATOGRAM" | "OTHER"
+  fileType      String // "SDS_PAGE" | "WESTERN_BLOT" | "CHROMATOGRAM" | "OTHER"
   notes         String             @default("")
   createdById   String
   createdAt     DateTime           @default(now())
@@ -792,4 +796,89 @@ model ChromatogramPeak {
   inventoryType   String         @default("")
   inventoryName   String         @default("")
   annotation      FileAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+}
+
+// ─── ExpiCHO transfection / expression run ───────────────────────────────────
+// A special protocol type living under /protocols. One record per transfection,
+// created from the calculator. Reagent math is captured as a snapshot so the
+// checklist stays reproducible even if plasmid stocks change later. Scheduled
+// actions (Day-1 enhancer/feed, Day-5 feed, harvest) are generated on create.
+model ExpressionTimeline {
+  id           String @id @default(cuid())
+  name         String
+  protocolType String @default("STANDARD") // STANDARD | HIGH_TITER | MAX_TITER
+  status       String @default("IN_PROGRESS") // IN_PROGRESS | HARVESTED | CANCELLED
+
+  // Volume / density snapshot
+  cultureVolumeMl   Float
+  volumeMode        String @default("FIXED") // FIXED | DILUTE | EXACT
+  measuredDensityE6 Float?
+  startingVolumeMl  Float?
+  finalDnaConcUgMl  Float  @default(0.8)
+
+  // Day-0 reagent snapshot (µg / µL), from calculateTransfection
+  totalDnaUg           Float?
+  totalDnaVolumeUl     Float?
+  tubeVolumeUl         Float?
+  optiproForDnaUl      Float?
+  expifectamineUl      Float?
+  optiproForExpifectUl Float?
+
+  // Timeline anchors
+  day0Date           DateTime
+  harvestWindowStart DateTime?
+  harvestWindowEnd   DateTime?
+  harvestedAt        DateTime?
+
+  runnerId  String?
+  runner    User?    @relation(fields: [runnerId], references: [id], onDelete: SetNull)
+  createdBy String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  notes     String   @default("")
+
+  // Optional link to the protein produced by this run
+  proteinStockId String?       @unique
+  proteinStock   ProteinStock? @relation(fields: [proteinStockId], references: [id], onDelete: SetNull)
+
+  plasmids ExpressionPlasmid[]
+  actions  ExpressionAction[]
+
+  @@index([status])
+  @@index([day0Date])
+}
+
+model ExpressionPlasmid {
+  id         String             @id @default(cuid())
+  timelineId String
+  timeline   ExpressionTimeline @relation(fields: [timelineId], references: [id], onDelete: Cascade)
+  plasmidId  String?
+  plasmid    Plasmid?           @relation(fields: [plasmidId], references: [id], onDelete: SetNull)
+
+  name          String // snapshot of plasmid name at transfection time
+  stockConcNgUl Float
+  ratio         Float
+  amountUg      Float
+  volumeUl      Float
+  order         Int    @default(0)
+
+  @@index([timelineId])
+}
+
+model ExpressionAction {
+  id         String             @id @default(cuid())
+  timelineId String
+  timeline   ExpressionTimeline @relation(fields: [timelineId], references: [id], onDelete: Cascade)
+
+  type          String // ENHANCER | FEED | FEED2 | TEMP_SHIFT | HARVEST
+  label         String
+  dayOffset     Int // days after day 0
+  scheduledDate DateTime
+  detail        String    @default("")
+  done          Boolean   @default(false)
+  doneAt        DateTime?
+  doneBy        String?
+
+  @@index([timelineId])
+  @@index([scheduledDate, done])
 }

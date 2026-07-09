@@ -502,6 +502,73 @@ function buildFamilies(entries: Entry[]): ProtocolFamily[] {
   return families;
 }
 
+// ─── Transfection runs panel ────────────────────────────────────────────────
+// Self-contained: fetches expression runs and surfaces them with a status hint
+// (which scheduled action is due today) above the protocol library.
+
+interface ExprRunSummary {
+  id: string; name: string; protocolType: string; status: string;
+  cultureVolumeMl: number; day0Date: string;
+  harvestWindowStart: string | null; harvestWindowEnd: string | null;
+  actions: { type: string; label: string; detail: string; dayOffset: number; done: boolean }[];
+}
+const EXPR_PROTOCOL_LABEL: Record<string, string> = { STANDARD: "Standard", HIGH_TITER: "High Titer", MAX_TITER: "Max Titer" };
+
+function transfectionStatusHint(run: ExprRunSummary): { text: string; tone: string } {
+  if (run.status === "HARVESTED") return { text: "Harvested", tone: "text-emerald-400" };
+  if (run.status === "CANCELLED") return { text: "Cancelled", tone: "text-zinc-500" };
+  const day = Math.floor((Date.now() - new Date(run.day0Date).getTime()) / 86_400_000);
+  const due = run.actions.filter((a) => !a.done && a.type !== "HARVEST" && day >= a.dayOffset);
+  if (due.length > 0) return { text: `Due: ${due.map((a) => a.label.replace("Add ExpiCHO ", "").replace("Shift culture to ", "→")).join(", ")}`, tone: "text-amber-400" };
+  const inHarvest = run.harvestWindowStart && run.harvestWindowEnd &&
+    Date.now() >= new Date(run.harvestWindowStart).getTime() && Date.now() <= new Date(run.harvestWindowEnd).getTime() + 86_400_000;
+  if (inHarvest) return { text: "Harvest window open", tone: "text-emerald-400" };
+  return { text: `Day ${day} · on track`, tone: "text-zinc-500" };
+}
+
+function TransfectionRunsPanel() {
+  const [runs, setRuns] = useState<ExprRunSummary[]>([]);
+  const [showDone, setShowDone] = useState(false);
+  useEffect(() => {
+    fetch("/api/expression").then((r) => (r.ok ? r.json() : [])).then((d) => setRuns(Array.isArray(d) ? d : [])).catch(() => setRuns([]));
+  }, []);
+  const active = runs.filter((r) => r.status === "IN_PROGRESS");
+  const finished = runs.filter((r) => r.status !== "IN_PROGRESS");
+  const shown = showDone ? runs : active;
+  if (runs.length === 0) return null;
+  return (
+    <div className="rounded border border-rose-500/20 bg-rose-950/10 p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="rounded bg-rose-600/20 px-2 py-0.5 text-xs font-medium text-rose-300">TRANSFECTION</span>
+        <h2 className="text-sm font-semibold text-zinc-200">Expression runs</h2>
+        <span className="text-xs text-zinc-500">{active.length} active</span>
+        {finished.length > 0 && (
+          <button onClick={() => setShowDone((v) => !v)} className="ml-auto text-xs text-zinc-500 hover:text-zinc-300">
+            {showDone ? "Hide" : `Show ${finished.length} finished`}
+          </button>
+        )}
+      </div>
+      <ul className="space-y-1.5">
+        {shown.map((run) => {
+          const hint = transfectionStatusHint(run);
+          const statusColor = run.status === "HARVESTED" ? "bg-emerald-600/20 text-emerald-300"
+            : run.status === "CANCELLED" ? "bg-zinc-600/30 text-zinc-400" : "bg-amber-600/20 text-amber-300";
+          return (
+            <li key={run.id}>
+              <a href={`/protocols/transfection/${run.id}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-white/5 bg-zinc-900 px-3 py-2 transition hover:border-rose-500/30 hover:bg-zinc-800/70">
+                <span className="font-medium text-zinc-100">{run.name}</span>
+                <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${statusColor}`}>{run.status.replace("_", " ")}</span>
+                <span className="text-xs text-zinc-500">{EXPR_PROTOCOL_LABEL[run.protocolType] ?? run.protocolType} · {run.cultureVolumeMl.toLocaleString()} mL</span>
+                <span className={`ml-auto text-xs ${hint.tone}`}>{hint.text}</span>
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 function ProtocolsPageContent() {
@@ -1146,6 +1213,8 @@ function ProtocolsPageContent() {
           + New Protocol
         </button>
       </div>
+
+      <TransfectionRunsPanel />
 
       {/* Protocol Library */}
       <div className="rounded border border-zinc-800 bg-zinc-900 p-3">

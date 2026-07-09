@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import AppTopNav from "@/components/AppTopNav";
 import { calculateTransfection, calculateDilutionToDensity, calculateExpressionSchedule, type PlasmidRow, type ProtocolType } from "@/lib/transfection";
 
@@ -21,8 +22,11 @@ const fmt = (n: number, dp = 1) => n.toLocaleString(undefined, { minimumFraction
 const mL = (ul: number) => (ul / 1000).toLocaleString(undefined, { maximumFractionDigits: 2 }); // µL → mL display
 
 export default function TransfectionCalculatorPage() {
+  const router = useRouter();
   const [plasmidOptions, setPlasmidOptions] = useState<PlasmidOption[]>([]);
   const [runName, setRunName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [startError, setStartError] = useState("");
   const [protocolType, setProtocolType] = useState<(typeof PROTOCOL_TYPES)[number]>("Standard");
   const [finalConc, setFinalConc] = useState("0.6");
   const [rows, setRows] = useState<Row[]>([newRow()]);
@@ -94,6 +98,49 @@ export default function TransfectionCalculatorPage() {
     L.push("", `HARVEST: day ${schedule.harvestDayStart}–${schedule.harvestDayEnd} post-transfection.`);
     return L.join("\n");
   }, [result, schedule, cultureVolumeMl, protocolType]);
+
+  async function startRun() {
+    if (result.errors.length > 0 || saving) return;
+    setSaving(true);
+    setStartError("");
+    const activeRows = rows.filter((r) => (Number(r.ratio) || 0) > 0);
+    const payload = {
+      name: runName.trim() || suggestedName,
+      protocolType: PROTOCOL_KEY[protocolType],
+      cultureVolumeMl,
+      volumeMode,
+      measuredDensityE6: volumeMode === "DILUTE" ? Number(measuredDensity) || null : null,
+      startingVolumeMl: volumeMode === "DILUTE" ? Number(startingVolume) || null : null,
+      finalDnaConcUgMl: Number(finalConc) || 0.8,
+      totalDnaUg: result.totalDnaUg,
+      totalDnaVolumeUl: result.totalDnaVolumeUl,
+      tubeVolumeUl: result.tubeVolumeUl,
+      optiproForDnaUl: result.optiproForDnaUl,
+      expifectamineUl: result.expifectamineUl,
+      optiproForExpifectUl: result.optiproForExpifectamineUl,
+      plasmids: activeRows.map((r, i) => ({
+        plasmidId: r.plasmidId || null,
+        name: r.name || result.plasmids[i]?.name || `Plasmid ${i + 1}`,
+        stockConcNgUl: Number(r.stockConc) || 0,
+        ratio: Number(r.ratio) || 0,
+        amountUg: result.plasmids[i]?.amountUg ?? 0,
+        volumeUl: result.plasmids[i]?.volumeUl ?? 0,
+      })),
+    };
+    try {
+      const res = await fetch("/api/expression", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || `HTTP ${res.status}`);
+      const run = await res.json();
+      router.push(`/protocols/transfection/${run.id}`);
+    } catch (e) {
+      setStartError(e instanceof Error ? e.message : "Failed to start run");
+      setSaving(false);
+    }
+  }
 
   const inp = "rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:border-indigo-500 focus:outline-none";
 
@@ -232,7 +279,19 @@ export default function TransfectionCalculatorPage() {
               </div>
             )}
 
-            <p className="text-center text-[11px] text-zinc-600">Saving as a tracked multi-day run (Day-1 enhancer/feed, harvest window, ProteinStock) is coming next.</p>
+            {result.errors.length === 0 && (
+              <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-4">
+                <button
+                  onClick={startRun}
+                  disabled={saving}
+                  className="w-full rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-500 disabled:opacity-50"
+                >
+                  {saving ? "Starting…" : "Start Transfection →"}
+                </button>
+                {startError && <p className="mt-2 text-center text-xs text-red-300">⚠ {startError}</p>}
+                <p className="mt-2 text-center text-[11px] text-zinc-500">Saves a tracked run with scheduled Day-1 enhancer/feed, Day-5 feed and a harvest window.</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
