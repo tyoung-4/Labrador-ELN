@@ -226,7 +226,7 @@ export default function ProjectDetailPage() {
     doSearch(q);
   }
 
-  function handleTabSwitch(tab: "protocols" | "runs") {
+  function handleTabSwitch(tab: TabKey) {
     setActiveTab(tab);
     setTimeout(() => tabsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   }
@@ -493,16 +493,46 @@ export default function ProjectDetailPage() {
             </div>
           </div>
 
-          {/* Inventory — coming soon */}
-          <div className="rounded-lg border border-white/10 bg-white/5 p-4 opacity-50">
-            <h3 className="mb-3 text-sm font-semibold text-gray-400">Inventory</h3>
-            <p className="text-xs text-gray-600">Coming soon</p>
+          {/* Inventory quick-nav */}
+          <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+            <h3 className="mb-3 text-sm font-semibold" style={{ color: tag.color }}>
+              Inventory
+            </h3>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => handleTabSwitch("stocks")}
+                className="rounded px-2 py-1 text-left text-sm text-gray-300 transition hover:bg-white/5 hover:text-white"
+              >
+                Stocks ({itemsData?.counts.PROTEIN_STOCK ?? 0})
+              </button>
+              <button
+                onClick={() => handleTabSwitch("plasmids")}
+                className="rounded px-2 py-1 text-left text-sm text-gray-300 transition hover:bg-white/5 hover:text-white"
+              >
+                Plasmids ({itemsData?.counts.PLASMID ?? 0})
+              </button>
+              <button
+                onClick={() => handleTabSwitch("celllines")}
+                className="rounded px-2 py-1 text-left text-sm text-gray-300 transition hover:bg-white/5 hover:text-white"
+              >
+                Cell Lines ({itemsData?.counts.CELL_LINE ?? 0})
+              </button>
+            </div>
           </div>
 
-          {/* Knowledge Hub — coming soon */}
-          <div className="rounded-lg border border-white/10 bg-white/5 p-4 opacity-50">
-            <h3 className="mb-3 text-sm font-semibold text-gray-400">Knowledge Hub</h3>
-            <p className="text-xs text-gray-600">Coming soon</p>
+          {/* Knowledge Hub quick-nav */}
+          <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+            <h3 className="mb-3 text-sm font-semibold" style={{ color: tag.color }}>
+              Knowledge Hub
+            </h3>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => handleTabSwitch("knowledge")}
+                className="rounded px-2 py-1 text-left text-sm text-gray-300 transition hover:bg-white/5 hover:text-white"
+              >
+                Entries ({itemsData?.counts.KNOWLEDGE_HUB ?? 0})
+              </button>
+            </div>
           </div>
         </div>
 
