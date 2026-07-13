@@ -257,6 +257,7 @@ export default function EquipmentPage() {
         <div className="flex flex-1 flex-col overflow-hidden">
           {/* Toolbar */}
           <div className="flex items-center gap-3 border-b border-zinc-800 bg-zinc-950 px-5 py-3">
+            <h1 className="mr-1 text-sm font-semibold text-zinc-100">Equipment Schedule</h1>
             <div className="flex overflow-hidden rounded border border-zinc-700 bg-zinc-800">
               {(["daily", "weekly", "monthly"] as ViewMode[]).map(v => (
                 <button
