@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
       where: { type: "PROJECT" },
       select: {
         id: true,
+        shortTagId: true,
         name: true,
         color: true,
         createdBy: true,
@@ -42,9 +43,18 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    // Short-tag aliases are stored as their own PROJECT tag and linked via
+    // another project's shortTagId. They must NOT surface as standalone project
+    // cards (that's the "one project shows up twice" clutter) — exclude any tag
+    // that is referenced as another project's short tag.
+    const aliasIds = new Set(
+      tagsRaw.map((t) => t.shortTagId).filter((id): id is string => Boolean(id))
+    );
+
     // Privacy: never leak private projects the requester can't view. When
     // includePrivate is false, drop private projects entirely.
     const tags = tagsRaw.filter((t) => {
+      if (aliasIds.has(t.id)) return false;
       if (t.isPrivate && !includePrivate) return canViewProject(t, currentUser);
       if (t.isPrivate) return canViewProject(t, currentUser);
       if (ownerFilter) {
