@@ -170,32 +170,33 @@ model TagAssignment {
 }
 
 model ProtocolRun {
-  id               String        @id @default(uuid())
-  runId            String?       @unique
+  id               String              @id @default(uuid())
+  runId            String?             @unique
   title            String
-  status           String        @default("IN_PROGRESS")
-  locked           Boolean       @default(true)
+  status           String              @default("IN_PROGRESS")
+  locked           Boolean             @default(true)
   runBody          String
-  notes            String        @default("")
-  interactionState String        @default("{}")
-  linkedInventory  String        @default("[]")
-  operatorName     String        @default("")
+  notes            String              @default("")
+  interactionState String              @default("{}")
+  linkedInventory  String              @default("[]")
+  operatorName     String              @default("")
   completedAt      DateTime?
-  preRunNotes      String        @default("")
-  abortNotes       String        @default("")
-  isMockRun        Boolean       @default(false)
-  requireStepOrder Boolean       @default(false)
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  sourceEntry      Entry         @relation("RunSource", fields: [sourceEntryId], references: [id])
+  preRunNotes      String              @default("")
+  abortNotes       String              @default("")
+  isMockRun        Boolean             @default(false)
+  requireStepOrder Boolean             @default(false)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  sourceEntry      Entry               @relation("RunSource", fields: [sourceEntryId], references: [id])
   sourceEntryId    String
-  protocol         Protocol?     @relation(fields: [protocolId], references: [id])
+  protocol         Protocol?           @relation(fields: [protocolId], references: [id])
   protocolId       String?
-  runner           User?         @relation(fields: [runnerId], references: [id])
+  runner           User?               @relation(fields: [runnerId], references: [id])
   runnerId         String?
-  linkedEntries    Entry[]       @relation("RunLink")
+  linkedEntries    Entry[]             @relation("RunLink")
   stepResults      StepResult[]
   stepFiles        RunStepFile[]
+  inventoryUsage   RunInventoryUsage[]
 }
 
 model StepResult {
@@ -747,6 +748,34 @@ model RunStepFile {
 
   @@index([runId])
   @@index([runId, stepId])
+}
+
+// Actual inventory used in a run (run-time capture, source of truth). Distinct
+// from ProtocolInventoryLink (author-time suggestions). itemName/itemDetail are
+// snapshots so a later-deleted item still displays; itemId links back to the
+// live inventory row for navigation. The [itemType,itemId] index powers the
+// reverse lookup ("which runs used this item?"). See docs/CROSS_LINKING_DESIGN.md.
+model RunInventoryUsage {
+  id    String      @id @default(cuid())
+  runId String
+  run   ProtocolRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  itemType   String // reagent | stock | plasmid | cellline (matches /api/inventory/search + ProtocolInventoryLink)
+  itemId     String // FK-by-convention to the inventory row (no hard FK: 4 possible tables)
+  itemName   String // snapshot of the item name at capture time
+  itemDetail String @default("") // snapshot (e.g. "50 µg/mL · Freezer B")
+
+  lotId      String? // optional prep/batch/lot/passage id — reserved for lot-level traceability
+  stepId     String? // optional "step-N" association — reserved for per-step capture
+  amountUsed Float?
+  unit       String?
+  notes      String  @default("")
+
+  addedBy   String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([runId])
+  @@index([itemType, itemId])
 }
 
 model LadderDefinition {
