@@ -7,6 +7,7 @@ import { getCurrentUser } from "@/components/AppTopNav";
 import type { ProtocolRun, StepResult } from "@/models/protocolRun";
 import TagInput from "@/components/tags/TagInput";
 import SidebarWidgets from "@/components/runs/SidebarWidgets";
+import RunInventoryUsagePanel from "@/components/runs/RunInventoryUsagePanel";
 import RecipeChip, { type RecipeSummary } from "@/components/recipes/RecipeChip";
 import StepFileAttachment from "@/components/runs/StepFileAttachment";
 
@@ -1894,6 +1895,19 @@ export default function ActiveRunPage() {
             onAbortRun={handleAbortRun}
             isMockRun={run.isMockRun}
           />
+
+          <div className="mt-4">
+            <RunInventoryUsagePanel
+              runId={run.id}
+              runStatus={run.status}
+              suggestions={safeParseLinkedInventory(run.linkedInventory).map((i) => ({
+                itemType: i.itemType,
+                itemId: i.itemId,
+                itemName: i.itemName,
+                itemDetail: i.itemDetail,
+              }))}
+            />
+          </div>
         </div>
       </div>
 

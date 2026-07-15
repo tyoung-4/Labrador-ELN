@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import InventoryUsageBadge from "./InventoryUsageBadge";
 import PlasmidForm from "./PlasmidForm";
 import AddBatchModal from "./AddBatchModal";
 import KebabMenu, { KebabMenuItem, ArchiveConfirm, FlagPrompt } from "./KebabMenu";
@@ -185,6 +186,10 @@ function PlasmidCard({
               ))}
             </div>
           )}
+
+          <div className="mt-2 border-t border-white/10 pt-2">
+            <InventoryUsageBadge itemType="plasmid" itemId={item.id} />
+          </div>
 
           {/* ── Preps ── */}
           {preps.length > 0 && (

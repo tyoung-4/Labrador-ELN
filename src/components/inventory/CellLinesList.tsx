@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import InventoryUsageBadge from "./InventoryUsageBadge";
 import CellLineForm from "./CellLineForm";
 import AddBatchModal from "./AddBatchModal";
 import KebabMenu, { KebabMenuItem, ArchiveConfirm, FlagPrompt } from "./KebabMenu";
@@ -340,6 +341,10 @@ function CellLineCard({
           {item.owner      && <p>Owner: {item.owner}</p>}
           {item.notes      && <p className="whitespace-pre-wrap">{item.notes}</p>}
 
+          <div className="mt-2 border-t border-white/10 pt-2">
+            <InventoryUsageBadge itemType="cellline" itemId={item.id} />
+          </div>
+
           {/* ── Passages ── */}
           <div className="mt-3 space-y-1.5">
             {passages.length > 0 && (
@@ -373,8 +378,9 @@ function CellLineCard({
 
 // ── Parent list component ─────────────────────────────────────────────────────
 
-export default function CellLinesList({ search, currentUser, refetchTrigger }: { search: string; currentUser: string; refetchTrigger?: number }) {
+export default function CellLinesList({ search, currentUser, refetchTrigger, highlightId }: { search: string; currentUser: string; refetchTrigger?: number; highlightId?: string }) {
   const [items,          setItems]          = useState<CellLine[]>([]);
+  const highlightRef = useRef<HTMLDivElement | null>(null);
   const [loading,        setLoading]        = useState(true);
   const [expandedIds,    setExpandedIds]    = useState<Set<string>>(new Set());
   const [editingItem,    setEditingItem]    = useState<CellLine | null>(null);
@@ -392,6 +398,16 @@ export default function CellLinesList({ search, currentUser, refetchTrigger }: {
   }, [search]);
 
   useEffect(() => { load(); }, [load, refetchTrigger]);
+
+  // Scroll to + expand a deep-linked item (/inventory?tab=cellLines&cellLineId=…)
+  useEffect(() => {
+    if (!highlightId || !items.length) return;
+    if (!items.find((i) => i.id === highlightId)) return;
+    setExpandedIds((prev) => new Set([...prev, highlightId]));
+    loadPassages(highlightId);
+    setTimeout(() => highlightRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 150);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightId, items.length]);
 
   async function loadPassages(id: string) {
     if (loadedIds.has(id)) return;
@@ -422,21 +438,26 @@ export default function CellLinesList({ search, currentUser, refetchTrigger }: {
     <>
       <div className="space-y-2">
         {items.map((item) => (
-          <CellLineCard
+          <div
             key={item.id}
-            item={item}
-            currentUser={currentUser}
-            expanded={expandedIds.has(item.id)}
-            passages={passagesMap[item.id] ?? []}
-            passagesLoaded={loadedIds.has(item.id)}
-            onToggle={() => toggleExpand(item.id)}
-            onEdit={() => setEditingItem(item)}
-            onReload={load}
-            onAddBatch={() => setAddBatchItemId(item.id)}
-            onPassagesChanged={(newPassages) =>
-              setPassagesMap((prev) => ({ ...prev, [item.id]: newPassages }))
-            }
-          />
+            ref={item.id === highlightId ? highlightRef : null}
+            className={item.id === highlightId ? "ring-2 ring-teal-400/50 rounded" : undefined}
+          >
+            <CellLineCard
+              item={item}
+              currentUser={currentUser}
+              expanded={expandedIds.has(item.id)}
+              passages={passagesMap[item.id] ?? []}
+              passagesLoaded={loadedIds.has(item.id)}
+              onToggle={() => toggleExpand(item.id)}
+              onEdit={() => setEditingItem(item)}
+              onReload={load}
+              onAddBatch={() => setAddBatchItemId(item.id)}
+              onPassagesChanged={(newPassages) =>
+                setPassagesMap((prev) => ({ ...prev, [item.id]: newPassages }))
+              }
+            />
+          </div>
         ))}
       </div>
 
