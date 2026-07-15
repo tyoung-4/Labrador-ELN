@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import InventoryUsageBadge from "./InventoryUsageBadge";
 import { createPortal } from "react-dom";
 import ReagentForm from "./ReagentForm";
 import AddBatchModal from "./AddBatchModal";
@@ -443,6 +444,10 @@ function ReagentCard({
         )}
       </div>
 
+      <div className="mt-2 border-t border-white/10 pt-2">
+        <InventoryUsageBadge itemType="reagent" itemId={item.id} />
+      </div>
+
       {/* Lots section (Step 5) */}
       {lots.length > 0 && (
         <div className="mt-3 space-y-1.5">
@@ -613,11 +618,12 @@ function ReagentGroupHeader({
 // ── Parent list component ─────────────────────────────────────────────────────
 
 export default function ReagentsList({
-  search, currentUser, refetchTrigger,
+  search, currentUser, refetchTrigger, highlightId,
 }: {
-  search: string; currentUser: string; refetchTrigger?: number;
+  search: string; currentUser: string; refetchTrigger?: number; highlightId?: string;
 }) {
   const [reagents,       setReagents]       = useState<Reagent[]>([]);
+  const highlightRef = useRef<HTMLDivElement | null>(null);
   const [loading,        setLoading]        = useState(true);
   const [expandedIds,    setExpandedIds]    = useState<Set<string>>(new Set());
   const [editingItem,    setEditingItem]    = useState<Reagent | null>(null);
@@ -655,6 +661,17 @@ export default function ReagentsList({
       return next;
     });
   };
+
+  // Scroll to + expand a deep-linked item (/inventory?tab=reagents&reagentId=…).
+  // Adding the id to expandedIds also auto-expands its name-group.
+  useEffect(() => {
+    if (!highlightId || !reagents.length) return;
+    if (!reagents.find((r) => r.id === highlightId)) return;
+    setExpandedIds((prev) => new Set([...prev, highlightId]));
+    loadLots(highlightId);
+    setTimeout(() => highlightRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 200);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightId, reagents.length]);
 
   const addBatchItem = addBatchItemId ? reagents.find((r) => r.id === addBatchItemId) : null;
 
@@ -717,13 +734,18 @@ export default function ReagentsList({
                   : "border-white/10 divide-white/5"
                 }`}>
                   {stocks.map((r) => (
-                    <ReagentCard
+                    <div
                       key={r.id}
-                      item={r}
-                      currentUser={currentUser}
-                      lots={lotsMap[r.id] ?? []}
-                      onLotsChanged={(newLots) => setLotsMap((prev) => ({ ...prev, [r.id]: newLots }))}
-                    />
+                      ref={r.id === highlightId ? highlightRef : null}
+                      className={r.id === highlightId ? "ring-2 ring-teal-400/50 rounded" : undefined}
+                    >
+                      <ReagentCard
+                        item={r}
+                        currentUser={currentUser}
+                        lots={lotsMap[r.id] ?? []}
+                        onLotsChanged={(newLots) => setLotsMap((prev) => ({ ...prev, [r.id]: newLots }))}
+                      />
+                    </div>
                   ))}
                 </div>
               )}

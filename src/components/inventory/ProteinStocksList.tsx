@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
+import InventoryUsageBadge from "./InventoryUsageBadge";
 import Link from "next/link";
 import ProteinStockForm from "./ProteinStockForm";
 import ProteinBatchForm from "./ProteinBatchForm";
@@ -430,6 +431,10 @@ function ProteinStockCard({
             </div>
           )}
 
+          <div className="mt-2 border-t border-white/10 pt-2">
+            <InventoryUsageBadge itemType="stock" itemId={item.id} />
+          </div>
+
           {/* Batch list */}
           {ui.batches.length > 0 && (
             <div className="mt-2 space-y-2">
@@ -656,12 +661,15 @@ export default function ProteinStocksList({
   search,
   currentUser,
   refetchTrigger,
+  highlightId,
 }: {
   search: string;
   currentUser: string;
   refetchTrigger?: number;
+  highlightId?: string;
 }) {
   const [items,       setItems]       = useState<ProteinStock[]>([]);
+  const highlightRef = useRef<HTMLDivElement | null>(null);
   const [loading,     setLoading]     = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [editingItem, setEditingItem] = useState<ProteinStock | null>(null);
@@ -714,6 +722,17 @@ export default function ProteinStocksList({
       return n;
     });
   };
+
+  // Scroll to + expand a deep-linked item (/inventory?tab=proteins&stockId=…).
+  // Adding the id to expandedIds also auto-expands its name-group.
+  useEffect(() => {
+    if (!highlightId || !items.length) return;
+    if (!items.find((i) => i.id === highlightId)) return;
+    setExpandedIds((prev) => new Set([...prev, highlightId]));
+    loadBatches(highlightId);
+    setTimeout(() => highlightRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 200);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightId, items.length]);
 
   if (loading) return <div className="text-white/40 text-sm py-8 text-center">Loading…</div>;
   if (!items.length)
@@ -769,18 +788,23 @@ export default function ProteinStocksList({
               {groupExpanded && (
                 <div className="border-t border-white/10 divide-y divide-white/5">
                   {stocks.map((item) => (
-                    <ProteinStockCard
+                    <div
                       key={item.id}
-                      item={item}
-                      currentUser={currentUser}
-                      expanded={expandedIds.has(item.id)}
-                      ui={getStockUI(item.id)}
-                      onToggle={() => toggleExpand(item.id)}
-                      onEdit={() => setEditingItem(item)}
-                      onReload={load}
-                      onUpdateUI={(patch) => updateStockUI(item.id, patch)}
-                      onLoadBatches={() => loadBatches(item.id)}
-                    />
+                      ref={item.id === highlightId ? highlightRef : null}
+                      className={item.id === highlightId ? "ring-2 ring-teal-400/50 rounded" : undefined}
+                    >
+                      <ProteinStockCard
+                        item={item}
+                        currentUser={currentUser}
+                        expanded={expandedIds.has(item.id)}
+                        ui={getStockUI(item.id)}
+                        onToggle={() => toggleExpand(item.id)}
+                        onEdit={() => setEditingItem(item)}
+                        onReload={load}
+                        onUpdateUI={(patch) => updateStockUI(item.id, patch)}
+                        onLoadBatches={() => loadBatches(item.id)}
+                      />
+                    </div>
                   ))}
                 </div>
               )}

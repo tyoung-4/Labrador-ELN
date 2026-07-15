@@ -42,13 +42,18 @@ function InventoryPageContent() {
   const searchParams = useSearchParams();
   const [tab, setTab] = useState<Tab>("reagents");
   const [highlightPlasmidId, setHighlightPlasmidId] = useState<string | undefined>(undefined);
+  const [highlightStockId, setHighlightStockId] = useState<string | undefined>(undefined);
+  const [highlightReagentId, setHighlightReagentId] = useState<string | undefined>(undefined);
+  const [highlightCellLineId, setHighlightCellLineId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     const valid: Tab[] = ["reagents", "cellLines", "plasmids", "proteins", "archived"];
     const p = searchParams.get("tab");
     if (p && valid.includes(p as Tab)) setTab(p as Tab);
-    const pid = searchParams.get("plasmidId");
-    setHighlightPlasmidId(pid ?? undefined);
+    setHighlightPlasmidId(searchParams.get("plasmidId") ?? undefined);
+    setHighlightStockId(searchParams.get("stockId") ?? undefined);
+    setHighlightReagentId(searchParams.get("reagentId") ?? undefined);
+    setHighlightCellLineId(searchParams.get("cellLineId") ?? undefined);
   }, [searchParams]);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -178,10 +183,10 @@ function InventoryPageContent() {
 
         {/* Content */}
         <div>
-          {tab === "reagents"  && <ReagentsList search={debouncedSearch} currentUser={currentUser} refetchTrigger={refetchTrigger} />}
-          {tab === "cellLines" && <CellLinesList search={debouncedSearch} currentUser={currentUser} refetchTrigger={refetchTrigger} />}
+          {tab === "reagents"  && <ReagentsList search={debouncedSearch} currentUser={currentUser} refetchTrigger={refetchTrigger} highlightId={highlightReagentId} />}
+          {tab === "cellLines" && <CellLinesList search={debouncedSearch} currentUser={currentUser} refetchTrigger={refetchTrigger} highlightId={highlightCellLineId} />}
           {tab === "plasmids"  && <PlasmidsList search={debouncedSearch} currentUser={currentUser} refetchTrigger={refetchTrigger} highlightId={highlightPlasmidId} />}
-          {tab === "proteins"  && <ProteinStocksList search={debouncedSearch} currentUser={currentUser} refetchTrigger={refetchTrigger} />}
+          {tab === "proteins"  && <ProteinStocksList search={debouncedSearch} currentUser={currentUser} refetchTrigger={refetchTrigger} highlightId={highlightStockId} />}
           {tab === "archived"  && <ArchivedList search={debouncedSearch} currentUser={currentUser} />}
         </div>
 
