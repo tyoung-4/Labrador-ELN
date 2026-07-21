@@ -265,13 +265,12 @@ export default function AntibodySchematic({
           {isSymmetric ? "◯ Symmetric" : "◑ Asymmetric"}
         </text>
 
-        {/* ── Connectors (muted): chains → hinge → Fc ── */}
+        {/* ── Connectors (muted): heavy chains → hinge → Fc ── */}
         <g stroke="rgba(255,255,255,0.18)" strokeWidth={2} fill="none" strokeLinecap="round">
-          {/* Fab constant domains down to the hinge */}
+          {/* Only the HEAVY chains (CH1) continue down to the hinge. The light
+              chains (CL) terminate in the Fab arm — they do NOT bridge to the Fc. */}
           <path d="M 270 300 L 300 384" />
           <path d="M 330 300 L 300 384" />
-          <path d="M 228 326 L 300 384" />
-          <path d="M 372 326 L 300 384" />
           {/* Hinge bar + descent into Fc */}
           <path d="M 286 384 L 314 384" />
           <path d="M 300 384 L 300 406" />
