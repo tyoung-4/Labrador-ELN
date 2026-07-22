@@ -911,3 +911,91 @@ model ExpressionAction {
   @@index([timelineId])
   @@index([scheduledDate, done])
 }
+
+// ─── Antibody Designer ───────────────────────────────────────────────────────
+// In-silico antibody design records: an Antibody with engineered annotations
+// (point mutations incl. non-canonical residues, disulfides, glyco edits, domain
+// swaps, tags) and attached binders (meditope, FcR binder, custom). Schema-only
+// (Prompt 1 of 4) — no UI yet. Amino-acid validation is enforced in the API.
+model Antibody {
+  id          String  @id @default(cuid())
+  name        String
+  parentName  String?
+  format      String  @default("IgG1") // IgG1, IgG2, IgG4, bispecific, Fab, scFv, etc.
+  isSymmetric Boolean @default(true)
+  description String?
+  owner       String
+  createdBy   String
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastEditedBy String?
+  lastEditedAt DateTime?
+
+  proteinStockId String? // optional link to Inventory ProteinStock (id is String cuid)
+
+  annotations AntibodyAnnotation[]
+  binders     AntibodyBinder[]
+
+  // Archive fields — match inventory pattern
+  isArchived    Boolean   @default(false)
+  archivedAt    DateTime?
+  archivedBy    String?
+  archiveReason String?
+
+  @@index([owner])
+  @@index([isArchived])
+}
+
+model AntibodyAnnotation {
+  id         String   @id @default(cuid())
+  antibodyId String
+  antibody   Antibody @relation(fields: [antibodyId], references: [id], onDelete: Cascade)
+
+  type   String // "POINT_MUTATION" | "DISULFIDE" | "GLYCOSYLATION" | "DOMAIN_SWAP" | "TAG"
+  chain  String // "HEAVY_A" | "HEAVY_B" | "LIGHT_A" | "LIGHT_B"
+  region String // "VH"|"CH1"|"HINGE"|"CH2"|"CH3"|"VL"|"CL"|"CDR_H1..3"|"CDR_L1..3"|"N_TERM"|"C_TERM"|"BINDER"
+
+  // Point mutation
+  position        Int?
+  wtResidue       String? // canonical AA single letter
+  mutResidue      String? // canonical letter OR "X" for non-canonical
+  isNonCanonical  Boolean @default(false)
+  ncaaIdentity    String? // required if isNonCanonical — e.g. "diphenylalanine", "AzF", "pAcF"
+  numberingScheme String  @default("EU")
+
+  // Disulfide (links two positions)
+  position2 Int?
+  chain2    String?
+  region2   String?
+
+  // Glycosylation
+  glycoAction String? // "ADD" | "REMOVE"
+
+  // Domain swap
+  swapSource String? // e.g. "Matuzumab VH"
+
+  // Tag
+  tagIdentity String? // e.g. "His6", "Avi", "Flag"
+
+  rationale String?
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@index([antibodyId])
+  @@index([type])
+}
+
+model AntibodyBinder {
+  id          String   @id @default(cuid())
+  antibodyId  String
+  antibody    Antibody @relation(fields: [antibodyId], references: [id], onDelete: Cascade)
+  type        String // "MEDITOPE" | "FCR_BINDER" | "CUSTOM"
+  name        String
+  attachPoint String?
+  description String?
+  createdBy   String
+  createdAt   DateTime @default(now())
+
+  @@index([antibodyId])
+}
