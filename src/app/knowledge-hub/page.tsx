@@ -38,6 +38,16 @@ export default function KnowledgeHubPage() {
           </Link>
         ))}
 
+        {/* Antibody Designer — featured tool */}
+        <Link
+          href="/antibody-designer"
+          className="col-span-2 rounded-xl border border-white/10 bg-white/5 p-5 transition-colors hover:bg-white/10 sm:col-span-3"
+        >
+          <p className="mb-2 text-2xl">🧬</p>
+          <p className="text-sm font-semibold text-white">Antibody Designer</p>
+          <p className="mt-1 text-xs text-gray-500">Design and annotate antibody variants with mutation tracking</p>
+        </Link>
+
         {/* Acknowledgements — full-width at the bottom */}
         <button
           onClick={() => setShowAcknowledgements(true)}

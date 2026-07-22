@@ -24,7 +24,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     proteinStockName = stock?.name ?? null;
   }
 
-  return NextResponse.json({ ...antibody, proteinStockName });
+  // Tags are polymorphic (TagAssignment.entityType = "ANTIBODY") — fetch separately.
+  const tagAssignments = await prisma.tagAssignment.findMany({
+    where: { entityType: "ANTIBODY", entityId: id },
+    select: { tagId: true, tag: { select: { id: true, name: true, type: true, color: true } } },
+  });
+
+  return NextResponse.json({ ...antibody, proteinStockName, tagAssignments });
 }
 
 // PATCH /api/antibodies/[id] — update metadata. Owner or Admin only.
