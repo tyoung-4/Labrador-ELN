@@ -61,54 +61,56 @@ const typeColor = (type: string): string =>
 const canonChain = (chain: string, isSymmetric: boolean): string =>
   isSymmetric ? chain.replace("_B", "_A") : chain;
 
-// ─── Domain layout (viewBox 0 0 600 700) ─────────────────────────────────────
-const W = 52;
+// ─── Domain layout (viewBox 0 0 600 700) — upright (untilted) domains ─────────
+const W = 54;
 const c = (cx: number, cy: number) => ({ x: cx - W / 2, y: cy - W / 2 });
 
-// Left Fab arm (HEAVY_A inner, LIGHT_A outer), splayed up-left ~31°.
+// Left Fab arm = chain A. Upright boxes: VL|VH on top, CL|CH1 below. The heavy
+// chain (VH, CH1) is inner (toward the Fc); the light chain (VL, CL) is outer.
 const LEFT_FAB: DomainShape[] = [
-  { chain: "LIGHT_A", region: "VL",  ...c(170, 213), width: W, height: W, rotation: -30, label: "VL" },
-  { chain: "HEAVY_A", region: "VH",  ...c(214, 187), width: W, height: W, rotation: -30, label: "VH" },
-  { chain: "LIGHT_A", region: "CL",  ...c(221, 298), width: W, height: W, rotation: -30, label: "CL" },
-  { chain: "HEAVY_A", region: "CH1", ...c(265, 272), width: W, height: W, rotation: -30, label: "CH1" },
+  { chain: "LIGHT_A", region: "VL",  ...c(160, 120), width: W, height: W, label: "VL" },
+  { chain: "HEAVY_A", region: "VH",  ...c(214, 120), width: W, height: W, label: "VH" },
+  { chain: "LIGHT_A", region: "CL",  ...c(160, 216), width: W, height: W, label: "CL" },
+  { chain: "HEAVY_A", region: "CH1", ...c(214, 216), width: W, height: W, label: "CH1" },
 ];
 
-// Right Fab arm — mirror of the left across x=300, splayed up-right ~31°.
+// Right Fab arm = chain B, mirror across x=300 (heavy inner on the left side).
 const RIGHT_FAB: DomainShape[] = [
-  { chain: "LIGHT_B", region: "VL",  ...c(430, 213), width: W, height: W, rotation: 30, label: "VL" },
-  { chain: "HEAVY_B", region: "VH",  ...c(386, 187), width: W, height: W, rotation: 30, label: "VH" },
-  { chain: "LIGHT_B", region: "CL",  ...c(379, 298), width: W, height: W, rotation: 30, label: "CL" },
-  { chain: "HEAVY_B", region: "CH1", ...c(335, 272), width: W, height: W, rotation: 30, label: "CH1" },
+  { chain: "HEAVY_B", region: "VH",  ...c(386, 120), width: W, height: W, label: "VH" },
+  { chain: "LIGHT_B", region: "VL",  ...c(440, 120), width: W, height: W, label: "VL" },
+  { chain: "HEAVY_B", region: "CH1", ...c(386, 216), width: W, height: W, label: "CH1" },
+  { chain: "LIGHT_B", region: "CL",  ...c(440, 216), width: W, height: W, label: "CL" },
 ];
 
-// Fc stem — both heavy chains side by side, no rotation.
+// Fc stem — both heavy chains side by side, centered below the arms.
 const FC: DomainShape[] = [
   { chain: "HEAVY_A", region: "CH2", ...c(273, 430), width: W, height: W, label: "CH2" },
   { chain: "HEAVY_B", region: "CH2", ...c(327, 430), width: W, height: W, label: "CH2" },
-  { chain: "HEAVY_A", region: "CH3", ...c(273, 498), width: W, height: W, label: "CH3" },
-  { chain: "HEAVY_B", region: "CH3", ...c(327, 498), width: W, height: W, label: "CH3" },
+  { chain: "HEAVY_A", region: "CH3", ...c(273, 500), width: W, height: W, label: "CH3" },
+  { chain: "HEAVY_B", region: "CH3", ...c(327, 500), width: W, height: W, label: "CH3" },
 ];
 
-// Variable-domain tips → where CDR arcs sit (anchor just beyond the tip).
-const CDR_ANCHORS: { chain: Chain; region: "VH" | "VL"; ax: number; ay: number }[] = [
-  { chain: "HEAVY_A", region: "VH", ax: 197, ay: 158 },
-  { chain: "LIGHT_A", region: "VL", ax: 152, ay: 184 },
-  { chain: "HEAVY_B", region: "VH", ax: 403, ay: 158 },
-  { chain: "LIGHT_B", region: "VL", ax: 448, ay: 184 },
+// CDR loops render as three ovals above each variable domain (cx = domain centre).
+const CDR_ANCHORS: { chain: Chain; region: "VH" | "VL"; cx: number; topY: number }[] = [
+  { chain: "HEAVY_A", region: "VH", cx: 214, topY: 74 },
+  { chain: "LIGHT_A", region: "VL", cx: 160, topY: 74 },
+  { chain: "HEAVY_B", region: "VH", cx: 386, topY: 74 },
+  { chain: "LIGHT_B", region: "VL", cx: 440, topY: 74 },
 ];
 
-// N-termini (variable tips) and C-termini (heavy = CH3 base, light = CL base).
+// N-termini at variable-domain tops (outer corner); C-termini at the CL base
+// (light chains) and CH3 base (heavy chains).
 const N_TERMINI: { chain: Chain; x: number; y: number }[] = [
-  { chain: "LIGHT_A", x: 138, y: 190 },
-  { chain: "HEAVY_A", x: 184, y: 150 },
-  { chain: "HEAVY_B", x: 416, y: 150 },
-  { chain: "LIGHT_B", x: 462, y: 190 },
+  { chain: "LIGHT_A", x: 126, y: 100 },
+  { chain: "HEAVY_A", x: 248, y: 100 },
+  { chain: "HEAVY_B", x: 352, y: 100 },
+  { chain: "LIGHT_B", x: 474, y: 100 },
 ];
 const C_TERMINI: { chain: Chain; x: number; y: number }[] = [
-  { chain: "HEAVY_A", x: 273, y: 542 },
-  { chain: "HEAVY_B", x: 327, y: 542 },
-  { chain: "LIGHT_A", x: 196, y: 334 },
-  { chain: "LIGHT_B", x: 404, y: 334 },
+  { chain: "LIGHT_A", x: 126, y: 250 },
+  { chain: "LIGHT_B", x: 474, y: 250 },
+  { chain: "HEAVY_A", x: 273, y: 552 },
+  { chain: "HEAVY_B", x: 327, y: 552 },
 ];
 
 // ─── Domain rect ─────────────────────────────────────────────────────────────
@@ -167,17 +169,17 @@ function DomainRect({
   );
 }
 
-// ─── CDR arcs (subtle detail at the variable-domain tips) ────────────────────
+// ─── CDR loops — three ovals above each variable domain ──────────────────────
 function CDRArcs({
-  chain, region, annotations, selectedRegion, onClick, ax, ay,
+  chain, region, annotations, selectedRegion, onClick, cx, topY,
 }: {
   chain: Chain;
   region: "VH" | "VL";
   annotations: SchematicAnnotation[];
   selectedRegion: RegionSelection | null;
   onClick: (sel: { chain: Chain; region: string }) => void;
-  ax: number;
-  ay: number;
+  cx: number;
+  topY: number;
 }) {
   const cdrRegions = region === "VH" ? ["CDR_H1", "CDR_H2", "CDR_H3"] : ["CDR_L1", "CDR_L2", "CDR_L3"];
   return (
@@ -186,15 +188,15 @@ function CDRArcs({
         const cdrAnn = annotations.filter((a) => a.region === cdr);
         const has = cdrAnn.length > 0;
         const selected = selectedRegion?.region === cdr;
-        const r = 6 + i * 4;
-        const yOff = ay + i * 2;
+        const ex = cx + (i - 1) * 15; // three ovals centred on the domain
+        const color = selected ? "#8b5cf6" : has ? typeColor(cdrAnn[0].type) : "rgba(255,255,255,0.4)";
         return (
-          <path
+          <ellipse
             key={cdr}
-            d={`M ${ax - r} ${yOff} Q ${ax} ${yOff - (10 + i * 5)} ${ax + r} ${yOff}`}
-            stroke={selected ? "#8b5cf6" : has ? typeColor(cdrAnn[0].type) : "rgba(255,255,255,0.25)"}
-            strokeWidth={selected ? 3.5 : has ? 3 : 1.5}
-            fill="none"
+            cx={ex} cy={topY} rx={7} ry={13}
+            fill={has ? typeColor(cdrAnn[0].type) + "33" : "transparent"}
+            stroke={color}
+            strokeWidth={selected || has ? 2.5 : 1.5}
             onClick={(e) => { e.stopPropagation(); onClick({ chain, region: cdr }); }}
             style={{ cursor: "pointer" }}
           />
@@ -265,22 +267,31 @@ export default function AntibodySchematic({
           {isSymmetric ? "◯ Symmetric" : "◑ Asymmetric"}
         </text>
 
-        {/* ── Connectors (muted): heavy chains → hinge → Fc ── */}
-        <g stroke="rgba(255,255,255,0.18)" strokeWidth={2} fill="none" strokeLinecap="round">
-          {/* Only the HEAVY chains (CH1) continue down to the hinge. The light
-              chains (CL) terminate in the Fab arm — they do NOT bridge to the Fc. */}
-          <path d="M 270 300 L 300 384" />
-          <path d="M 330 300 L 300 384" />
-          {/* Hinge bar + descent into Fc */}
-          <path d="M 286 384 L 314 384" />
-          <path d="M 300 384 L 300 406" />
-          {/* Inter-heavy Fc seam */}
-          <path d="M 300 406 L 300 524" strokeDasharray="3 4" stroke="rgba(255,255,255,0.12)" />
+        {/* ── Connectors ── */}
+        <g fill="none" strokeLinecap="round">
+          {/* Intra-chain backbone links — stacked domains within one chain are
+              joined: VL–CL & VH–CH1 in each Fab arm, CH2–CH3 in each heavy chain. */}
+          <g stroke="rgba(96,165,250,0.6)" strokeWidth={2.5}>
+            <path d="M 160 147 L 160 189" />
+            <path d="M 214 147 L 214 189" />
+            <path d="M 386 147 L 386 189" />
+            <path d="M 440 147 L 440 189" />
+            <path d="M 273 457 L 273 473" />
+            <path d="M 327 457 L 327 473" />
+          </g>
+          {/* Hinge — each heavy chain's CH1 links to ITS OWN CH2 (two separate
+              links, not a single convergence). Light chains stop at the Fab. */}
+          <g stroke="rgba(255,255,255,0.3)" strokeWidth={2}>
+            <path d="M 214 243 L 273 403" />
+            <path d="M 386 243 L 327 403" />
+          </g>
+          {/* Inter-heavy Fc seam — the two heavy chains pair down the Fc. */}
+          <path d="M 300 403 L 300 527" stroke="rgba(255,255,255,0.14)" strokeWidth={2} strokeDasharray="3 4" />
         </g>
-        {/* Hinge disulfide accent */}
-        <path d="M 289 380 L 311 388 M 289 388 L 311 380" stroke={typeColor("DISULFIDE")} strokeWidth={1.5} opacity={0.5} />
+        {/* Inter-heavy hinge disulfide accent */}
+        <path d="M 292 394 L 308 402 M 292 402 L 308 394" stroke={typeColor("DISULFIDE")} strokeWidth={1.5} opacity={0.55} />
 
-        {/* ── CDR arcs (behind domains visually is fine; drawn at tips) ── */}
+        {/* ── CDR loops (three ovals above each variable domain) ── */}
         {CDR_ANCHORS.map((a) => (
           <CDRArcs
             key={`${a.chain}-${a.region}`}
@@ -289,8 +300,8 @@ export default function AntibodySchematic({
             annotations={annForChain(a.chain)}
             selectedRegion={selectedRegion}
             onClick={handleClick}
-            ax={a.ax}
-            ay={a.ay}
+            cx={a.cx}
+            topY={a.topY}
           />
         ))}
 
