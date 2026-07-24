@@ -47,8 +47,12 @@ Mutant residue is a canonical letter OR `"X"`. `X` sets `isNonCanonical` and
 (owner or Admin). Validation shared in `src/lib/antibodyValidation.ts`.
 
 ## Schematic anatomy (important)
-`src/components/antibody/AntibodySchematic.tsx` — SVG IgG "Y", viewBox 600×700.
-- Two Fab arms (VL+VH tips, CL+CH1 below) splayed ~31°; central Fc stem (CH2/CH3).
+`src/components/antibody/AntibodySchematic.tsx` — SVG IgG, viewBox 600×700.
+- Two Fab arms with **upright (untilted) domains** — VL|VH on top, CL|CH1 below,
+  heavy chain inner; central Fc stem (CH2/CH3). The Y read comes from the hinge
+  lines, not tilted boxes. **Each heavy chain's CH1 connects to its OWN CH2** (two
+  separate hinge links). Blue intra-chain backbone links join stacked domains
+  (VL–CL, VH–CH1, CH2–CH3). CDR loops = three ovals above each variable domain.
 - **The light chain (VL+CL) terminates in the Fab arm — it does NOT bridge to the
   Fc.** Only the heavy chains (CH1→hinge→CH2→CH3) continue into the stem. (This was
   corrected in Prompt 3; the two CL→hinge connectors were removed. Don't reintroduce.)
