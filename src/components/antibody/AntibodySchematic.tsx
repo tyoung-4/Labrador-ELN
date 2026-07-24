@@ -1,6 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import { ANNOTATION_TYPES } from "@/config/antibodyRegions";
+
+// Per-CDR identity colors — each loop lights up in its own hue on hover/select.
+const CDR_COLORS: Record<string, string> = {
+  CDR_H1: "#ef4444", CDR_H2: "#f97316", CDR_H3: "#eab308",
+  CDR_L1: "#22c55e", CDR_L2: "#3b82f6", CDR_L3: "#a855f7",
+};
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 // Lightweight prop shapes (not the full Prisma rows) so mock data and partial
@@ -82,12 +89,13 @@ const RIGHT_FAB: DomainShape[] = [
   { chain: "LIGHT_B", region: "CL",  ...c(440, 216), width: W, height: W, label: "CL" },
 ];
 
-// Fc stem — both heavy chains side by side, centered below the arms.
+// Fc stem — both heavy chains side by side, centered. Pulled up so all three
+// inter-domain gaps (Fab V–C, hinge CH1→CH2, Fc CH2–CH3) are equal (42 px).
 const FC: DomainShape[] = [
-  { chain: "HEAVY_A", region: "CH2", ...c(273, 430), width: W, height: W, label: "CH2" },
-  { chain: "HEAVY_B", region: "CH2", ...c(327, 430), width: W, height: W, label: "CH2" },
-  { chain: "HEAVY_A", region: "CH3", ...c(273, 500), width: W, height: W, label: "CH3" },
-  { chain: "HEAVY_B", region: "CH3", ...c(327, 500), width: W, height: W, label: "CH3" },
+  { chain: "HEAVY_A", region: "CH2", ...c(273, 312), width: W, height: W, label: "CH2" },
+  { chain: "HEAVY_B", region: "CH2", ...c(327, 312), width: W, height: W, label: "CH2" },
+  { chain: "HEAVY_A", region: "CH3", ...c(273, 408), width: W, height: W, label: "CH3" },
+  { chain: "HEAVY_B", region: "CH3", ...c(327, 408), width: W, height: W, label: "CH3" },
 ];
 
 // CDR loops render as three ovals above each variable domain (cx = domain centre).
@@ -109,8 +117,8 @@ const N_TERMINI: { chain: Chain; x: number; y: number }[] = [
 const C_TERMINI: { chain: Chain; x: number; y: number }[] = [
   { chain: "LIGHT_A", x: 126, y: 250 },
   { chain: "LIGHT_B", x: 474, y: 250 },
-  { chain: "HEAVY_A", x: 273, y: 552 },
-  { chain: "HEAVY_B", x: 327, y: 552 },
+  { chain: "HEAVY_A", x: 273, y: 460 },
+  { chain: "HEAVY_B", x: 327, y: 460 },
 ];
 
 // ─── Domain rect ─────────────────────────────────────────────────────────────
@@ -170,35 +178,44 @@ function DomainRect({
 }
 
 // ─── CDR loops — three ovals above each variable domain ──────────────────────
+// Each loop is muted at rest and lights up in its own hue on hover; it stays lit
+// when selected or annotated. Hover is per-specific-loop (chain:region key).
 function CDRArcs({
-  chain, region, annotations, selectedRegion, onClick, cx, topY,
+  chain, region, cx, topY, isAnnotated, isSelected, hoveredKey, onHover, onClick,
 }: {
   chain: Chain;
   region: "VH" | "VL";
-  annotations: SchematicAnnotation[];
-  selectedRegion: RegionSelection | null;
-  onClick: (sel: { chain: Chain; region: string }) => void;
   cx: number;
   topY: number;
+  isAnnotated: (cdr: string) => boolean;
+  isSelected: (cdr: string) => boolean;
+  hoveredKey: string | null;
+  onHover: (key: string | null) => void;
+  onClick: (sel: { chain: Chain; region: string }) => void;
 }) {
   const cdrRegions = region === "VH" ? ["CDR_H1", "CDR_H2", "CDR_H3"] : ["CDR_L1", "CDR_L2", "CDR_L3"];
   return (
     <>
       {cdrRegions.map((cdr, i) => {
-        const cdrAnn = annotations.filter((a) => a.region === cdr);
-        const has = cdrAnn.length > 0;
-        const selected = selectedRegion?.region === cdr;
+        const key = `${chain}:${cdr}`;
+        const varColor = CDR_COLORS[cdr] ?? "#9ca3af";
+        const hovered = hoveredKey === key;
+        const selected = isSelected(cdr);
+        const annotated = isAnnotated(cdr);
+        const lit = hovered || selected || annotated;
         const ex = cx + (i - 1) * 15; // three ovals centred on the domain
-        const color = selected ? "#8b5cf6" : has ? typeColor(cdrAnn[0].type) : "rgba(255,255,255,0.4)";
         return (
           <ellipse
             key={cdr}
             cx={ex} cy={topY} rx={7} ry={13}
-            fill={has ? typeColor(cdrAnn[0].type) + "33" : "transparent"}
-            stroke={color}
-            strokeWidth={selected || has ? 2.5 : 1.5}
+            fill={selected || annotated ? varColor + "3a" : hovered ? varColor + "22" : "transparent"}
+            stroke={varColor}
+            strokeOpacity={lit ? 1 : 0.3}
+            strokeWidth={selected ? 3 : hovered || annotated ? 2.5 : 1.5}
+            onMouseEnter={() => onHover(key)}
+            onMouseLeave={() => onHover(null)}
             onClick={(e) => { e.stopPropagation(); onClick({ chain, region: cdr }); }}
-            style={{ cursor: "pointer" }}
+            style={{ cursor: "pointer", transition: "stroke-opacity 120ms, stroke-width 120ms" }}
           />
         );
       })}
@@ -257,11 +274,13 @@ export default function AntibodySchematic({
   const handleClick = (sel: { chain: Chain; region: string }) =>
     onRegionClick({ chain: canonChain(sel.chain, isSymmetric) as Chain, region: sel.region });
 
+  const [hoveredCdr, setHoveredCdr] = useState<string | null>(null);
+
   const allDomains = [...LEFT_FAB, ...RIGHT_FAB, ...FC];
 
   return (
     <div>
-      <svg viewBox="0 0 600 700" className="w-full" role="img" aria-label="Antibody domain schematic">
+      <svg viewBox="0 0 600 500" className="w-full" role="img" aria-label="Antibody domain schematic">
         {/* Mode indicator */}
         <text x={20} y={30} fill="rgba(255,255,255,0.5)" fontSize={11}>
           {isSymmetric ? "◯ Symmetric" : "◑ Asymmetric"}
@@ -276,20 +295,21 @@ export default function AntibodySchematic({
             <path d="M 214 147 L 214 189" />
             <path d="M 386 147 L 386 189" />
             <path d="M 440 147 L 440 189" />
-            <path d="M 273 457 L 273 473" />
-            <path d="M 327 457 L 327 473" />
+            <path d="M 273 339 L 273 381" />
+            <path d="M 327 339 L 327 381" />
           </g>
           {/* Hinge — each heavy chain's CH1 links to ITS OWN CH2 (two separate
-              links, not a single convergence). Light chains stop at the Fab. */}
+              links, not a single convergence), same length as the other gaps.
+              Light chains stop at the Fab. */}
           <g stroke="rgba(255,255,255,0.3)" strokeWidth={2}>
-            <path d="M 214 243 L 273 403" />
-            <path d="M 386 243 L 327 403" />
+            <path d="M 214 243 L 273 285" />
+            <path d="M 386 243 L 327 285" />
           </g>
           {/* Inter-heavy Fc seam — the two heavy chains pair down the Fc. */}
-          <path d="M 300 403 L 300 527" stroke="rgba(255,255,255,0.14)" strokeWidth={2} strokeDasharray="3 4" />
+          <path d="M 300 285 L 300 435" stroke="rgba(255,255,255,0.14)" strokeWidth={2} strokeDasharray="3 4" />
         </g>
         {/* Inter-heavy hinge disulfide accent */}
-        <path d="M 292 394 L 308 402 M 292 402 L 308 394" stroke={typeColor("DISULFIDE")} strokeWidth={1.5} opacity={0.55} />
+        <path d="M 292 272 L 308 280 M 292 280 L 308 272" stroke={typeColor("DISULFIDE")} strokeWidth={1.5} opacity={0.55} />
 
         {/* ── CDR loops (three ovals above each variable domain) ── */}
         {CDR_ANCHORS.map((a) => (
@@ -297,11 +317,13 @@ export default function AntibodySchematic({
             key={`${a.chain}-${a.region}`}
             chain={a.chain}
             region={a.region}
-            annotations={annForChain(a.chain)}
-            selectedRegion={selectedRegion}
-            onClick={handleClick}
             cx={a.cx}
             topY={a.topY}
+            isAnnotated={(cdr) => annForChain(a.chain).some((an) => an.region === cdr)}
+            isSelected={(cdr) => isSel({ chain: a.chain, region: cdr })}
+            hoveredKey={hoveredCdr}
+            onHover={setHoveredCdr}
+            onClick={handleClick}
           />
         ))}
 
